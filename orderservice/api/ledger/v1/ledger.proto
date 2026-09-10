@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package ledger.v1;
+
+option go_package = "praxis/orderservice/gen/ledger/v1;ledgerv1";
+
+service LedgerService {
+  rpc ReserveForOrder(ReserveForOrderRequest) returns (ReservationResponse);
+}
+
+message ReserveForOrderRequest {
+  string command_id = 1;
+  string order_id = 2;
+  string user_id = 3;
+  string asset_id = 4;
+  string amount_atomic = 5;
+  string correlation_id = 6;
+  string causation_id = 7;
+  string occurred_at = 8;
+}
+
+message ReservationResponse {
+  string reservation_id = 1;
+  string order_id = 2;
+  string status = 3;
+  string original_atomic = 4;
+  string remaining_atomic = 5;
+  int64 balance_version = 6;
+  bool idempotent_replay = 7;
+}

@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package matching.v1;
+
+option go_package = "praxis/orderservice/gen/matching/v1;matchingv1";
+
+service MatchingEngine {
+  rpc SubmitOrder(SubmitOrderRequest) returns (SubmitOrderResponse);
+}
+
+message SubmitOrderRequest {
+  string request_id = 1;
+  string order_id = 2;
+  string user_id = 3;
+  string symbol = 4;
+  string side = 5;
+  string order_type = 6;
+  string quantity = 7;
+  string price = 8;
+  string reservation_id = 9;
+  int32 engine_partition = 10;
+}
+
+message SubmitOrderResponse {
+  string order_id = 1;
+  string status = 2;
+  int64 engine_sequence = 3;
+}

@@ -1,0 +1,84 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"praxis/outboxrelay/internal/config"
+	"praxis/outboxrelay/internal/messaging"
+	"praxis/outboxrelay/internal/relay"
+	"praxis/outboxrelay/internal/store"
+	"praxis/outboxrelay/migrations"
+)
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	cfg, err := config.Load()
+	if err != nil {
+		log.Error("configuration", "error", err)
+		os.Exit(1)
+	}
+	db, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Error("database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+	if err = db.Ping(ctx); err != nil {
+		log.Error("database ping", "error", err)
+		os.Exit(1)
+	}
+	if err = migrations.Apply(ctx, db); err != nil {
+		log.Error("migrations", "error", err)
+		os.Exit(1)
+	}
+
+	writer := messaging.NewWriter(messaging.WriterConfig{Brokers: cfg.Brokers, BatchSize: cfg.BatchSize, BatchBytes: cfg.BatchBytes, BatchTimeout: cfg.BatchTimeout})
+	metrics := &relay.Metrics{}
+	worker := &relay.Relay{Store: store.Postgres{DB: db}, Publisher: writer, InstanceID: cfg.InstanceID, ClaimSize: cfg.ClaimSize, LeaseDuration: cfg.LeaseDuration, PollInterval: cfg.PollInterval, Log: log, Metrics: metrics}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		if err := db.Ping(r.Context()); err != nil {
+			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ready\n"))
+	})
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+		_, _ = fmt.Fprintf(w, "outbox_events_claimed_total %d\noutbox_events_published_total %d\noutbox_events_failed_total %d\n", metrics.Claimed.Load(), metrics.Published.Load(), metrics.Failed.Load())
+	})
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	errCh := make(chan error, 2)
+	go func() { errCh <- worker.Run(ctx) }()
+	go func() { errCh <- server.ListenAndServe() }()
+	log.Info("outbox relay started", "instance_id", cfg.InstanceID, "claim_size", cfg.ClaimSize, "kafka_batch_size", cfg.BatchSize, "kafka_batch_bytes", cfg.BatchBytes, "kafka_batch_timeout", cfg.BatchTimeout)
+	select {
+	case <-ctx.Done():
+	case err = <-errCh:
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("service stopped", "error", err)
+		}
+	}
+	stop()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_ = server.Shutdown(shutdownCtx)
+	_ = writer.Close()
+}

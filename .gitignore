@@ -1,0 +1,27 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.tfvars
+!*.tfvars.example
+
+# Terraform working state
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Go build and test output
+bin/
+coverage.out
+*.test
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+

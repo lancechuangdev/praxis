@@ -1,0 +1,17 @@
+name        = "stablerail-cex"
+environment = "development"
+aws_region  = "us-west-2"
+vpc_cidr    = "10.80.0.0/16"
+
+availability_zone_count = 3
+nat_gateway_per_az      = true
+
+# Verify the desired engine version and instance-class availability in the
+# selected region. Leave the version null to let AWS choose its current default.
+postgres_engine_version       = null
+postgres_instance_class       = "db.r6gd.xlarge"
+postgres_allocated_storage_gib = 500
+postgres_iops                  = 10000
+postgres_backup_retention_days = 14
+postgres_deletion_protection   = true
+postgres_skip_final_snapshot   = false

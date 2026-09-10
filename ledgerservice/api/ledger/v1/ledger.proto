@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package ledger.v1;
+
+option go_package = "praxis/ledgerservice/gen/ledger/v1;ledgerv1";
+
+service LedgerService {
+  rpc PostDeposit(PostDepositRequest) returns (OperationResponse);
+  rpc ReleaseHold(ReleaseHoldRequest) returns (OperationResponse);
+  rpc ReserveForOrder(ReserveForOrderRequest) returns (ReservationResponse);
+  rpc GetBalance(GetBalanceRequest) returns (BalanceResponse);
+  rpc GetReservation(GetReservationRequest) returns (ReservationResponse);
+}
+
+message PostDepositRequest {
+  string command_id = 1;
+  string deposit_id = 2;
+  string user_id = 3;
+  string asset_id = 4;
+  string custody_position_id = 5;
+  string amount_atomic = 6;
+  string target_bucket = 7;
+  string source_system = 8;
+  string correlation_id = 9;
+  string causation_id = 10;
+  string occurred_at = 11;
+}
+
+message ReleaseHoldRequest {
+  string command_id = 1;
+  string deposit_id = 2;
+  string user_id = 3;
+  string asset_id = 4;
+  string amount_atomic = 5;
+  string source_system = 6;
+  string correlation_id = 7;
+  string causation_id = 8;
+  string occurred_at = 9;
+}
+
+message ReserveForOrderRequest {
+  string command_id = 1;
+  string order_id = 2;
+  string user_id = 3;
+  string asset_id = 4;
+  string amount_atomic = 5;
+  string correlation_id = 6;
+  string causation_id = 7;
+  string occurred_at = 8;
+}
+
+message GetBalanceRequest {
+  string user_id = 1;
+  string asset_id = 2;
+}
+
+message GetReservationRequest { string order_id = 1; }
+
+message OperationResponse {
+  string journal_id = 1;
+  bool idempotent_replay = 2;
+}
+
+message ReservationResponse {
+  string reservation_id = 1;
+  string order_id = 2;
+  string status = 3;
+  string original_atomic = 4;
+  string remaining_atomic = 5;
+  int64 balance_version = 6;
+  bool idempotent_replay = 7;
+}
+
+message BalanceResponse {
+  string user_asset_account_id = 1;
+  string user_id = 2;
+  string asset_id = 3;
+  string available_atomic = 4;
+  string reserved_atomic = 5;
+  string withdrawal_pending_atomic = 6;
+  string deposit_pending_atomic = 7;
+  string hold_atomic = 8;
+  int64 version = 9;
+}
