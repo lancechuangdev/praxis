@@ -13,7 +13,7 @@ Independent Go microservice implementing the financial boundary described in
 - Immutable balanced journals plus mutable balance projections
 - Matching-engine sequence-gap detection
 - Transactional event outbox and at-least-once inbox deduplication
-- Health, readiness, and balance/reservation queries
+- Health, readiness, Prometheus metrics, and balance/reservation queries
 
 ## Run
 
@@ -25,6 +25,14 @@ HTTP listens on `:8081`, gRPC on `:9091`, and commands are consumed from
 `ledger-commands`. The service writes events to `outbox_events`; run the
 independent [`../outboxrelay`](../outboxrelay) service to batch-publish them to
 Kafka topic `ledger-events`.
+
+Operational endpoints:
+
+```text
+GET /healthz
+GET /readyz
+GET /metrics
+```
 
 ## Reserve funds
 

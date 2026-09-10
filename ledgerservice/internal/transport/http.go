@@ -3,6 +3,7 @@ package transport
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -13,20 +14,38 @@ import (
 )
 
 type HTTP struct {
-	Store ledger.Store
-	DB    *pgxpool.Pool
+	Store   ledger.Store
+	DB      *pgxpool.Pool
+	Metrics *Metrics
 }
 
 func (h HTTP) Handler() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { write(w, 200, map[string]string{"status": "ok"}) })
 	m.HandleFunc("GET /readyz", h.ready)
+	m.HandleFunc("GET /metrics", h.metrics)
 	m.HandleFunc("POST /v1/deposits:post", h.deposit)
 	m.HandleFunc("POST /v1/holds:release", h.release)
 	m.HandleFunc("POST /v1/orders:reserve", h.reserve)
 	m.HandleFunc("GET /v1/balances/{user}/{asset}", h.balance)
 	m.HandleFunc("GET /v1/reservations/{order}", h.reservation)
 	return m
+}
+
+func (h HTTP) metrics(w http.ResponseWriter, _ *http.Request) {
+	pool := h.DB.Stat()
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+	_, _ = fmt.Fprintf(w, `ledger_reserve_requests_total %d
+ledger_reserve_failures_total %d
+ledger_reserve_duration_seconds_sum %.9f
+ledger_db_pool_acquired_connections %d
+ledger_db_pool_idle_connections %d
+ledger_db_pool_total_connections %d
+`, h.Metrics.ReserveRequests.Load(), h.Metrics.ReserveFailures.Load(), seconds(h.Metrics.ReserveNS.Load()), pool.AcquiredConns(), pool.IdleConns(), pool.TotalConns())
+}
+
+func seconds(ns uint64) float64 {
+	return float64(time.Duration(ns)) / float64(time.Second)
 }
 func decode(r *http.Request, v any) error {
 	d := json.NewDecoder(io.LimitReader(r.Body, 1<<20))

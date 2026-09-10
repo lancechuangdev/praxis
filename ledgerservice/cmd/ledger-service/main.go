@@ -41,14 +41,15 @@ func main() {
 		os.Exit(1)
 	}
 	repo := store.New(db)
+	metrics := &transport.Metrics{}
 	listener, err := net.Listen("tcp", cfg.GRPCAddress)
 	if err != nil {
 		log.Error("grpc listen", "error", err)
 		os.Exit(1)
 	}
 	grpcServer := grpc.NewServer()
-	ledgerv1.RegisterLedgerServiceServer(grpcServer, &transport.GRPC{Store: repo})
-	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: transport.HTTP{Store: repo, DB: db}.Handler(), ReadHeaderTimeout: 5 * time.Second}
+	ledgerv1.RegisterLedgerServiceServer(grpcServer, &transport.GRPC{Store: repo, Metrics: metrics})
+	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: transport.HTTP{Store: repo, DB: db, Metrics: metrics}.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	consumer := messaging.NewConsumer(cfg.KafkaBrokers, cfg.CommandsTopic, cfg.ConsumerGroup, db, repo, log)
 	errCh := make(chan error, 3)
 	go func() { errCh <- grpcServer.Serve(listener) }()

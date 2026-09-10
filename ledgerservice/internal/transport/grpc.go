@@ -13,7 +13,8 @@ import (
 
 type GRPC struct {
 	ledgerv1.UnimplementedLedgerServiceServer
-	Store ledger.Store
+	Store   ledger.Store
+	Metrics *Metrics
 }
 
 func eventTime(raw string) (time.Time, error) {
@@ -60,12 +61,17 @@ func (s *GRPC) ReleaseHold(ctx context.Context, r *ledgerv1.ReleaseHoldRequest) 
 	return &ledgerv1.OperationResponse{JournalId: v.JournalID, IdempotentReplay: v.Replay}, nil
 }
 func (s *GRPC) ReserveForOrder(ctx context.Context, r *ledgerv1.ReserveForOrderRequest) (*ledgerv1.ReservationResponse, error) {
+	started := time.Now()
+	s.Metrics.ReserveRequests.Add(1)
+	defer func() { s.Metrics.ReserveNS.Add(uint64(time.Since(started))) }()
 	at, e := eventTime(r.OccurredAt)
 	if e != nil {
+		s.Metrics.ReserveFailures.Add(1)
 		return nil, status.Error(codes.InvalidArgument, "invalid occurred_at")
 	}
 	v, e := s.Store.ReserveForOrder(ctx, ledger.ReserveOrder{CommandID: r.CommandId, OrderID: r.OrderId, UserID: r.UserId, AssetID: r.AssetId, AmountAtomic: r.AmountAtomic, CorrelationID: r.CorrelationId, CausationID: r.CausationId, OccurredAt: at})
 	if e != nil {
+		s.Metrics.ReserveFailures.Add(1)
 		return nil, grpcErr(e)
 	}
 	return reservation(v), nil

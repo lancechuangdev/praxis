@@ -80,24 +80,62 @@ The Order Service does not publish Kafka messages. The matching engine publishes
 gRPC. Its synchronous Kafka writer combines concurrent publications subject to
 configured record, byte, and timeout limits.
 
-## Load test
+## Load tests
 
-The included k6 scenario uses a constant arrival rate. Start with a baseline,
-then increase toward the measured accepted-order target:
+Both k6 scenarios use a constant arrival rate and reserve one atomic USDT unit
+per order by default. Run these commands from the `orderservice` directory.
+
+### Hot account
+
+This intentionally sends every order through one `user × asset` balance row.
+It measures per-account serialization, overspending safety, and lock contention;
+it does not represent exchange-wide capacity.
 
 ```bash
 docker run --rm --network=host \
-  -e RATE=4050 \
+  -v "$PWD/loadtest:/scripts:ro" \
+  grafana/k6 run \
+  -e RATE=100 \
   -e DURATION=60s \
   -e BASE_URL=http://localhost:8083 \
-  -v "$PWD/loadtest:/scripts:ro" \
-  grafana/k6 run /scripts/order-admission.js
+  -e USER_ID=alice \
+  -e RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)" \
+  /scripts/order-admission-hot-account.js
 ```
 
-For `grpc` mode, Alice needs enough available USDT for every unique order. The
-test defaults to reserving one atomic unit per request. This single-user test is
-deliberately a hot-account contention test. Use separately funded users to
-measure a distributed workload.
+### Distributed users
+
+First seed 10,000 benchmark users with 1,000 USDT each. This fixture writes
+balance projections directly and is only for load testing, not production
+ledger posting:
+
+```bash
+docker compose -f ../ledgerservice/compose.yaml exec -T postgres \
+  psql -U ledger -d cex_ledger \
+  -v user_count=10000 \
+  -v available_atomic=1000000000 \
+  < loadtest/seed-distributed-users.sql
+```
+
+Then distribute order admission round-robin across those users:
+
+```bash
+docker run --rm --network=host \
+  -v "$PWD/loadtest:/scripts:ro" \
+  grafana/k6 run \
+  -e RATE=1000 \
+  -e DURATION=60s \
+  -e BASE_URL=http://localhost:8083 \
+  -e USER_COUNT=10000 \
+  -e ENGINE_PARTITIONS=96 \
+  -e RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)" \
+  /scripts/order-admission-distributed-users.js
+```
+
+`USER_COUNT` must equal the number passed to the seed script. `RUN_ID` makes
+request and order IDs unique across runs. If omitted, k6 generates one run ID
+in `setup()` and shares it with every VU. Re-seeding does not replenish existing
+users, so reset the test database when you need a completely fresh balance set.
 
 Useful endpoints:
 
