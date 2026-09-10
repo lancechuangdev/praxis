@@ -137,6 +137,28 @@ request and order IDs unique across runs. If omitted, k6 generates one run ID
 in `setup()` and shares it with every VU. Re-seeding does not replenish existing
 users, so reset the test database when you need a completely fresh balance set.
 
+#### Observed local results
+
+On 2026-09-10, the full local path (Ledger gRPC + PostgreSQL + Matching Engine
+gRPC + synchronous Kafka publication) was tested for 60 seconds per rate with
+10,000 users and 96 engine partitions.
+
+| Target | Achieved | Completed | Failed | Dropped | HTTP p95 / p99 | Reserve p95 | Thresholds |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| 1,000/s | 999.77/s | 60,001 | 0 | 0 | 11.05 / 14.42 ms | 4.47 ms | Pass |
+| 2,000/s | 1,999.68/s | 120,001 | 0 | 0 | 11.61 / — ms | 4.56 ms | Pass |
+| 4,000/s | 3,999.40/s | 240,001 | 0 | 0 | 11.07 / 17.38 ms | 4.88 ms | Pass |
+| 6,000/s | 5,999.06/s | 360,004 | 0 | 0 | 10.38 / 15.20 ms | 4.12 ms | Pass |
+| 8,000/s | 7,997.78/s | 479,949 | 0 | 56 | 27.09 / 40.74 ms | 20.81 ms | Pass |
+| 10,000/s | 9,973.09/s | 598,472 | 0 | 1,529 | 59.05 / 71.66 ms | 53.37 ms | Fail: p95 > 50 ms |
+
+The first clear saturation signal appears at 8,000/s: dropped iterations begin
+and ledger-reservation tail latency rises. At 10,000/s every started request is
+accepted, but the generator drops 1,529 scheduled iterations and HTTP p95
+exceeds the 50 ms objective. This is a single-host development benchmark, not a
+production capacity claim. The pasted 2,000/s excerpt did not include HTTP p99
+or reservation p95, so those values are left blank rather than inferred.
+
 Useful endpoints:
 
 - `POST /v1/orders`
