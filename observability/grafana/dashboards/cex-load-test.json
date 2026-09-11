@@ -1,0 +1,148 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "rate(order_requests_total[1m])", "legendFormat": "orders", "refId": "A"},
+        {"expr": "rate(ledger_reserve_requests_total[1m])", "legendFormat": "reservations", "refId": "B"},
+        {"expr": "rate(matching_orders_submitted_total[1m])", "legendFormat": "matching", "refId": "C"}
+      ],
+      "title": "Workflow throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "1000 * rate(order_risk_duration_seconds_sum[1m]) / clamp_min(rate(order_requests_total[1m]), 0.001)", "legendFormat": "risk", "refId": "A"},
+        {"expr": "1000 * rate(order_reserve_duration_seconds_sum[1m]) / clamp_min(rate(order_requests_total[1m]), 0.001)", "legendFormat": "reserve", "refId": "B"},
+        {"expr": "1000 * rate(order_matching_duration_seconds_sum[1m]) / clamp_min(rate(order_requests_total[1m]), 0.001)", "legendFormat": "matching", "refId": "C"},
+        {"expr": "1000 * rate(order_total_duration_seconds_sum[1m]) / clamp_min(rate(order_requests_total[1m]), 0.001)", "legendFormat": "total", "refId": "D"}
+      ],
+      "title": "Average order-stage latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"min": 0, "unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "ledger_db_pool_acquired_connections", "legendFormat": "acquired", "refId": "A"},
+        {"expr": "ledger_db_pool_idle_connections", "legendFormat": "idle", "refId": "B"},
+        {"expr": "ledger_db_pool_max_connections", "legendFormat": "maximum", "refId": "C"}
+      ],
+      "title": "Ledger pgx pool",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "id": 4,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "1000 * rate(ledger_db_pool_acquire_duration_seconds_total[1m]) / clamp_min(rate(ledger_db_pool_acquire_total[1m]), 0.001)", "legendFormat": "acquire wait", "refId": "A"}
+      ],
+      "title": "Average DB connection acquisition wait",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "percent"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+      "id": 5,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "100 * sum by (name) (rate(container_cpu_usage_seconds_total{image!=\"\",name!=\"\"}[1m]))", "legendFormat": "{{name}}", "refId": "A"}
+      ],
+      "title": "Container CPU (100% = one core)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+      "id": 6,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "sum by (name) (container_memory_working_set_bytes{image!=\"\",name!=\"\"})", "legendFormat": "{{name}}", "refId": "A"}
+      ],
+      "title": "Container working memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"max": 100, "min": 0, "unit": "percent"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
+      "id": 7,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[1m])))", "legendFormat": "host CPU", "refId": "A"}
+      ],
+      "title": "Host CPU",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"max": 100, "min": 0, "unit": "percent"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16},
+      "id": 8,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)", "legendFormat": "host memory", "refId": "A"}
+      ],
+      "title": "Host memory",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "ms"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16},
+      "id": 9,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "1000 * rate(matching_engine_duration_seconds_sum[1m]) / clamp_min(rate(matching_orders_submitted_total[1m]), 0.001)", "legendFormat": "engine", "refId": "A"},
+        {"expr": "1000 * rate(matching_kafka_duration_seconds_sum[1m]) / clamp_min(rate(matching_orders_submitted_total[1m]), 0.001)", "legendFormat": "Kafka publish", "refId": "B"}
+      ],
+      "title": "Average Matching Engine latency",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 42,
+  "tags": ["cex", "load-test"],
+  "templating": {
+    "list": [
+      {
+        "current": {"text": "Prometheus", "value": "Prometheus"},
+        "hide": 2,
+        "label": "Data source",
+        "name": "DS_PROMETHEUS",
+        "query": "prometheus",
+        "type": "datasource"
+      }
+    ]
+  },
+  "time": {"from": "now-15m", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "CEX Load Test",
+  "uid": "cex-load-test",
+  "version": 1
+}

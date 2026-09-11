@@ -176,12 +176,52 @@ gRPC + synchronous Kafka publication) was tested for 60 seconds per rate with
 | 8,000/s | 7,997.78/s | 479,949 | 0 | 56 | 27.09 / 40.74 ms | 20.81 ms | Pass |
 | 10,000/s | 9,973.09/s | 598,472 | 0 | 1,529 | 59.05 / 71.66 ms | 53.37 ms | Fail: p95 > 50 ms |
 
-The first clear saturation signal appears at 8,000/s: dropped iterations begin
-and ledger-reservation tail latency rises. At 10,000/s every started request is
-accepted, but the generator drops 1,529 scheduled iterations and HTTP p95
-exceeds the 50 ms objective. This is a single-host development benchmark, not a
-production capacity claim. The pasted 2,000/s excerpt did not include HTTP p99
-or reservation p95, so those values are left blank rather than inferred.
+On 2026-09-11, the same rate sequence was repeated with a 32-connection Ledger
+pool under **Experiment C** conditions: Prometheus/Grafana off, raw monitoring
+off, a clean reset and 10,000-user reseed before every run, and a 60-second gap
+between runs.
+
+| Target | Achieved | Completed | Failed | Dropped | HTTP avg / p95 / p99 | Reserve avg / p95 | Thresholds |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| 1,000/s | 999.85/s | 60,001 | 0 | 0 | 8.89 / 11.03 / 13.82 ms | 3.02 / 4.54 ms | Pass |
+| 2,000/s | 1,999.76/s | 120,001 | 0 | 0 | 8.86 / 11.39 / 15.03 ms | 3.25 / 5.19 ms | Pass |
+| 4,000/s | 3,999.19/s | 239,986 | 0 | 15 | 7.61 / 9.67 / 14.32 ms | 2.47 / 3.88 ms | Pass |
+| 6,000/s | 5,995.42/s | 359,777 | 0 | 225 | 7.11 / 8.53 / 11.50 ms | 2.18 / 2.86 ms | Pass |
+| 8,000/s | 7,990.94/s | 479,517 | 0 | 484 | 7.11 / 9.49 / 13.68 ms | 2.22 / 3.62 ms | Pass |
+| 10,000/s | 9,961.97/s | 598,472 | 0 | 1,529 | 14.65 / 47.90 / 68.63 ms | 9.49 / 42.23 ms | Pass |
+
+Pool 32 remains within the configured latency thresholds through 10,000/s, but
+the sharp reservation-tail increase at 10,000/s marks the saturation knee.
+Dropped iterations begin at 4,000/s and reach 1,529 at 10,000/s, so a threshold
+pass does not mean k6 started the entire requested workload.
+
+The 10,000/s Experiment C test was then repeated three times with pool 48. Each
+run used a clean reset/reseed and a 60-second cooldown; all started requests
+were accepted.
+
+| Run | Achieved | Completed | Failed | Dropped | HTTP avg / p95 / p99 | Reserve avg / p95 | Thresholds |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| 1 | 9,991.21/s | 599,564 | 0 | 437 | 8.61 / 14.84 / 24.01 ms | 3.45 / 8.63 ms | Pass |
+| 2 | 9,977.01/s | 598,896 | 0 | 1,105 | 11.43 / 39.96 / 58.25 ms | 6.24 / 33.79 ms | Pass |
+| 3 | 9,973.76/s | 598,842 | 0 | 1,164 | 12.76 / 42.31 / 62.01 ms | 7.51 / 36.25 ms | Pass |
+| Median | 9,977.01/s | 598,896 | 0 | 1,105 | 11.43 / 39.96 / 58.25 ms | 6.24 / 33.79 ms | Pass |
+
+Using medians, pool 48 reduced HTTP p95 from 47.90 ms to 39.96 ms,
+reservation p95 from 42.23 ms to 33.79 ms, and dropped iterations from 1,529
+to 1,105 versus pool 32 at 10,000/s. Run 1 was unusually favorable; runs 2 and
+3 were close, so the median is a better planning value. Performance degraded
+across consecutive runs even with logical resets because Kafka logs,
+PostgreSQL WAL/checkpoint state, caches, and host conditions persist. Experiment
+C intentionally records only k6 measurements, so it cannot isolate those
+server-side effects.
+
+In the 2026-09-10 run, the first clear saturation signal appears at 8,000/s:
+dropped iterations begin and ledger-reservation tail latency rises. At
+10,000/s every started request is accepted, but the generator drops 1,529
+scheduled iterations and HTTP p95 exceeds the 50 ms objective. These are
+single-host development benchmarks, not production capacity claims. The pasted
+2026-09-10 2,000/s excerpt did not include HTTP p99, so that value is left blank
+rather than inferred.
 
 #### Connection-pool experiment
 
@@ -253,6 +293,93 @@ Stop it with `Ctrl+C` after the test. It writes timestamped service metrics and
 PostgreSQL activity, WAL, database, and relation-size samples beneath
 `orderservice/loadtest/results/monitor-$RUN_ID/`. The generated results are
 ignored by Git.
+
+### Data collected
+
+k6 prints the client-side result at the end of the run. These metrics describe
+what callers experienced:
+
+| Metric | Description and use |
+|---|---|
+| `http_reqs` | Requests completed and their rate; confirms achieved throughput. |
+| `http_req_duration` | End-to-end HTTP latency, including p95 and p99; checks the user-facing latency objective. |
+| `http_req_failed` | Transport errors and unexpected HTTP responses; detects unavailable or rejected requests. |
+| `checks_total`, `checks_succeeded`, `checks_failed` | Results of the `202 Accepted` check; distinguishes accepted orders from failures. |
+| `order_failure_rate` | Custom fraction of orders not accepted; enforces the `<1%` threshold. |
+| `order_risk_ms` | Risk-stage latency returned by Order Service; isolates risk processing from later stages. |
+| `order_reserve_ms` | Ledger reservation latency returned by Order Service; identifies pressure in the synchronous balance path. |
+| `order_matching_ms` | Matching submission latency returned by Order Service; shows whether Matching Engine is contributing to tail latency. |
+| `order_total_ms` | Server-reported total admission latency; compares server work with HTTP duration and exposes network/client overhead. |
+| `iterations`, `iteration_duration` | Completed scenario iterations and their latency; measures complete k6 work rather than HTTP alone. |
+| `dropped_iterations` | Arrivals k6 could not start at the requested rate; an important saturation signal even when started requests succeed. |
+| `vus`, `vus_max` | Active and permitted virtual users; shows how much concurrency k6 needed and whether `MAX_VUS` constrained the generator. |
+| `data_sent`, `data_received` | Network volume and rate; useful for ruling network bandwidth in or out. |
+
+The monitor samples the following server and PostgreSQL data every
+`INTERVAL_SECONDS` seconds:
+
+| File and fields | Description and use |
+|---|---|
+| `ledger.prom`: `ledger_reserve_requests_total`, `ledger_reserve_failures_total`, `ledger_reserve_duration_seconds_sum` | Reservation count, failures, and cumulative duration; derives Ledger throughput, failure rate, and average reservation time. |
+| `ledger.prom`: `ledger_db_pool_acquired_connections`, `ledger_db_pool_idle_connections`, `ledger_db_pool_total_connections`, `ledger_db_pool_max_connections` | Instantaneous pgx pool usage and configured limit; shows whether the pool is full, underused, or oversized. |
+| `ledger.prom`: `ledger_db_pool_acquire_total`, `ledger_db_pool_empty_acquire_total`, `ledger_db_pool_canceled_acquire_total`, `ledger_db_pool_acquire_duration_seconds_total` | Acquisition attempts, attempts made while no connection was immediately available, cancellations, and cumulative wait time; identifies connection-pool queueing. |
+| `order.prom`: `order_requests_total`, `order_accepted_total`, `order_risk_rejected_total`, `order_failed_total` | Order outcomes; locates rejection or failure at the workflow boundary. |
+| `order.prom`: `order_risk_duration_seconds_sum`, `order_reserve_duration_seconds_sum`, `order_matching_duration_seconds_sum`, `order_total_duration_seconds_sum` | Cumulative stage durations; compares where admission time is spent. |
+| `matching.prom`: `matching_orders_submitted_total`, `matching_orders_accepted_total`, `matching_orders_failed_total` | Matching request outcomes; confirms whether admitted orders reach and are accepted by Matching Engine. |
+| `matching.prom`: `matching_engine_duration_seconds_sum`, `matching_kafka_duration_seconds_sum` | Cumulative engine and Kafka publication time; separates matching work from event-publication latency. |
+| `pg_stat_activity.tsv`: `wait_type`, `wait_event`, `state`, `connections` | Connection states and PostgreSQL wait categories; distinguishes CPU work, locks, I/O, client waits, and idle sessions. |
+| `pg_stat_wal.tsv`: `wal_records`, `wal_fpi`, `wal_bytes`, `wal_buffers_full`, `stats_reset` | WAL records, full-page images, bytes, buffer exhaustion, and counter epoch; detects WAL generation or WAL-buffer pressure. |
+| `pg_stat_database.tsv`: `xact_commit`, `xact_rollback` | Committed and rolled-back transactions; measures database transaction throughput and rollback rate. |
+| `pg_stat_database.tsv`: `tup_inserted`, `tup_updated` | Rows inserted and updated; quantifies write amplification per admitted order. |
+| `pg_stat_database.tsv`: `blk_read_time_ms`, `blk_write_time_ms` | Time PostgreSQL reports waiting for block reads and writes; helps identify storage pressure when I/O timing is enabled. |
+| `pg_stat_database.tsv`: `temp_files`, `temp_bytes`, `deadlocks` | Temporary-file use and deadlocks; reveals memory-spilling queries and concurrency conflicts. |
+| `relation_sizes.tsv`: `relation`, `total_bytes`, `table_bytes`, `indexes_bytes` | Table and index sizes over time; measures growth and identifies indexes or relations dominating storage. |
+| `container_stats.tsv`: container, CPU percentage, memory usage/limit/percentage, network I/O, block I/O, and PIDs | Shows which Docker component consumes CPU or memory and whether PostgreSQL, Kafka, k6, or an application is the local bottleneck. |
+| `host_cpu.tsv`: cumulative CPU-mode counters | Derives host CPU utilization and I/O wait between samples; detects competition among containers for the same machine. |
+| `host_memory.tsv`: total, available, used, and swap memory | Detects whole-host memory pressure and swapping that can inflate latency. |
+| `host_load.tsv`: 1/5/15-minute load and runnable/total tasks | Shows scheduler pressure and whether runnable work exceeds available CPU capacity. |
+
+Most service and PostgreSQL statistics are cumulative counters. Compare the
+first sample immediately before the run with the last sample immediately after
+it; do not interpret the final value by itself. For a cumulative duration, use
+the change in the duration sum divided by the change in its corresponding
+request count. Gauge values such as acquired connections are interpreted per
+sample, commonly by their peak during the load interval.
+
+### Live Prometheus and Grafana dashboard
+
+Start the application and observability services from the repository root:
+
+```bash
+make observability-up
+```
+
+Open:
+
+- Grafana: <http://localhost:3000> (`admin` / `admin`, local development only)
+- Prometheus: <http://localhost:9090>
+- Prometheus target health: <http://localhost:9090/targets>
+
+Grafana automatically provisions the **CEX / CEX Load Test** dashboard. It
+shows workflow throughput, average stage latency, pgx pool usage and acquisition
+wait, Matching/Kafka latency, per-container CPU and working memory, and host CPU
+and memory. Prometheus scrapes every two seconds and retains seven days locally.
+
+cAdvisor reads Linux host and Docker runtime data and therefore runs privileged
+with read-only host mounts in this local development stack. Do not copy that
+configuration into production; use ECS Container Insights and RDS monitoring in
+AWS. A k6 container started during the test appears automatically in the
+container panels.
+
+Stop only the observability containers with:
+
+```bash
+make observability-down
+```
+
+Prometheus and Grafana data remain in named Docker volumes. `make compose-down`
+also preserves them; use `docker compose -f ledgerservice/compose.yaml down -v`
+only when intentionally deleting all local Compose volumes.
 
 For comparable measurements, reset and reseed the database before each run:
 

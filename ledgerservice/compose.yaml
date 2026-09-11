@@ -84,3 +84,63 @@ services:
       MATCHING_KAFKA_BROKERS: kafka:9092
       MATCHING_KAFKA_TOPIC: matching.events.v1
     ports: ["8084:8084", "9094:9092"]
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports: ["9090:9090"]
+    depends_on:
+      ledger-service: {condition: service_started}
+      order-service: {condition: service_started}
+      matching-engine: {condition: service_started}
+      cadvisor: {condition: service_started}
+      node-exporter: {condition: service_started}
+
+  grafana:
+    image: grafana/grafana:12.3.1
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["3000:3000"]
+    depends_on:
+      prometheus: {condition: service_started}
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.55.1
+    profiles: ["observability"]
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+
+  node-exporter:
+    image: prom/node-exporter:v1.10.2
+    profiles: ["observability"]
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro,rslave
+
+volumes:
+  prometheus-data:
+  grafana-data:

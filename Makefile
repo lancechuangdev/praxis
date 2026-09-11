@@ -2,7 +2,7 @@ USER_COUNT ?= 10000
 AVAILABLE_ATOMIC ?= 1000000000
 LEDGER_DB_MAX_CONNS ?= 32
 
-.PHONY: test vet compose-up compose-down reset-load-data seed-distributed-users monitor terraform-fmt
+.PHONY: test vet compose-up compose-down observability-up observability-down reset-load-data seed-distributed-users monitor terraform-fmt
 
 test:
 	go test ./ledgerservice/... ./matchingengine/... ./orderservice/... ./outboxrelay/...
@@ -15,6 +15,12 @@ compose-up:
 
 compose-down:
 	docker compose -f ledgerservice/compose.yaml down
+
+observability-up:
+	docker compose -f ledgerservice/compose.yaml --profile observability up -d --build
+
+observability-down:
+	docker compose -f ledgerservice/compose.yaml --profile observability stop grafana prometheus cadvisor node-exporter
 
 reset-load-data:
 	docker compose -f ledgerservice/compose.yaml stop order-service ledger-service matching-engine
