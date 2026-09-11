@@ -26,6 +26,10 @@ HTTP listens on `:8081`, gRPC on `:9091`, and commands are consumed from
 independent [`../outboxrelay`](../outboxrelay) service to batch-publish them to
 Kafka topic `ledger-events`.
 
+The PostgreSQL pool is explicitly capped at 32 connections by default. Override
+it with `LEDGER_DB_MAX_CONNS`; `/metrics` reports the configured maximum and
+connection-acquisition pressure.
+
 Operational endpoints:
 
 ```text

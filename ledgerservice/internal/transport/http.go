@@ -41,7 +41,12 @@ ledger_reserve_duration_seconds_sum %.9f
 ledger_db_pool_acquired_connections %d
 ledger_db_pool_idle_connections %d
 ledger_db_pool_total_connections %d
-`, h.Metrics.ReserveRequests.Load(), h.Metrics.ReserveFailures.Load(), seconds(h.Metrics.ReserveNS.Load()), pool.AcquiredConns(), pool.IdleConns(), pool.TotalConns())
+ledger_db_pool_max_connections %d
+ledger_db_pool_acquire_total %d
+ledger_db_pool_empty_acquire_total %d
+ledger_db_pool_canceled_acquire_total %d
+ledger_db_pool_acquire_duration_seconds_total %.9f
+`, h.Metrics.ReserveRequests.Load(), h.Metrics.ReserveFailures.Load(), seconds(h.Metrics.ReserveNS.Load()), pool.AcquiredConns(), pool.IdleConns(), pool.TotalConns(), pool.MaxConns(), pool.AcquireCount(), pool.EmptyAcquireCount(), pool.CanceledAcquireCount(), pool.AcquireDuration().Seconds())
 }
 
 func seconds(ns uint64) float64 {

@@ -85,11 +85,31 @@ configured record, byte, and timeout limits.
 Both k6 scenarios use a constant arrival rate and reserve one atomic USDT unit
 per order by default. Run these commands from the `orderservice` directory.
 
+### Reset before each run
+
+From the repository root, clear generated ledger activity before every measured
+run:
+
+```bash
+cd /home/boris-alienware/projects/praxis
+make reset-load-data
+```
+
+The command temporarily stops the Order, Ledger, and Matching services,
+truncates balances, reservations, journals, entries, inbox/outbox events, and
+engine offsets, and then restarts the services. It preserves migrations,
+assets, networks, ledger accounts, and custody fixtures. This permanently
+deletes the previous local test run. After resetting, seed either Alice for the
+hot-account scenario or the generated users for the distributed scenario.
+
 ### Hot account
 
 This intentionally sends every order through one `user × asset` balance row.
 It measures per-account serialization, overspending safety, and lock contention;
 it does not represent exchange-wide capacity.
+
+After resetting, seed Alice using the deposit command in the earlier
+[`Reserve funds`](#reserve-funds) example before running this scenario.
 
 ```bash
 docker run --rm --network=host \
@@ -109,12 +129,16 @@ First seed 10,000 benchmark users with 1,000 USDT each. This fixture writes
 balance projections directly and is only for load testing, not production
 ledger posting:
 
+From the repository root:
+
 ```bash
-docker compose -f ../ledgerservice/compose.yaml exec -T postgres \
-  psql -U ledger -d cex_ledger \
-  -v user_count=10000 \
-  -v available_atomic=1000000000 \
-  < loadtest/seed-distributed-users.sql
+make seed-distributed-users
+```
+
+The defaults can be overridden, for example:
+
+```bash
+make seed-distributed-users USER_COUNT=20000 AVAILABLE_ATOMIC=2000000000
 ```
 
 Then distribute order admission round-robin across those users:
@@ -159,6 +183,41 @@ exceeds the 50 ms objective. This is a single-host development benchmark, not a
 production capacity claim. The pasted 2,000/s excerpt did not include HTTP p99
 or reservation p95, so those values are left blank rather than inferred.
 
+#### Connection-pool experiment
+
+Reset and restart the stack with an explicit Ledger pool size, then reseed the
+same users before every run:
+
+```bash
+cd /home/boris-alienware/projects/praxis
+make reset-load-data LEDGER_DB_MAX_CONNS=16
+make seed-distributed-users
+curl -s http://localhost:8081/metrics | grep ledger_db_pool_max_connections
+```
+
+Repeat the 10,000/s monitored test with pool sizes `16`, `32`, `48`, and `64`,
+using a distinct run ID such as `pool-16-rate-10000`. Never compare runs that
+started with different database contents.
+
+The clean 60-second runs produced the following service-side results. Averages
+come from the cumulative application metrics captured by the monitor; they are
+not k6 percentiles.
+
+| Pool | Accepted | Approx. rate | Avg. reserve | Avg. order total | Peak acquired | Empty acquires | Result |
+|---:|---:|---:|---:|---:|---:|---:|---|
+| 16 | 544,594 | 9,077/s | 388.43 ms | 393.05 ms | 16 | 544,594 | Saturated |
+| 32 | 598,944 | 9,982/s | 4.03 ms | 8.78 ms | 32 | 169,058 | Near target |
+| 48 | 599,051 | 9,984/s | 2.97 ms | 7.74 ms | 48 | 62,668 | Best observed |
+| 64 | 599,164 | 9,986/s | 3.03 ms | 7.79 ms | 33 | 41,640 | No material gain |
+
+Pool 16 spent almost the entire run waiting to acquire database connections.
+Increasing the pool to 32 removed that severe queue and recovered almost all of
+the requested throughput. Pool 48 reduced average reservation latency by a
+further 26% versus pool 32. Pool 64 did not improve latency or throughput over
+48 and used at most 33 connections in the monitor samples, so 48 is the best
+local setting among those tested. This is a workload- and machine-specific
+result, not a production PostgreSQL connection recommendation.
+
 Useful endpoints:
 
 - `POST /v1/orders`
@@ -181,3 +240,25 @@ Key environment variables:
 | `ORDER_MATCHING_GRPC_ADDRESS` | `localhost:9092` |
 | `ORDER_MATCHING_TIMEOUT` | `2s` |
 | `ORDER_MOCK_MATCHING_LATENCY` | `1ms` |
+
+## Monitor a load test
+
+Start the sampler in a separate terminal before k6:
+
+```bash
+RUN_ID=distributed-8000 INTERVAL_SECONDS=2 make monitor
+```
+
+Stop it with `Ctrl+C` after the test. It writes timestamped service metrics and
+PostgreSQL activity, WAL, database, and relation-size samples beneath
+`orderservice/loadtest/results/monitor-$RUN_ID/`. The generated results are
+ignored by Git.
+
+For comparable measurements, reset and reseed the database before each run:
+
+```bash
+make reset-load-data
+```
+
+The reset removes local financial/load-test rows but preserves the schema and
+reference fixtures. See `orderservice/README.md` for scenario-specific seeding.

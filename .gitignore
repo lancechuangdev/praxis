@@ -19,9 +19,9 @@ override.tf.json
 bin/
 coverage.out
 *.test
+orderservice/loadtest/results/
 
 # Editors and operating systems
 .idea/
 .vscode/
 .DS_Store
-

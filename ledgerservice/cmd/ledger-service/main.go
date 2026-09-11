@@ -30,7 +30,13 @@ func main() {
 		log.Error("configuration", "error", err)
 		os.Exit(1)
 	}
-	db, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	poolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	if err != nil {
+		log.Error("database configuration", "error", err)
+		os.Exit(1)
+	}
+	poolConfig.MaxConns = cfg.DBMaxConns
+	db, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		log.Error("database", "error", err)
 		os.Exit(1)
@@ -55,7 +61,7 @@ func main() {
 	go func() { errCh <- grpcServer.Serve(listener) }()
 	go func() { errCh <- httpServer.ListenAndServe() }()
 	go func() { errCh <- consumer.Run(ctx) }()
-	log.Info("ledger service started", "http", cfg.HTTPAddress, "grpc", cfg.GRPCAddress, "topic", cfg.CommandsTopic)
+	log.Info("ledger service started", "http", cfg.HTTPAddress, "grpc", cfg.GRPCAddress, "topic", cfg.CommandsTopic, "db_max_conns", cfg.DBMaxConns)
 	select {
 	case <-ctx.Done():
 	case err = <-errCh:

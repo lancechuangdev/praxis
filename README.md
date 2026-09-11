@@ -62,3 +62,13 @@ make vet
 
 The order-admission load-test instructions are in
 [`orderservice/README.md`](orderservice/README.md).
+
+Prepare a clean distributed-user test from the repository root:
+
+```bash
+make reset-load-data
+make seed-distributed-users
+```
+
+`seed-distributed-users` creates 10,000 users with 1,000 USDT each by default.
+Override the defaults with `USER_COUNT` and `AVAILABLE_ATOMIC` make variables.
