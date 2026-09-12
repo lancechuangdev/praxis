@@ -8,8 +8,8 @@ results_root=${RESULTS_ROOT:-${project_dir}/orderservice/loadtest/results}
 rate=${RATE:-10000}
 pool_size=${LEDGER_DB_MAX_CONNS:-48}
 runs=${RUNS:-3}
-warmup_duration=${WARMUP_DURATION:-2m}
-duration=${DURATION:-10m}
+warmup_duration=${WARMUP_DURATION:-0s}
+duration=${DURATION:-60s}
 cooldown_seconds=${COOLDOWN_SECONDS:-60}
 user_count=${USER_COUNT:-10000}
 preallocated_vus=${PREALLOCATED_VUS:-2000}
@@ -102,6 +102,8 @@ run_k6() {
   local strict=$3
   local output_file=$4
   local summary_file=$5
+  : > "${summary_file}"
+  chmod 666 "${summary_file}"
   docker run --rm --network=host \
     -v "${project_dir}/orderservice/loadtest:/scripts:ro" \
     -v "${output_file%/*}:/output" \
@@ -149,9 +151,11 @@ for run_number in $(seq 1 "${runs}"); do
   psql_command -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements;'
   capture_environment "${run_dir}"
 
-  printf 'Run %d/%d: warm up for %s\n' "${run_number}" "${runs}" "${warmup_duration}"
-  run_k6 "${run_id}-warmup" "${warmup_duration}" false \
-    "${run_dir}/warmup-output.txt" "${run_dir}/warmup-summary.json"
+  if [[ ${warmup_duration} != 0 && ${warmup_duration} != 0s ]]; then
+    printf 'Run %d/%d: warm up for %s\n' "${run_number}" "${runs}" "${warmup_duration}"
+    run_k6 "${run_id}-warmup" "${warmup_duration}" false \
+      "${run_dir}/warmup-output.txt" "${run_dir}/warmup-summary.json"
+  fi
 
   psql_command -c 'SELECT pg_stat_statements_reset(); SELECT pg_stat_reset(); SELECT pg_stat_reset_shared('"'"'wal'"'"');' \
     > "${run_dir}/statistics-reset.txt"

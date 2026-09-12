@@ -12,8 +12,8 @@ serialize; it is not an acceptance test for this target.
 
 ### Acceptance criteria
 
-A candidate passes only if all of the following hold for at least three
-independent 10-minute steady-state runs after a 2-minute warm-up:
+A candidate passes the initial capacity gate only if all of the following hold
+for at least three independent 60-second runs on freshly reset and seeded data:
 
 | Measure | Required result |
 |---|---:|
@@ -86,16 +86,16 @@ gain while keeping correctness review manageable.
 ### Phase 0: establish a trustworthy profile
 
 Status: implemented by `make profile-phase0`. The command fixes the Ledger
-pool at 48, resets and seeds each run, performs a separate warm-up, resets
-PostgreSQL statistics at the measurement boundary, executes three strict
-10-minute measurements, validates ledger integrity, and writes a median/range
-report under `orderservice/loadtest/results/`.
+pool at 48, resets and seeds each run, resets PostgreSQL statistics at the
+measurement boundary, executes three strict 60-second measurements, validates
+ledger integrity, and writes a median/range report under
+`orderservice/loadtest/results/`.
 
 Before changing SQL:
 
 - Add a dedicated benchmark command that always sets `RATE=10000`,
-  `LEDGER_DB_MAX_CONNS=48`, identical VU limits, a unique run ID, warm-up, and
-  test duration.
+  `LEDGER_DB_MAX_CONNS=48`, identical VU limits, a unique run ID, no warm-up,
+  and a 60-second test duration.
 - Reset and reseed 10,000 users before every measured run. Do not include reset
   or seed time in results.
 - Capture k6 output and the existing service, pool, PostgreSQL, container, and
@@ -123,8 +123,16 @@ make profile-phase0
 For a short workflow smoke test (not a capacity result):
 
 ```bash
-make profile-phase0 PROFILE_RUNS=1 PROFILE_WARMUP_DURATION=5s \
-  PROFILE_DURATION=10s PROFILE_COOLDOWN_SECONDS=0
+make profile-phase0 PROFILE_RUNS=1 PROFILE_DURATION=10s \
+  PROFILE_COOLDOWN_SECONDS=0
+```
+
+The longer endurance profile is intentionally retained for later use. It
+changes database state substantially during warm-up and answers a different
+question from the fresh-data 60-second capacity baseline:
+
+```bash
+make profile-phase0 PROFILE_WARMUP_DURATION=2m PROFILE_DURATION=10m
 ```
 
 ### Phase 1: remove avoidable work from the synchronous path
@@ -327,16 +335,20 @@ window.
 ## Test matrix
 
 Run each viable candidate at 1k, 4k, 8k, 10k, and 11k requests/s. The 11k run
-is a headroom test, not part of the primary acceptance gate.
+is a headroom test, not part of the primary acceptance gate. Use 60-second
+runs without a warm-up for the initial like-for-like capacity comparison.
 
 For each rate:
 
 1. reset and reseed the same 10,000-user dataset;
-2. warm up for 2 minutes;
-3. measure for 10 minutes;
+2. reset PostgreSQL measurement statistics;
+3. measure for 60 seconds;
 4. cool down sufficiently to avoid overlapping checkpoint or Kafka backlog;
 5. repeat three times in randomized baseline/candidate order; and
 6. run integrity checks after every test.
+
+After a candidate passes the capacity gate, separately run the retained
+two-minute warm-up plus ten-minute measurement as an endurance test.
 
 Capture at minimum:
 

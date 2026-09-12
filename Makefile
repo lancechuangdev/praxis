@@ -2,8 +2,8 @@ USER_COUNT ?= 10000
 AVAILABLE_ATOMIC ?= 1000000000
 LEDGER_DB_MAX_CONNS ?= 32
 PROFILE_RUNS ?= 3
-PROFILE_WARMUP_DURATION ?= 2m
-PROFILE_DURATION ?= 10m
+PROFILE_WARMUP_DURATION ?= 0s
+PROFILE_DURATION ?= 60s
 PROFILE_COOLDOWN_SECONDS ?= 60
 
 .PHONY: test vet compose-up compose-down observability-up observability-down reset-load-data seed-distributed-users monitor profile-phase0 terraform-fmt

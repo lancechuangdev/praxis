@@ -32,6 +32,47 @@ for summary in "${batch_dir}"/run-*/k6-summary.json; do
   ] | @tsv' "${summary}" >> "${summary_tsv}"
 done
 
+duration_ms() {
+  local value=$1
+  awk -v value="${value}" 'BEGIN {
+    if (value ~ /ms$/) {sub(/ms$/, "", value); print value}
+    else if (value ~ /us$/) {sub(/us$/, "", value); printf "%.6f", value / 1000}
+    else if (value ~ /s$/) {sub(/s$/, "", value); printf "%.6f", value * 1000}
+    else {print value}
+  }'
+}
+
+# Older runs may have complete console output but no JSON when the container
+# user could not create the summary file on the host bind mount. Recover those
+# metrics so a long profile run is not discarded.
+if (( found == 0 )); then
+  for output in "${batch_dir}"/run-*/k6-output.txt; do
+    [[ -f ${output} ]] || continue
+    found=1
+    run=$(basename "$(dirname "${output}")")
+    completed_line=$(grep -E '^    http_reqs[.]+:' "${output}" | tail -n 1)
+    dropped_line=$(grep -E '^    dropped_iterations[.]+:' "${output}" | tail -n 1)
+    failure_line=$(grep -E '^    order_failure_rate[.]+:' "${output}" | tail -n 1)
+    http_line=$(grep -E '^    http_req_duration[.]+:' "${output}" | tail -n 1)
+    reserve_line=$(grep -E '^    order_reserve_ms[.]+:' "${output}" | tail -n 1)
+
+    completed=$(awk '{print $2}' <<< "${completed_line}")
+    completed_rate=$(awk '{print $3}' <<< "${completed_line}" | sed 's|/s$||')
+    dropped=$(awk '{print $2}' <<< "${dropped_line}")
+    failure_rate=$(awk '{value=$2; sub(/%$/, "", value); printf "%.8f", value / 100}' <<< "${failure_line}")
+    http_avg=$(duration_ms "$(awk -F 'avg=' '{print $2}' <<< "${http_line}" | awk '{print $1}')")
+    http_p95=$(duration_ms "$(awk -F 'p\\(95\\)=' '{print $2}' <<< "${http_line}" | awk '{print $1}')")
+    http_p99=$(duration_ms "$(awk -F 'p\\(99\\)=' '{print $2}' <<< "${http_line}" | awk '{print $1}')")
+    reserve_avg=$(duration_ms "$(awk -F 'avg=' '{print $2}' <<< "${reserve_line}" | awk '{print $1}')")
+    reserve_p95=$(duration_ms "$(awk -F 'p\\(95\\)=' '{print $2}' <<< "${reserve_line}" | awk '{print $1}')")
+    reserve_p99=$(duration_ms "$(awk -F 'p\\(99\\)=' '{print $2}' <<< "${reserve_line}" | awk '{print $1}')")
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "${run}" "${completed}" "${completed_rate}" "${dropped}" "${failure_rate}" \
+      "${http_avg}" "${http_p95}" "${http_p99}" \
+      "${reserve_avg}" "${reserve_p95}" "${reserve_p99}" >> "${summary_tsv}"
+  done
+fi
+
 if (( found == 0 )); then
   printf 'No run-*/k6-summary.json files found in %s.\n' "${batch_dir}" >&2
   exit 1
