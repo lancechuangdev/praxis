@@ -165,10 +165,25 @@ commit. This phase alone should remove four or more protocol/database steps.
 Gate: rerun the full matrix. Continue only if statement counts and connection
 occupancy fall without changing replay or insufficient-funds behavior.
 
-### Phase 2: consolidate the reservation with data-modifying CTEs
+### Phase 2: consolidate the reservation into one database call
 
-Replace the successful reservation mutations with one parameterized statement
-inside one transaction. The intended shape is:
+After Phase 1, compare two implementations that execute the reservation in one
+application/database call:
+
+1. a parameterized statement using data-modifying CTEs; and
+2. a PostgreSQL function, such as `reserve_for_order(...) RETURNS TABLE`, that
+   performs the operation and returns the reservation result.
+
+Prefer a function returning a row over a `CALL`-style stored procedure. The
+caller needs a structured reservation result, and the operation does not need
+to manage transaction boundaries independently. When invoked as one statement
+without an application-managed transaction, the function call is already
+atomic.
+
+#### Option A: data-modifying CTE
+
+Replace the successful reservation mutations with one parameterized statement.
+The intended shape is:
 
 ```sql
 WITH account AS (
@@ -230,6 +245,58 @@ CTEs reduce network/protocol overhead; they do not make row-lock contention
 disappear. PostgreSQL may materialize data-modifying CTE results, so validate
 the complete plan and WAL cost rather than assuming fewer statements are
 automatically faster.
+
+#### Option B: PostgreSQL function
+
+Expose a versioned database function with a typed contract similar to:
+
+```sql
+SELECT *
+FROM reserve_for_order(
+    user_id => $1,
+    asset_id => $2,
+    amount_atomic => $3,
+    order_id => $4,
+    command_id => $5,
+    correlation_id => $6,
+    causation_id => $7,
+    occurred_at => $8
+);
+```
+
+The function should perform the existing-account lookup, journal idempotency
+check, conditional balance update, reservation insert, two-row ledger-entry
+insert, and outbox insert, then return a typed outcome and reservation fields.
+It must distinguish newly reserved, replay, conflict, missing-account, and
+insufficient-funds outcomes without relying on exception-message parsing in
+Go.
+
+The stored function can make branching clearer than one large CTE while still
+reducing the application/database exchange to one statement. It does not
+remove trigger execution, foreign-key checks, index maintenance, balance-row
+contention, or WAL generation. Those costs must remain visible in the profile.
+
+Manage the function through a checksum-protected schema migration. Keep the Go
+adapter responsible for request validation, context cancellation, domain-error
+mapping, and metrics. Avoid `SECURITY DEFINER` unless it is required and its
+search path and privileges are explicitly hardened.
+
+#### Selection gate
+
+Benchmark Phase 1, the CTE implementation, and the stored-function
+implementation under identical pool-48 conditions. Compare:
+
+- reservation and HTTP p50/p95/p99;
+- mean connection occupancy and pool acquisition wait;
+- calls and execution time reported by `pg_stat_statements`;
+- database CPU, buffers, locks, and WAL per accepted order;
+- migration and rollback complexity; and
+- replay, conflict, insufficient-funds, cancellation, and ledger-integrity
+  behavior.
+
+Select the simpler implementation when performance is materially equivalent.
+Do not retain both production paths after the evaluation, except temporarily
+behind a benchmark or rollout flag.
 
 Gate: target <= 3.5 ms mean connection occupancy, reservation p95 < 20 ms,
 zero pool-acquire cancellations, and no regression in database CPU or WAL per
@@ -376,7 +443,7 @@ Integrity checks must confirm:
 |---|---|---|---|
 | 0 | Reproducible profile | Identifies actual bottleneck | Baseline variance understood |
 | 1 | Remove account provisioning/final read; batch entries | Large reduction in synchronous work | Keep if latency and WAL improve |
-| 2 | One CTE mutation statement | Fewer round trips and shorter connection hold | Keep only if plans and tails improve |
+| 2 | One CTE statement vs. stored function | Fewer round trips and shorter connection hold | Select the simpler measured winner |
 | 3 | Prepared/stable statements | Lower parse/protocol overhead | Verify with statement statistics |
 | 4 | Evidence-based index changes | Lower lookup cost where demonstrated | Reject indexes that increase total cost |
 | 5 | Bounded micro-batching | Headroom if single-request SQL is insufficient | Keep only with latency and isolation guarantees |
