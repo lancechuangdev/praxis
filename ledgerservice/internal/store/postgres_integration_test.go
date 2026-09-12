@@ -67,7 +67,7 @@ func TestDepositReservationTradeAndCancellation(t *testing.T) {
 	}
 }
 
-func TestReserveForOrderPhase1(t *testing.T) {
+func TestReserveForOrder(t *testing.T) {
 	url := os.Getenv("LEDGER_TEST_DATABASE_URL")
 	if url == "" {
 		t.Skip("LEDGER_TEST_DATABASE_URL is not set")
@@ -185,5 +185,45 @@ func TestReserveForOrderPhase1(t *testing.T) {
 	}
 	if available != "0" || reserved != "100" || version != 10 {
 		t.Fatalf("unexpected concurrent balance: available=%s reserved=%s version=%d", available, reserved, version)
+	}
+
+	replayUser, replayAccount := createAccount("concurrent-replay", 100)
+	replayRequest := ledger.ReserveOrder{CommandID: prefix + "-concurrent-replay-command", OrderID: prefix + "-concurrent-replay-order", UserID: replayUser, AssetID: "asset_usdt", AmountAtomic: "10"}
+	replayResults := make(chan struct {
+		reservation ledger.Reservation
+		err         error
+	}, attempts)
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			result, reserveErr := s.ReserveForOrder(ctx, replayRequest)
+			replayResults <- struct {
+				reservation ledger.Reservation
+				err         error
+			}{result, reserveErr}
+		}()
+	}
+	wg.Wait()
+	close(replayResults)
+	created, replays := 0, 0
+	for result := range replayResults {
+		if result.err != nil {
+			t.Fatalf("concurrent replay error: %v", result.err)
+		}
+		if result.reservation.Replay {
+			replays++
+		} else {
+			created++
+		}
+	}
+	if created != 1 || replays != attempts-1 {
+		t.Fatalf("concurrent replay results: created=%d replays=%d", created, replays)
+	}
+	if err = db.QueryRow(ctx, `SELECT available_atomic::text,reserved_atomic::text,version FROM user_asset_balances WHERE user_asset_account_id=$1`, replayAccount).Scan(&available, &reserved, &version); err != nil {
+		t.Fatal(err)
+	}
+	if available != "90" || reserved != "10" || version != 1 {
+		t.Fatalf("unexpected concurrent replay balance: available=%s reserved=%s version=%d", available, reserved, version)
 	}
 }

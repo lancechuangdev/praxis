@@ -230,7 +230,51 @@ occupancy fall without changing replay or insufficient-funds behavior.
 
 ### Phase 2: consolidate the reservation into one database call
 
-After Phase 1, compare two implementations that execute the reservation in one
+Status: the PostgreSQL-function option was implemented and measured on
+2026-09-12. It keeps request validation, ID generation, payload serialization,
+context cancellation, outcome mapping, and metrics in Go while moving the
+atomic database operation behind `reserve_for_order(...) RETURNS TABLE`.
+Explicit outcomes cover reserved, replay, conflict, missing-account, and
+insufficient-funds cases. Concurrent tests also verify one mutation plus
+idempotent replays when 20 identical commands arrive simultaneously.
+
+The primary three-run comparison produced the following medians:
+
+| Metric | Phase 1 | Phase 2 function | Improvement / saved |
+|---|---:|---:|---:|
+| Completed throughput | 9,997.91/s | 9,998.65/s | 0.01% higher |
+| HTTP average | 7.89 ms | 6.98 ms | 11.5% lower |
+| HTTP p95 | 14.09 ms | 11.70 ms | 17.0% lower |
+| HTTP p99 | 24.11 ms | 20.78 ms | 13.8% lower |
+| Reservation average | 2.73 ms | 1.90 ms | 30.5% lower |
+| Reservation p95 | 7.35 ms | 4.76 ms | 35.2% lower |
+| Reservation p99 | 15.65 ms | 12.19 ms | 22.1% lower |
+| Empty pool acquisitions, run 2 | 48,539 | 26,851 | 44.7% lower |
+| Aggregate pool wait, run 2 | 358.0 s | 178.1 s | 50.2% lower |
+
+Phase 2 run 1 dropped 551 scheduled arrivals despite remaining within the HTTP
+latency thresholds. Runs 2 and 3 and an additional clean confirmation run all
+completed approximately 600,000 requests with zero drops, zero failures, and
+passing integrity checks. The confirmation recorded 9,998.47/s, HTTP p95 of
+11.68 ms, and reservation p95 of 4.79 ms.
+
+Do not sum all `pg_stat_statements` execution time or WAL for this comparison:
+with `track=all`, PostgreSQL attributes work to both the outer function call
+and its nested statements. The non-double-counted `pg_stat_wal` database
+counter for equivalent run 2 fell from approximately 6.55 GB in Phase 1 to
+6.03 GB in Phase 2, a 7.9% reduction.
+
+The CTE alternative was not retained as a second implementation. The stored
+function already passes the target, expresses the required outcome branching
+more clearly, and the plan's governing rule is to stop adding complexity once
+the acceptance criteria pass. The detailed artifacts are retained in:
+
+```text
+orderservice/loadtest/results/phase2-function-pool-48-rate-10000-20260912/
+orderservice/loadtest/results/phase2-function-confirmation-20260912/
+```
+
+Two implementations were considered for executing the reservation in one
 application/database call:
 
 1. a parameterized statement using data-modifying CTEs; and
@@ -346,8 +390,9 @@ search path and privileges are explicitly hardened.
 
 #### Selection gate
 
-Benchmark Phase 1, the CTE implementation, and the stored-function
-implementation under identical pool-48 conditions. Compare:
+Benchmark Phase 1 and the selected one-call implementation under identical
+pool-48 conditions. Implement the CTE alternative as a fallback only if the
+stored function does not satisfy the gate. Compare:
 
 - reservation and HTTP p50/p95/p99;
 - mean connection occupancy and pool acquisition wait;

@@ -46,15 +46,6 @@ func ensureUser(ctx context.Context, tx pgx.Tx, userID, assetID string) (string,
 	return id, err
 }
 
-func existingUser(ctx context.Context, tx pgx.Tx, userID, assetID string) (string, error) {
-	var id string
-	err := tx.QueryRow(ctx, `SELECT u.id FROM user_asset_accounts u JOIN user_asset_balances b ON b.user_asset_account_id=u.id WHERE u.user_id=$1 AND u.asset_id=$2 AND u.status='active'`, userID, assetID).Scan(&id)
-	if errors.Is(err, pgx.ErrNoRows) {
-		err = ledger.ErrNotFound
-	}
-	return id, err
-}
-
 func createJournal(ctx context.Context, tx pgx.Tx, id, refType, refID, kind, system, eventID, correlation, causation, description string, at time.Time, metadata any) (bool, error) {
 	if at.IsZero() {
 		at = time.Now().UTC()
@@ -217,48 +208,27 @@ func (p *Postgres) ReserveForOrder(ctx context.Context, v ledger.ReserveOrder) (
 	if err != nil {
 		return ledger.Reservation{}, err
 	}
-	tx, err := begin(ctx, p.DB)
+	var outcome string
+	var r ledger.Reservation
+	err = p.DB.QueryRow(ctx, `SELECT result_outcome,result_reservation_id,result_order_id,result_status,result_original_atomic,result_remaining_atomic,result_balance_version FROM reserve_for_order($1::text,$2::text,$3::numeric,$4::text,$5::text,$6::text,$7::text,$8::timestamptz,$9::text,$10::text,$11::text,$12::jsonb)`, v.UserID, v.AssetID, v.AmountAtomic, v.OrderID, v.CommandID, v.CorrelationID, v.CausationID, v.OccurredAt, rid, jid, eid, outboxPayload).Scan(&outcome, &r.ID, &r.OrderID, &r.Status, &r.OriginalAtomic, &r.RemainingAtomic, &r.BalanceVersion)
 	if err != nil {
 		return ledger.Reservation{}, err
 	}
-	defer tx.Rollback(ctx)
-	uaa, err := existingUser(ctx, tx, v.UserID, v.AssetID)
-	if err != nil {
-		return ledger.Reservation{}, err
-	}
-	created, err := createJournal(ctx, tx, jid, "order", v.OrderID, "trading_funds_reserved", "order-service", v.CommandID, v.CorrelationID, v.CausationID, "reserve funds for order", v.OccurredAt, nil)
-	if err != nil {
-		return ledger.Reservation{}, err
-	}
-	if !created {
-		r, e := reservationTx(ctx, tx, v.OrderID)
-		if e == nil {
-			r.Replay = true
-			e = tx.Commit(ctx)
-		}
-		return r, e
-	}
-	var balanceVersion int64
-	err = tx.QueryRow(ctx, `UPDATE user_asset_balances SET available_atomic=available_atomic-$1::numeric,reserved_atomic=reserved_atomic+$1::numeric,version=version+1,updated_at=now() WHERE user_asset_account_id=$2 AND available_atomic>=$1::numeric RETURNING version`, v.AmountAtomic, uaa).Scan(&balanceVersion)
-	if errors.Is(err, pgx.ErrNoRows) {
+	switch outcome {
+	case "reserved":
+		return r, nil
+	case "replay":
+		r.Replay = true
+		return r, nil
+	case "not_found":
+		return ledger.Reservation{}, ledger.ErrNotFound
+	case "insufficient_funds":
 		return ledger.Reservation{}, ledger.ErrInsufficientFunds
+	case "conflict":
+		return ledger.Reservation{}, ledger.ErrConflict
+	default:
+		return ledger.Reservation{}, fmt.Errorf("reserve for order returned unknown outcome %q", outcome)
 	}
-	if err != nil {
-		return ledger.Reservation{}, err
-	}
-	if _, err = tx.Exec(ctx, `INSERT INTO fund_reservations(id,order_id,user_asset_account_id,asset_id,original_atomic,remaining_atomic,status,created_at,updated_at) VALUES($1,$2,$3,$4,$5::numeric,$5::numeric,'active',now(),now())`, rid, v.OrderID, uaa, v.AssetID, v.AmountAtomic); err != nil {
-		return ledger.Reservation{}, err
-	}
-	if _, err = tx.Exec(ctx, `INSERT INTO ledger_entries(id,journal_id,ledger_account_id,user_asset_account_id,asset_id,bucket,side,amount_atomic) VALUES($1,$2,'account_customer_available',$3,$4,'available','debit',$5::numeric),($6,$2,'account_customer_reserved',$3,$4,'reserved','credit',$5::numeric)`, jid+":available", jid, uaa, v.AssetID, v.AmountAtomic, jid+":reserved"); err != nil {
-		return ledger.Reservation{}, err
-	}
-	if err = insertOutbox(ctx, tx, eid, "FundsReserved", v.OrderID, uaa, outboxPayload); err != nil {
-		return ledger.Reservation{}, err
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return ledger.Reservation{}, err
-	}
-	return ledger.Reservation{ID: rid, OrderID: v.OrderID, Status: "active", OriginalAtomic: v.AmountAtomic, RemainingAtomic: v.AmountAtomic, BalanceVersion: balanceVersion}, nil
 }
 
 func reservationTx(ctx context.Context, tx pgx.Tx, order string) (ledger.Reservation, error) {
