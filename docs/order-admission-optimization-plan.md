@@ -412,6 +412,47 @@ order.
 
 ### Phase 3: prepared statements and statement-shape cleanup
 
+Status: implemented and measured on 2026-09-12. The Ledger now explicitly
+configures pgx `cache_statement` mode with a bounded 128-entry cache per
+connection, validates alternative execution modes at startup, exposes both
+settings through environment configuration, logs the effective values, and
+uses one canonical SQL string for the reservation function call. All three
+pool-48 runs completed approximately 600,000 requests with zero drops, zero
+failures, and passing integrity checks.
+
+| Metric | Phase 2 function | Phase 3 | Improvement / saved |
+|---|---:|---:|---:|
+| Completed throughput | 9,998.65/s | 9,998.56/s | materially unchanged |
+| HTTP average | 6.98 ms | 6.88 ms | 1.6% lower |
+| HTTP p95 | 11.70 ms | 11.39 ms | 2.7% lower |
+| HTTP p99 | 20.78 ms | 19.13 ms | 7.9% lower |
+| Reservation average | 1.90 ms | 1.83 ms | 3.8% lower |
+| Reservation p95 | 4.76 ms | 4.50 ms | 5.4% lower |
+| Reservation p99 | 12.19 ms | 10.34 ms | 15.2% lower |
+| Empty pool acquisitions, run 2 | 26,851 | 25,610 | 4.6% lower |
+| Aggregate pool wait, run 2 | 178.1 s | 140.9 s | 20.9% lower |
+
+These small changes should not be interpreted as proof that enabling the
+statement cache caused the entire improvement: pgx already defaults to
+`cache_statement`, so Phase 2 was normally receiving the same behavior. Phase
+3 makes that performance assumption explicit, testable, observable, and less
+vulnerable to a connection-string or deployment change. The strongest result
+is repeatability: all three Phase 3 runs passed with narrow latency ranges.
+
+The explicit casts in `reserveForOrderSQL` remain intentional. They make the
+stored-function signature deterministic and prevent resolution changes if an
+overload is added later. The hot path contains no dynamic SQL variants, and it
+continues to use PostgreSQL's default `READ COMMITTED` behavior. A deployment
+through an external transaction-mode pooler must validate prepared-statement
+support and benchmark a compatible mode such as `cache_describe` before
+changing the default.
+
+Detailed artifacts are retained in:
+
+```text
+orderservice/loadtest/results/phase3-prepared-pool-48-rate-10000-20260912/
+```
+
 - Keep all SQL parameterized with stable text. pgx can then reuse its statement
   cache instead of repeatedly parsing many statement variants.
 - Confirm cache hits and server prepared-statement behavior under the deployed

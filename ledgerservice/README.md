@@ -30,6 +30,13 @@ The PostgreSQL pool is explicitly capped at 32 connections by default. Override
 it with `LEDGER_DB_MAX_CONNS`; `/metrics` reports the configured maximum and
 connection-acquisition pressure.
 
+pgx uses its prepared-statement cache explicitly in `cache_statement` mode with
+128 entries per connection. Override these settings with
+`LEDGER_DB_QUERY_EXEC_MODE` and `LEDGER_DB_STATEMENT_CACHE_CAPACITY`. Direct
+PostgreSQL connections should retain `cache_statement`. When using an external
+transaction-mode pooler, validate its prepared-statement support or select a
+compatible mode such as `cache_describe` through a measured deployment change.
+
 Operational endpoints:
 
 ```text

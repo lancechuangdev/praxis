@@ -61,6 +61,8 @@ services:
     environment:
       LEDGER_DATABASE_URL: postgres://ledger:ledger@postgres:5432/cex_ledger?sslmode=disable
       LEDGER_DB_MAX_CONNS: ${LEDGER_DB_MAX_CONNS:-32}
+      LEDGER_DB_QUERY_EXEC_MODE: ${LEDGER_DB_QUERY_EXEC_MODE:-cache_statement}
+      LEDGER_DB_STATEMENT_CACHE_CAPACITY: ${LEDGER_DB_STATEMENT_CACHE_CAPACITY:-128}
       LEDGER_KAFKA_BROKERS: kafka:9092
       LEDGER_HTTP_ADDRESS: :8081
       LEDGER_GRPC_ADDRESS: :9091

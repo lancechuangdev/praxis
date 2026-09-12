@@ -36,6 +36,8 @@ func main() {
 		os.Exit(1)
 	}
 	poolConfig.MaxConns = cfg.DBMaxConns
+	poolConfig.ConnConfig.StatementCacheCapacity = cfg.DBStatementCacheCapacity
+	poolConfig.ConnConfig.DefaultQueryExecMode = cfg.DBQueryExecMode
 	db, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		log.Error("database", "error", err)
@@ -61,7 +63,7 @@ func main() {
 	go func() { errCh <- grpcServer.Serve(listener) }()
 	go func() { errCh <- httpServer.ListenAndServe() }()
 	go func() { errCh <- consumer.Run(ctx) }()
-	log.Info("ledger service started", "http", cfg.HTTPAddress, "grpc", cfg.GRPCAddress, "topic", cfg.CommandsTopic, "db_max_conns", cfg.DBMaxConns)
+	log.Info("ledger service started", "http", cfg.HTTPAddress, "grpc", cfg.GRPCAddress, "topic", cfg.CommandsTopic, "db_max_conns", cfg.DBMaxConns, "db_query_exec_mode", cfg.DBQueryExecMode.String(), "db_statement_cache_capacity", cfg.DBStatementCacheCapacity)
 	select {
 	case <-ctx.Done():
 	case err = <-errCh:

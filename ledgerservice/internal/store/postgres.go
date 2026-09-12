@@ -18,6 +18,29 @@ import (
 
 type Postgres struct{ DB *pgxpool.Pool }
 
+const reserveForOrderSQL = `
+SELECT result_outcome,
+       result_reservation_id,
+       result_order_id,
+       result_status,
+       result_original_atomic,
+       result_remaining_atomic,
+       result_balance_version
+FROM reserve_for_order(
+    $1::text,
+    $2::text,
+    $3::numeric,
+    $4::text,
+    $5::text,
+    $6::text,
+    $7::text,
+    $8::timestamptz,
+    $9::text,
+    $10::text,
+    $11::text,
+    $12::jsonb
+)`
+
 func New(db *pgxpool.Pool) *Postgres { return &Postgres{DB: db} }
 
 func stableID(prefix string, parts ...string) string {
@@ -210,7 +233,7 @@ func (p *Postgres) ReserveForOrder(ctx context.Context, v ledger.ReserveOrder) (
 	}
 	var outcome string
 	var r ledger.Reservation
-	err = p.DB.QueryRow(ctx, `SELECT result_outcome,result_reservation_id,result_order_id,result_status,result_original_atomic,result_remaining_atomic,result_balance_version FROM reserve_for_order($1::text,$2::text,$3::numeric,$4::text,$5::text,$6::text,$7::text,$8::timestamptz,$9::text,$10::text,$11::text,$12::jsonb)`, v.UserID, v.AssetID, v.AmountAtomic, v.OrderID, v.CommandID, v.CorrelationID, v.CausationID, v.OccurredAt, rid, jid, eid, outboxPayload).Scan(&outcome, &r.ID, &r.OrderID, &r.Status, &r.OriginalAtomic, &r.RemainingAtomic, &r.BalanceVersion)
+	err = p.DB.QueryRow(ctx, reserveForOrderSQL, v.UserID, v.AssetID, v.AmountAtomic, v.OrderID, v.CommandID, v.CorrelationID, v.CausationID, v.OccurredAt, rid, jid, eid, outboxPayload).Scan(&outcome, &r.ID, &r.OrderID, &r.Status, &r.OriginalAtomic, &r.RemainingAtomic, &r.BalanceVersion)
 	if err != nil {
 		return ledger.Reservation{}, err
 	}
