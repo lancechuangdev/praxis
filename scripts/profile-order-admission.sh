@@ -149,6 +149,13 @@ for run_number in $(seq 1 "${runs}"); do
   wait_for_service http://localhost:8083/readyz 'Order Service'
 
   psql_command -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements;'
+  # Bulk reseeding leaves planner statistics and visibility-map state unlike a
+  # steady account table. Normalize both so covering-index plans are repeatable.
+  psql_command -c 'VACUUM (ANALYZE) user_asset_accounts, user_asset_balances, ledger_journals, fund_reservations;' \
+    > "${run_dir}/post-seed-vacuum-analyze.txt"
+  psql_command -f /dev/stdin \
+    < "${project_dir}/orderservice/loadtest/profile-indexes.sql" \
+    > "${run_dir}/index-profile-before.txt"
   capture_environment "${run_dir}"
 
   if [[ ${warmup_duration} != 0 && ${warmup_duration} != 0s ]]; then
@@ -187,6 +194,9 @@ for run_number in $(seq 1 "${runs}"); do
   psql_command -At -F $'\t' -v run_id="${run_id}" \
     -f /dev/stdin < "${project_dir}/orderservice/loadtest/profile-integrity.sql" \
     > "${run_dir}/integrity.tsv"
+  psql_command -f /dev/stdin \
+    < "${project_dir}/orderservice/loadtest/profile-indexes.sql" \
+    > "${run_dir}/index-profile-after.txt"
   integrity_status=0
   if awk -F '\t' '$2 != 0 {print; failed=1} END {exit failed}' "${run_dir}/integrity.tsv" \
       > "${run_dir}/integrity-failures.tsv"; then

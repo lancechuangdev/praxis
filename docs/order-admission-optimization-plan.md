@@ -496,6 +496,68 @@ Monitor dead tuples and index/table growth during longer tests. Never create or
 drop a production index without measuring write cost and using an online-safe
 migration procedure.
 
+#### Phase 4 implementation
+
+Phase 4 adds one evidence-backed covering index:
+
+```sql
+CREATE INDEX user_asset_accounts_order_lookup_idx
+    ON user_asset_accounts (user_id, asset_id)
+    INCLUDE (id, status);
+```
+
+The existing unique index remains necessary for correctness. The new index is
+specifically for the `ReserveForOrder` account lookup: PostgreSQL selected it
+as an index-only scan with zero heap fetches after `VACUUM (ANALYZE)`. In the
+10,000-account fixture it occupied 768 KiB, compared with 504 KiB for the
+unique `(user_id, asset_id)` index. This is a targeted tradeoff because
+user-asset accounts are not inserted or updated by the admission hot path. It
+should not be generalized to the journal or reservation tables, whose indexes
+are maintained for every admitted order.
+
+The profiler now runs `VACUUM (ANALYZE)` after each bulk reset/reseed. This
+makes planner statistics current and models the visibility-map state expected
+for the comparatively stable account table. Each run retains
+`index-profile-before.txt` and `index-profile-after.txt`, containing actual
+account-lookup plans, idempotency lookup plans, index definitions and sizes,
+scan/fetch counters, and live/dead tuple counts. These artifacts make heap
+fetch regressions, unused indexes, bloat, and autovacuum lag visible instead of
+assuming an index is beneficial from its definition alone.
+
+The local plan check proves that the intended access path is available; the
+10,000/s profile determines its end-to-end value. For production rollout,
+create the index with an online-safe procedure (normally `CREATE INDEX
+CONCURRENTLY`) rather than holding a write-blocking migration lock on a
+populated account table.
+
+The Phase 4 implementation was profiled in three 60-second runs at 10,000/s
+with a 48-connection pool and no warm-up. All runs completed 600,000-600,001
+requests with zero drops, zero request failures, and passing integrity checks.
+
+| Metric | Phase 3 median | Phase 4 median | Change |
+|---|---:|---:|---:|
+| Completed requests/s | 9,998.63 | 9,998.71 | effectively unchanged |
+| HTTP average | 6.88 ms | 6.98 ms | 1.5% higher |
+| HTTP p95 | 11.39 ms | 11.87 ms | 4.2% higher |
+| HTTP p99 | 19.13 ms | 20.28 ms | 6.0% higher |
+| Reservation average | 1.83 ms | 1.91 ms | 4.8% higher |
+| Reservation p95 | 4.50 ms | 5.01 ms | 11.2% higher |
+| Reservation p99 | 10.34 ms | 12.02 ms | 16.3% higher |
+
+The end-to-end differences are run-level variance, not evidence of an overall
+latency win. The narrower database measurement does show the intended saving:
+median aggregate execution time for the account lookup fell from 14,654 ms to
+13,377 ms across roughly 600,000 calls, an 8.7% reduction (about 0.002 ms per
+call). Every measured lookup used the covering index and its account-side heap
+fetch count remained zero. The index is retained for that repeatable local
+benefit, but Phase 4 must not be credited with improving end-to-end latency.
+
+Detailed artifacts are retained in:
+
+```text
+orderservice/loadtest/results/phase4-covering-index-pool-48-rate-10000-20260912/
+```
+
 ### Phase 5: batching and aggregation
 
 Batching is useful only at boundaries where waiting for a batch does not break
