@@ -46,6 +46,15 @@ func ensureUser(ctx context.Context, tx pgx.Tx, userID, assetID string) (string,
 	return id, err
 }
 
+func existingUser(ctx context.Context, tx pgx.Tx, userID, assetID string) (string, error) {
+	var id string
+	err := tx.QueryRow(ctx, `SELECT u.id FROM user_asset_accounts u JOIN user_asset_balances b ON b.user_asset_account_id=u.id WHERE u.user_id=$1 AND u.asset_id=$2 AND u.status='active'`, userID, assetID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = ledger.ErrNotFound
+	}
+	return id, err
+}
+
 func createJournal(ctx context.Context, tx pgx.Tx, id, refType, refID, kind, system, eventID, correlation, causation, description string, at time.Time, metadata any) (bool, error) {
 	if at.IsZero() {
 		at = time.Now().UTC()
@@ -72,11 +81,19 @@ func entry(ctx context.Context, tx pgx.Tx, id, journalID, accountID, userAccount
 }
 
 func outbox(ctx context.Context, tx pgx.Tx, id, eventType, aggregate, key string, data any) error {
-	b, err := json.Marshal(map[string]any{"id": id, "type": eventType, "aggregate_id": aggregate, "occurred_at": time.Now().UTC(), "data": data})
+	b, err := makeOutboxPayload(id, eventType, aggregate, time.Now().UTC(), data)
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, `INSERT INTO outbox_events(id,topic,event_type,aggregate_id,message_key,payload,occurred_at) VALUES($1,'ledger-events',$2,$3,$4,$5,now())`, id, eventType, aggregate, key, b)
+	return insertOutbox(ctx, tx, id, eventType, aggregate, key, b)
+}
+
+func makeOutboxPayload(id, eventType, aggregate string, occurredAt time.Time, data any) ([]byte, error) {
+	return json.Marshal(map[string]any{"id": id, "type": eventType, "aggregate_id": aggregate, "occurred_at": occurredAt, "data": data})
+}
+
+func insertOutbox(ctx context.Context, tx pgx.Tx, id, eventType, aggregate, key string, payload []byte) error {
+	_, err := tx.Exec(ctx, `INSERT INTO outbox_events(id,topic,event_type,aggregate_id,message_key,payload,occurred_at) VALUES($1,'ledger-events',$2,$3,$4,$5,now())`, id, eventType, aggregate, key, payload)
 	return err
 }
 
@@ -190,17 +207,25 @@ func (p *Postgres) ReserveForOrder(ctx context.Context, v ledger.ReserveOrder) (
 	if err := ledger.ValidateReserve(v); err != nil {
 		return ledger.Reservation{}, err
 	}
+	if v.OccurredAt.IsZero() {
+		v.OccurredAt = time.Now().UTC()
+	}
+	rid := stableID("rsv_", v.OrderID)
+	jid := stableID("jrn_", "order-service", v.CommandID)
+	eid := stableID("evt_", jid)
+	outboxPayload, err := makeOutboxPayload(eid, "FundsReserved", v.OrderID, time.Now().UTC(), map[string]any{"journal_id": jid, "reservation_id": rid, "amount_atomic": v.AmountAtomic})
+	if err != nil {
+		return ledger.Reservation{}, err
+	}
 	tx, err := begin(ctx, p.DB)
 	if err != nil {
 		return ledger.Reservation{}, err
 	}
 	defer tx.Rollback(ctx)
-	uaa, err := ensureUser(ctx, tx, v.UserID, v.AssetID)
+	uaa, err := existingUser(ctx, tx, v.UserID, v.AssetID)
 	if err != nil {
 		return ledger.Reservation{}, err
 	}
-	rid := stableID("rsv_", v.OrderID)
-	jid := stableID("jrn_", "order-service", v.CommandID)
 	created, err := createJournal(ctx, tx, jid, "order", v.OrderID, "trading_funds_reserved", "order-service", v.CommandID, v.CorrelationID, v.CausationID, "reserve funds for order", v.OccurredAt, nil)
 	if err != nil {
 		return ledger.Reservation{}, err
@@ -213,30 +238,27 @@ func (p *Postgres) ReserveForOrder(ctx context.Context, v ledger.ReserveOrder) (
 		}
 		return r, e
 	}
-	ct, err := tx.Exec(ctx, `UPDATE user_asset_balances SET available_atomic=available_atomic-$1::numeric,reserved_atomic=reserved_atomic+$1::numeric,version=version+1,updated_at=now() WHERE user_asset_account_id=$2 AND available_atomic>=$1::numeric`, v.AmountAtomic, uaa)
+	var balanceVersion int64
+	err = tx.QueryRow(ctx, `UPDATE user_asset_balances SET available_atomic=available_atomic-$1::numeric,reserved_atomic=reserved_atomic+$1::numeric,version=version+1,updated_at=now() WHERE user_asset_account_id=$2 AND available_atomic>=$1::numeric RETURNING version`, v.AmountAtomic, uaa).Scan(&balanceVersion)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ledger.Reservation{}, ledger.ErrInsufficientFunds
+	}
 	if err != nil {
 		return ledger.Reservation{}, err
-	}
-	if ct.RowsAffected() != 1 {
-		return ledger.Reservation{}, ledger.ErrInsufficientFunds
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO fund_reservations(id,order_id,user_asset_account_id,asset_id,original_atomic,remaining_atomic,status,created_at,updated_at) VALUES($1,$2,$3,$4,$5::numeric,$5::numeric,'active',now(),now())`, rid, v.OrderID, uaa, v.AssetID, v.AmountAtomic); err != nil {
 		return ledger.Reservation{}, err
 	}
-	if err = entry(ctx, tx, jid+":available", jid, "account_customer_available", uaa, v.AssetID, "", "available", "debit", v.AmountAtomic); err != nil {
+	if _, err = tx.Exec(ctx, `INSERT INTO ledger_entries(id,journal_id,ledger_account_id,user_asset_account_id,asset_id,bucket,side,amount_atomic) VALUES($1,$2,'account_customer_available',$3,$4,'available','debit',$5::numeric),($6,$2,'account_customer_reserved',$3,$4,'reserved','credit',$5::numeric)`, jid+":available", jid, uaa, v.AssetID, v.AmountAtomic, jid+":reserved"); err != nil {
 		return ledger.Reservation{}, err
 	}
-	if err = entry(ctx, tx, jid+":reserved", jid, "account_customer_reserved", uaa, v.AssetID, "", "reserved", "credit", v.AmountAtomic); err != nil {
+	if err = insertOutbox(ctx, tx, eid, "FundsReserved", v.OrderID, uaa, outboxPayload); err != nil {
 		return ledger.Reservation{}, err
 	}
-	if err = outbox(ctx, tx, stableID("evt_", jid), "FundsReserved", v.OrderID, uaa, map[string]any{"journal_id": jid, "reservation_id": rid, "amount_atomic": v.AmountAtomic}); err != nil {
+	if err = tx.Commit(ctx); err != nil {
 		return ledger.Reservation{}, err
 	}
-	r, err := reservationTx(ctx, tx, v.OrderID)
-	if err == nil {
-		err = tx.Commit(ctx)
-	}
-	return r, err
+	return ledger.Reservation{ID: rid, OrderID: v.OrderID, Status: "active", OriginalAtomic: v.AmountAtomic, RemainingAtomic: v.AmountAtomic, BalanceVersion: balanceVersion}, nil
 }
 
 func reservationTx(ctx context.Context, tx pgx.Tx, order string) (ledger.Reservation, error) {

@@ -139,6 +139,66 @@ make profile-phase0 PROFILE_WARMUP_DURATION=2m PROFILE_DURATION=10m
 
 This is the safest, highest-priority change.
 
+Status: implemented and measured on 2026-09-12. All three pool-48 runs at an
+offered 10,000 requests/s completed with zero dropped iterations, zero request
+failures, and passing integrity checks. Median completed throughput was
+9,997.91/s, HTTP p95 was 14.09 ms, and reservation p95 was 7.35 ms. This passes
+the Phase 1 latency and reliability gates; the measured rate also exceeds the
+9,990/s acceptance threshold.
+
+#### Measured Phase 1 improvement
+
+The end-to-end comparison below uses the three-run medians from the Phase 0
+and Phase 1 profiles. A lower value is better for every measure except
+completed throughput.
+
+| Metric | Phase 0 | Phase 1 | Improvement / saved |
+|---|---:|---:|---:|
+| Completed throughput | 9,982.27/s | 9,997.91/s | 0.16% higher |
+| HTTP average | 14.93 ms | 7.89 ms | 47.1% lower |
+| HTTP p95 | 56.70 ms | 14.09 ms | 75.1% lower |
+| HTTP p99 | 94.94 ms | 24.11 ms | 74.6% lower |
+| Reservation average | 9.51 ms | 2.73 ms | 71.3% lower |
+| Reservation p95 | 49.07 ms | 7.35 ms | 85.0% lower |
+| Reservation p99 | 87.70 ms | 15.65 ms | 82.2% lower |
+| Dropped iterations | 0 | 0 | no change |
+| Failure rate | 0% | 0% | no change |
+
+The database comparison uses run 2 from each phase because both runs started
+all scheduled iterations without request failures and avoid the anomalous
+Phase 0 run 1. `pg_stat_statements` was reset immediately before each measured
+interval and ran with `track=all` in both tests.
+
+| Database measure | Phase 0 run 2 | Phase 1 run 2 | Saved |
+|---|---:|---:|---:|
+| SQL statement executions | 15.60 million | 13.20 million | 15.4% |
+| Total SQL execution time | 774.4 s | 477.1 s | 38.4% |
+| Ledger-entry insert calls | 1.20 million | 600,000 | 50.0% |
+| Ledger-entry insertion time | 301.6 s | 186.2 s | 38.3% |
+| Empty pool acquisitions | 160,681 | 48,539 | 69.8% |
+| Total pool acquisition wait | 2,175 s | 358 s | 83.5% |
+| Statement-attributed WAL | 7.03 GB | 6.76 GB | 3.9% |
+
+The four removed commands per successful reservation account for 2.4 million
+fewer executions over 600,000 orders: the account conflict insert, balance
+conflict insert, second individual ledger-entry insert, and final reservation
+select. Ledger-entry batching alone halved entry-insert calls and reduced their
+total SQL execution time by 38.3% while inserting the same 1.2 million rows.
+
+The latency reduction is larger than the raw statement-count reduction because
+the pool was operating near its saturation knee. Shorter transactions released
+connections sooner, which reduced empty acquisitions by 69.8% and aggregate
+pool wait by 83.5%; the smaller queue then reduced latency for subsequent
+requests. WAL declined only 3.9% because Phase 1 preserves the durable journal,
+reservation, balance update, two ledger entries, and outbox event.
+
+The detailed local artifacts are retained in:
+
+```text
+orderservice/loadtest/results/phase0-pool-48-rate-10000-20260912T183533Z/
+orderservice/loadtest/results/phase1-pool-48-rate-10000-20260912/
+```
+
 1. **Do not provision accounts during normal order admission.** The load seed
    already guarantees that users and balances exist. Make account creation an
    explicit onboarding/deposit operation. Reservation should select the
@@ -154,9 +214,12 @@ This is the safest, highest-priority change.
 4. **Keep metadata serialization outside the acquired-connection window** where
    possible. Generate deterministic IDs and marshal the outbox payload before
    `BeginTx`.
-5. **Set explicit transaction and lock timeouts** slightly below the Ledger RPC
-   deadline. A queued request should fail predictably instead of occupying a
-   connection until the caller has already timed out.
+5. **Bound transaction and lock waits.** Phase 1 continues to use the incoming
+   RPC context, which already bounds connection acquisition and statement
+   execution without adding a `SET LOCAL` round trip. Evaluate server-side
+   `statement_timeout` and `lock_timeout` as connection settings before a
+   production rollout, where protection from orphaned client requests may
+   justify their broader behavioral impact.
 
 Expected new-reservation path: begin, account lookup, journal/idempotency write,
 balance update, reservation insert, two-entry batch insert, outbox insert,
