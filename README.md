@@ -27,6 +27,7 @@ The repository contains:
 
 - [Ledger Service](ledgerservice/README.md)
 - [Order Service and load tests](orderservice/README.md)
+- [10,000 requests/s order-admission optimization plan](docs/order-admission-optimization-plan.md)
 - [Matching Engine](matchingengine/README.md)
 - [Outbox Relay](outboxrelay/README.md)
 - [AWS infrastructure](infra/aws/README.md)

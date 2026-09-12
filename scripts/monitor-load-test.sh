@@ -15,6 +15,7 @@ activity_file=${output_dir}/pg_stat_activity.tsv
 wal_file=${output_dir}/pg_stat_wal.tsv
 database_file=${output_dir}/pg_stat_database.tsv
 relations_file=${output_dir}/relation_sizes.tsv
+statements_file=${output_dir}/pg_stat_statements.tsv
 container_file=${output_dir}/container_stats.tsv
 host_cpu_file=${output_dir}/host_cpu.tsv
 host_memory_file=${output_dir}/host_memory.tsv
@@ -24,10 +25,23 @@ printf 'sample_time\twait_type\twait_event\tstate\tconnections\n' > "${activity_
 printf 'sample_time\twal_records\twal_fpi\twal_bytes\twal_buffers_full\tstats_reset\n' > "${wal_file}"
 printf 'sample_time\txact_commit\txact_rollback\ttup_inserted\ttup_updated\tblk_read_time_ms\tblk_write_time_ms\ttemp_files\ttemp_bytes\tdeadlocks\n' > "${database_file}"
 printf 'sample_time\trelation\ttotal_bytes\ttable_bytes\tindexes_bytes\n' > "${relations_file}"
+printf 'sample_time\tqueryid\tcalls\ttotal_exec_time_ms\tmean_exec_time_ms\trows\tshared_blks_hit\tshared_blks_read\ttemp_blks_written\twal_records\twal_bytes\tquery\n' > "${statements_file}"
 printf 'sample_time\tcontainer\tcpu_percent\tmemory_usage\tmemory_limit\tmemory_percent\tnetwork_io\tblock_io\tpids\n' > "${container_file}"
 printf 'sample_time\tuser\tnice\tsystem\tidle\tiowait\tirq\tsoftirq\tsteal\ttotal\n' > "${host_cpu_file}"
 printf 'sample_time\tmem_total_kib\tmem_available_kib\tmem_used_kib\tswap_total_kib\tswap_free_kib\n' > "${host_memory_file}"
 printf 'sample_time\tload_1m\tload_5m\tload_15m\trunnable_tasks\ttotal_tasks\n' > "${host_load_file}"
+
+statements_enabled=0
+if docker compose -f "${compose_file}" exec -T postgres \
+    psql -X -q -U ledger -d cex_ledger -At -c \
+    "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname='pg_stat_statements')
+       AND current_setting('shared_preload_libraries') LIKE '%pg_stat_statements%';" \
+    | grep -qx t; then
+  statements_enabled=1
+else
+  printf '# pg_stat_statements is not installed and preloaded; statement samples disabled\n' \
+    >> "${statements_file}"
+fi
 
 append_metrics() {
   local name=$1
@@ -83,6 +97,22 @@ sample_postgres() {
     FROM pg_catalog.pg_statio_user_tables
     ORDER BY pg_total_relation_size(relid) DESC;
   " "${relations_file}"
+
+  if (( statements_enabled == 1 )); then
+    psql_query "
+      SELECT clock_timestamp(), queryid, calls,
+             round(total_exec_time::numeric, 3),
+             round(mean_exec_time::numeric, 3), rows,
+             shared_blks_hit, shared_blks_read, temp_blks_written,
+             wal_records, wal_bytes,
+             regexp_replace(query, E'[\\n\\r\\t ]+', ' ', 'g')
+      FROM pg_stat_statements
+      WHERE dbid = (SELECT oid FROM pg_database WHERE datname = 'cex_ledger')
+        AND userid = (SELECT usesysid FROM pg_user WHERE usename = 'ledger')
+      ORDER BY total_exec_time DESC
+      LIMIT 30;
+    " "${statements_file}"
+  fi
 }
 
 sample_resources() {
@@ -90,8 +120,6 @@ sample_resources() {
   local cpu user nice system idle iowait irq softirq steal guest guest_nice total
   local mem_total mem_available swap_total swap_free mem_used
   local load_1m load_5m load_15m tasks _
-  local container cpu_percent memory_usage memory_used memory_limit
-  local memory_percent network_io block_io pids
   local container cpu_percent memory_usage memory_used memory_limit
   local memory_percent network_io block_io pids
 

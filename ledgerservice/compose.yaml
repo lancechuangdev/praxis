@@ -1,6 +1,14 @@
 services:
   postgres:
     image: postgres:18.0
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - track_io_timing=on
     environment:
       POSTGRES_DB: cex_ledger
       POSTGRES_USER: ledger

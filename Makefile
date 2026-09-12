@@ -1,8 +1,12 @@
 USER_COUNT ?= 10000
 AVAILABLE_ATOMIC ?= 1000000000
 LEDGER_DB_MAX_CONNS ?= 32
+PROFILE_RUNS ?= 3
+PROFILE_WARMUP_DURATION ?= 2m
+PROFILE_DURATION ?= 10m
+PROFILE_COOLDOWN_SECONDS ?= 60
 
-.PHONY: test vet compose-up compose-down observability-up observability-down reset-load-data seed-distributed-users monitor terraform-fmt
+.PHONY: test vet compose-up compose-down observability-up observability-down reset-load-data seed-distributed-users monitor profile-phase0 terraform-fmt
 
 test:
 	go test ./ledgerservice/... ./matchingengine/... ./orderservice/... ./outboxrelay/...
@@ -32,6 +36,9 @@ seed-distributed-users:
 
 monitor:
 	./scripts/monitor-load-test.sh
+
+profile-phase0:
+	LEDGER_DB_MAX_CONNS=48 RUNS=$(PROFILE_RUNS) WARMUP_DURATION=$(PROFILE_WARMUP_DURATION) DURATION=$(PROFILE_DURATION) COOLDOWN_SECONDS=$(PROFILE_COOLDOWN_SECONDS) ./scripts/profile-order-admission.sh
 
 terraform-fmt:
 	terraform -chdir=infra/aws fmt -recursive

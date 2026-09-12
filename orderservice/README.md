@@ -258,6 +258,23 @@ further 26% versus pool 32. Pool 64 did not improve latency or throughput over
 local setting among those tested. This is a workload- and machine-specific
 result, not a production PostgreSQL connection recommendation.
 
+#### Reproducible pool-48 profile
+
+Run the Phase 0 profiling workflow from the repository root:
+
+```bash
+make profile-phase0
+```
+
+It performs three independent runs with a two-minute warm-up and ten-minute
+measurement by default. Every run resets and seeds the database, fixes the
+Ledger pool at 48, enables strict k6 thresholds (including zero dropped
+iterations), captures `pg_stat_statements` plus the existing monitor data, and
+runs accounting-integrity checks. Results and a generated `baseline-report.md`
+are written beneath `orderservice/loadtest/results/`. See the
+[optimization plan](../docs/order-admission-optimization-plan.md#phase-0-establish-a-trustworthy-profile)
+for acceptance criteria and shorter smoke-test overrides.
+
 Useful endpoints:
 
 - `POST /v1/orders`

@@ -14,6 +14,19 @@ if (!Number.isInteger(userCount) || userCount < 1) {
   throw new Error("USER_COUNT must be a positive integer");
 }
 
+const strictProfile = (__ENV.STRICT_PROFILE || "false").toLowerCase() === "true";
+const profileWarmup = (__ENV.PROFILE_WARMUP || "false").toLowerCase() === "true";
+
+const thresholds = profileWarmup ? {} : {
+  http_req_duration: ["p(95)<50", "p(99)<100"],
+  order_failure_rate: ["rate<0.01"],
+};
+if (strictProfile) {
+  thresholds.dropped_iterations = ["count==0"];
+  thresholds.http_reqs = ["rate>=9990"];
+  thresholds.order_failure_rate = ["rate<0.0001"];
+}
+
 export const options = {
   scenarios: {
     distributed_users: {
@@ -25,10 +38,7 @@ export const options = {
       maxVUs: Number(__ENV.MAX_VUS || 5000),
     },
   },
-  thresholds: {
-    http_req_duration: ["p(95)<50", "p(99)<100"],
-    order_failure_rate: ["rate<0.01"],
-  },
+  thresholds,
 };
 
 export function setup() {
@@ -64,4 +74,3 @@ export default function (data) {
     total.add(timings.total_ms);
   }
 }
-
