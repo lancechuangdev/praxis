@@ -591,6 +591,63 @@ latency.
 transactional outbox is already the correct durability boundary; relay
 publication can remain asynchronous.
 
+#### Phase 5 implementation
+
+The two reservation ledger entries were already converted to one multi-row
+insert in Phase 1, and the matching publisher and outbox publisher already
+submit message batches to Kafka. Phase 5 closes the remaining concrete gap:
+the outbox relay now acknowledges a successful claim with one set-based
+PostgreSQL update rather than one update per event. With the default claim size
+of 500, the success path falls from as many as 500 acknowledgement round trips
+to one (99.8% fewer). A Kafka response containing mixed per-message outcomes is
+partitioned into successful and failed IDs and persisted in at most two
+updates. `unnest` retains each failure's distinct error, and affected-row
+checks still detect lost leases.
+
+Unit tests verify one store acknowledgement call for a successful multi-event
+claim and at most one success plus one failure call for mixed outcomes. An
+integration test against PostgreSQL verifies the array and `unnest` updates,
+per-event failure messages, attempt counts, publication timestamps, and lease
+ownership checks.
+
+No reservation micro-batcher was enabled. Combining unrelated financial
+reservations in a single database transaction would expand the rollback and
+failure domain; an application queue would also add deliberate waiting to
+every synchronous request. That candidate needs a separate API, overload and
+cancellation policy, and low-load as well as saturation benchmarks before it
+can be considered safe.
+
+The standard three-run admission profile was executed at 10,000/s with pool
+size 48 and no warm-up. All database integrity checks passed and the request
+failure rate remained zero, but all three runs failed the k6 throughput,
+dropped-iteration, and HTTP-latency thresholds:
+
+| Metric | Phase 4 median | Phase 5 test median |
+|---|---:|---:|
+| Completed requests/s | 9,998.71 | 9,829.86 |
+| Dropped iterations | 0 | 5,692 |
+| HTTP average | 6.98 ms | 33.16 ms |
+| HTTP p95 | 11.87 ms | 205.69 ms |
+| HTTP p99 | 20.28 ms | 338.62 ms |
+| Reservation average | 1.91 ms | 27.70 ms |
+| Reservation p95 | 5.01 ms | 199.76 ms |
+| Reservation p99 | 12.02 ms | 332.16 ms |
+
+This is not a causal measurement of the acknowledgement change: the admission
+harness does not run the separately deployed outbox relay, and none of the
+modified Phase 5 code was loaded by the Ledger, Order, Matching, PostgreSQL, or
+Kafka containers. The failed profile therefore records an environmental
+saturation event, not a Phase 5 latency result. In run 2, aggregate Ledger pool
+wait rose from 160.5 seconds in Phase 4 to 14,810.2 seconds even though the
+synchronous executable was unchanged. The result must not be presented as a
+batching regression or improvement.
+
+Detailed failed-run artifacts are retained in:
+
+```text
+orderservice/loadtest/results/phase5-outbox-batching-pool-48-rate-10000-20260912/
+```
+
 ### Phase 6: reduce trigger and WAL overhead only with equivalent safeguards
 
 The `ledger_entries_validate` row trigger performs dimension queries for every

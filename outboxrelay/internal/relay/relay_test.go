@@ -11,20 +11,24 @@ import (
 )
 
 type fakeStore struct {
-	events    []Event
-	published []string
-	failed    []string
+	events       []Event
+	published    []string
+	failed       []Failure
+	publishCalls int
+	failureCalls int
 }
 
 func (f *fakeStore) Claim(context.Context, string, int, time.Duration) ([]Event, error) {
 	return f.events, nil
 }
-func (f *fakeStore) MarkPublished(_ context.Context, id, _ string) error {
-	f.published = append(f.published, id)
+func (f *fakeStore) MarkPublished(_ context.Context, ids []string, _ string) error {
+	f.publishCalls++
+	f.published = append(f.published, ids...)
 	return nil
 }
-func (f *fakeStore) MarkFailed(_ context.Context, id, _, _ string) error {
-	f.failed = append(f.failed, id)
+func (f *fakeStore) MarkFailed(_ context.Context, failures []Failure, _ string) error {
+	f.failureCalls++
+	f.failed = append(f.failed, failures...)
 	return nil
 }
 
@@ -59,7 +63,7 @@ func TestRunOncePublishesClaimAsOneBatch(t *testing.T) {
 	if string(publisher.messages[0].Value) != "1" || string(publisher.messages[2].Value) != "3" {
 		t.Fatalf("messages were not ordered by outbox sequence")
 	}
-	if len(store.published) != 3 || len(store.failed) != 0 {
+	if len(store.published) != 3 || len(store.failed) != 0 || store.publishCalls != 1 {
 		t.Fatalf("published=%v failed=%v", store.published, store.failed)
 	}
 }
@@ -74,7 +78,7 @@ func TestRunOnceHandlesPerMessageFailures(t *testing.T) {
 	if len(store.published) != 1 || store.published[0] != "e1" {
 		t.Fatalf("published=%v", store.published)
 	}
-	if len(store.failed) != 1 || store.failed[0] != "e2" {
+	if len(store.failed) != 1 || store.failed[0].ID != "e2" || store.publishCalls != 1 || store.failureCalls != 1 {
 		t.Fatalf("failed=%v", store.failed)
 	}
 }

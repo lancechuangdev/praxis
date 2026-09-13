@@ -27,23 +27,35 @@ func (p Postgres) Claim(ctx context.Context, worker string, limit int, lease tim
 	}
 	return out, rows.Err()
 }
-func (p Postgres) MarkPublished(ctx context.Context, id, worker string) error {
-	tag, err := p.DB.Exec(ctx, `UPDATE outbox_events SET published_at=now(),attempt_count=attempt_count+1,last_error=NULL,claimed_by=NULL,claimed_until=NULL WHERE id=$1 AND claimed_by=$2 AND published_at IS NULL`, id, worker)
+func (p Postgres) MarkPublished(ctx context.Context, ids []string, worker string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	tag, err := p.DB.Exec(ctx, `UPDATE outbox_events SET published_at=now(),attempt_count=attempt_count+1,last_error=NULL,claimed_by=NULL,claimed_until=NULL WHERE id=ANY($1::text[]) AND claimed_by=$2 AND published_at IS NULL`, ids, worker)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() != 1 {
-		return fmt.Errorf("event %s lease lost before publish acknowledgement", id)
+	if tag.RowsAffected() != int64(len(ids)) {
+		return fmt.Errorf("%d of %d event leases lost before publish acknowledgement", int64(len(ids))-tag.RowsAffected(), len(ids))
 	}
 	return nil
 }
-func (p Postgres) MarkFailed(ctx context.Context, id, worker, message string) error {
-	tag, err := p.DB.Exec(ctx, `UPDATE outbox_events SET attempt_count=attempt_count+1,last_error=$3,next_attempt_at=now()+interval '1 second'*least(60,power(2,least(attempt_count,6))),claimed_by=NULL,claimed_until=NULL WHERE id=$1 AND claimed_by=$2 AND published_at IS NULL`, id, worker, message)
+func (p Postgres) MarkFailed(ctx context.Context, failures []relay.Failure, worker string) error {
+	if len(failures) == 0 {
+		return nil
+	}
+	ids := make([]string, len(failures))
+	messages := make([]string, len(failures))
+	for i := range failures {
+		ids[i] = failures[i].ID
+		messages[i] = failures[i].Message
+	}
+	tag, err := p.DB.Exec(ctx, `UPDATE outbox_events AS o SET attempt_count=o.attempt_count+1,last_error=f.message,next_attempt_at=now()+interval '1 second'*least(60,power(2,least(o.attempt_count,6))),claimed_by=NULL,claimed_until=NULL FROM unnest($1::text[],$3::text[]) AS f(id,message) WHERE o.id=f.id AND o.claimed_by=$2 AND o.published_at IS NULL`, ids, worker, messages)
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() != 1 {
-		return fmt.Errorf("event %s lease lost before failure update", id)
+	if tag.RowsAffected() != int64(len(failures)) {
+		return fmt.Errorf("%d of %d event leases lost before failure update", int64(len(failures))-tag.RowsAffected(), len(failures))
 	}
 	return nil
 }

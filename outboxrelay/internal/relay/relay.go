@@ -21,10 +21,15 @@ type Event struct {
 	Payload        []byte
 }
 
+type Failure struct {
+	ID      string
+	Message string
+}
+
 type Store interface {
 	Claim(context.Context, string, int, time.Duration) ([]Event, error)
-	MarkPublished(context.Context, string, string) error
-	MarkFailed(context.Context, string, string, string) error
+	MarkPublished(context.Context, []string, string) error
+	MarkFailed(context.Context, []Failure, string) error
 }
 type Publisher interface {
 	WriteMessages(context.Context, ...kafka.Message) error
@@ -79,38 +84,48 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 	}
 	err = r.Publisher.WriteMessages(ctx, messages...)
 	if err == nil {
-		for _, event := range events {
-			if markErr := r.Store.MarkPublished(ctx, event.ID, r.InstanceID); markErr != nil {
-				return len(events), markErr
-			}
-			r.Metrics.Published.Add(1)
+		ids := make([]string, len(events))
+		for i := range events {
+			ids[i] = events[i].ID
 		}
+		if markErr := r.Store.MarkPublished(ctx, ids, r.InstanceID); markErr != nil {
+			return len(events), markErr
+		}
+		r.Metrics.Published.Add(uint64(len(events)))
 		return len(events), nil
 	}
 	var writes kafka.WriteErrors
 	if errors.As(err, &writes) && len(writes) == len(events) {
-		var joined error
+		published := make([]string, 0, len(events))
+		failed := make([]Failure, 0, len(events))
 		for i, event := range events {
 			if writes[i] == nil {
-				if markErr := r.Store.MarkPublished(ctx, event.ID, r.InstanceID); markErr != nil {
-					joined = errors.Join(joined, markErr)
-				} else {
-					r.Metrics.Published.Add(1)
-				}
+				published = append(published, event.ID)
 			} else {
-				if markErr := r.Store.MarkFailed(ctx, event.ID, r.InstanceID, writes[i].Error()); markErr != nil {
-					joined = errors.Join(joined, markErr)
-				}
-				r.Metrics.Failed.Add(1)
+				failed = append(failed, Failure{ID: event.ID, Message: writes[i].Error()})
 			}
+		}
+		var joined error
+		if markErr := r.Store.MarkPublished(ctx, published, r.InstanceID); markErr != nil {
+			joined = errors.Join(joined, markErr)
+		} else {
+			r.Metrics.Published.Add(uint64(len(published)))
+		}
+		if markErr := r.Store.MarkFailed(ctx, failed, r.InstanceID); markErr != nil {
+			joined = errors.Join(joined, markErr)
+		} else {
+			r.Metrics.Failed.Add(uint64(len(failed)))
 		}
 		return len(events), errors.Join(err, joined)
 	}
+	failed := make([]Failure, 0, len(events))
 	for _, event := range events {
-		if markErr := r.Store.MarkFailed(ctx, event.ID, r.InstanceID, err.Error()); markErr != nil {
-			err = errors.Join(err, markErr)
-		}
-		r.Metrics.Failed.Add(1)
+		failed = append(failed, Failure{ID: event.ID, Message: err.Error()})
+	}
+	if markErr := r.Store.MarkFailed(ctx, failed, r.InstanceID); markErr != nil {
+		err = errors.Join(err, markErr)
+	} else {
+		r.Metrics.Failed.Add(uint64(len(failed)))
 	}
 	return len(events), fmt.Errorf("publish batch: %w", err)
 }

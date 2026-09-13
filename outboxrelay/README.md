@@ -6,6 +6,12 @@ Independent relay for the ledger service's PostgreSQL `outbox_events` table. It 
 
 Each claim returns up to `OUTBOX_CLAIM_SIZE` ordered events. The relay submits the entire claim in one `WriteMessages(ctx, messages...)` call. `kafka-go` then groups those messages into broker produce requests subject to `OUTBOX_KAFKA_BATCH_SIZE`, `OUTBOX_KAFKA_BATCH_BYTES`, and `OUTBOX_KAFKA_BATCH_TIMEOUT`. The writer is synchronous (`Async: false`) and uses `RequireAll`; successful rows are marked published only after Kafka acknowledges them.
 
+Publication acknowledgements are also set-based. A fully successful claim is
+marked published with one PostgreSQL update instead of one update per event.
+When Kafka returns per-message results, successful and failed IDs are written
+in at most two updates; `unnest` preserves the distinct error message for each
+failed event. Every update verifies that all expected leases are still owned.
+
 Defaults:
 
 | Variable | Default |
