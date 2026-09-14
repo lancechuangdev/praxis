@@ -1,8 +1,11 @@
 # Praxis CEX ledger
 
-Praxis is a learning and load-testing prototype for CEX deposit, ledger, and
-order-admission workflows. It demonstrates accounting and distributed-systems
-patterns; it is not a production exchange or custody system.
+Praxis is a reference implementation of CEX deposit, ledger, and spot
+order-admission workflows, based on systems and operational patterns used in
+financial-services environments. It provides durable accounting boundaries,
+idempotent transaction processing, event-driven integration, and repeatable
+performance validation. The repository is not a complete exchange or custody
+system.
 
 The repository contains:
 
@@ -18,9 +21,9 @@ The repository contains:
 |---|---|
 | Ledger Service | Implements deposits, hold releases, order reservations, balance queries, immutable journals/entries, balance projections, and a transactional outbox. |
 | Order Service | Implements synchronous risk simulation, Ledger reservation over gRPC, and Matching Engine admission over gRPC. |
-| Matching Engine | A latency-test mock: partitions admission in memory and synchronously publishes `OrderAccepted` to Kafka. It does not match orders or emit fills. |
+| Matching Engine | An order-admission test double that partitions requests in memory and synchronously publishes `OrderAccepted` to Kafka. It does not match orders or emit fills. |
 | Outbox Relay | Independently runnable batched relay for publishing PostgreSQL outbox records to Kafka; it is not started by the main Compose file. |
-| AWS infrastructure | Terraform learning configuration. Applying it creates billable AWS resources and requires environment-specific review. |
+| AWS infrastructure | Terraform reference configuration for an isolated VPC, Amazon MSK, Kafka topics, and Multi-AZ PostgreSQL. Applying it creates billable AWS resources and requires environment-specific review. |
 | Deposit architecture | Reference design only; the Address, Indexer, Risk, Treasury, Wallet, Notification, and Reconciliation services are not implemented here. |
 
 ## Documentation
@@ -110,10 +113,10 @@ Override the defaults with `USER_COUNT` and `AVAILABLE_ATOMIC` make variables.
 
 ## CEX Deposit and Trading Reference Architecture
 
-The remainder of this README describes a proposed production architecture. It
-is intentionally broader than the runnable prototype described above. The
-deposit example follows Alice depositing 1,000 USDT over Ethereum into a CEX;
-network policies and confirmation counts are illustrative.
+The remainder of this README describes the production-oriented reference
+architecture. It is intentionally broader than the currently runnable scope.
+The deposit flow follows Alice depositing 1,000 USDT over Ethereum into a CEX;
+network policies and confirmation counts are deployment-specific.
 
 ### Accounting result
 
@@ -562,13 +565,12 @@ reasonable first deployment is:
 They may live in one repository while retaining separate ownership boundaries,
 database access rules, runtime roles, health checks, and scaling policies.
 
-### Illustrative Kafka topic layout
+### Kafka topic capacity baseline
 
 Partition counts must come from measured throughput, consumer parallelism,
-ordering keys, and operational headroom. The following ranges are planning
-examples, not recommended defaults and not the prototype's current topic
-configuration (the local Compose stack uses 96 partitions for its three
-topics):
+ordering keys, and operational headroom. The following ranges are capacity
+baselines, not recommended defaults and not the current local configuration
+(the Compose stack uses 96 partitions for its three topics):
 
 | Topic | Key | Initial partitions |
 |---|---|---:|
@@ -582,9 +584,9 @@ topics):
 | `notification-commands` | `user_id` | 24–48 |
 | `dead-letter` | source aggregate | 6–12 |
 
-### Illustrative deposit capacity
+### Deposit capacity model
 
-Example traffic assumptions for capacity planning—not measured BloFin traffic:
+Capacity-planning assumptions—not measured BloFin traffic:
 
 ```
 Daily active users:                100,000
@@ -596,7 +598,7 @@ Normal peak:                       1–3/sec
 Campaign/extreme peak:           10–30/sec
 ```
 
-Example peak flow:
+Peak flow model:
 
 Assume a peak of 30 deposits per second:
 
@@ -768,7 +770,7 @@ new journal.
 #### Matching and asynchronous booking
 
 This subsection describes the target fill-booking architecture, not the current
-mock Matching Engine. The prototype stops after admission and publishes
+matching admission test double. The runnable implementation stops after admission and publishes
 `OrderAccepted`; it does not match orders, publish `TradeExecuted`, or book
 fills back into the Ledger Service.
 
@@ -903,8 +905,8 @@ reservation twice.
 A gRPC timeout does not prove that a reservation failed. The service may have
 committed before the response was lost. A production Order Service should retry
 or query with the same `command_id` and `order_id`; the Ledger Service can then
-return the existing reservation instead of reserving funds again. The prototype
-Ledger operation is idempotent, but its Order Service does not yet implement an
+return the existing reservation instead of reserving funds again. The current
+Ledger operation is idempotent, but the Order Service does not yet implement an
 automatic retry policy.
 
 #### Executed versus booked
@@ -938,7 +940,7 @@ affected Matching Engine partitions rather than allow an unbounded backlog.
 
 Trading traffic is much greater than deposit traffic because active traders and
 market makers generate repeated order, cancel, replace, and fill operations.
-The following figures are capacity-planning examples, not measured BloFin data:
+The following figures are capacity-planning assumptions, not measured BloFin data:
 
 | Workload | Expected peak | Stress target |
 |---|---:|---:|
