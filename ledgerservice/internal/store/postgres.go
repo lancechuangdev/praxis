@@ -94,16 +94,16 @@ func entry(ctx context.Context, tx pgx.Tx, id, journalID, accountID, userAccount
 	return err
 }
 
-func outbox(ctx context.Context, tx pgx.Tx, id, eventType, aggregate, key string, data any) error {
-	b, err := makeOutboxPayload(id, eventType, aggregate, time.Now().UTC(), data)
+func outbox(ctx context.Context, tx pgx.Tx, id, eventType, aggregate, key, correlationID, causationID string, data any) error {
+	b, err := makeOutboxPayload(id, eventType, aggregate, correlationID, causationID, "", "", time.Now().UTC(), data)
 	if err != nil {
 		return err
 	}
 	return insertOutbox(ctx, tx, id, eventType, aggregate, key, b)
 }
 
-func makeOutboxPayload(id, eventType, aggregate string, occurredAt time.Time, data any) ([]byte, error) {
-	return json.Marshal(map[string]any{"id": id, "type": eventType, "aggregate_id": aggregate, "occurred_at": occurredAt, "data": data})
+func makeOutboxPayload(id, eventType, aggregate, correlationID, causationID, traceParent, traceState string, occurredAt time.Time, data any) ([]byte, error) {
+	return json.Marshal(map[string]any{"id": id, "type": eventType, "aggregate_id": aggregate, "correlation_id": correlationID, "causation_id": causationID, "trace_parent": traceParent, "trace_state": traceState, "occurred_at": occurredAt, "data": data})
 }
 
 func insertOutbox(ctx context.Context, tx pgx.Tx, id, eventType, aggregate, key string, payload []byte) error {
@@ -153,7 +153,7 @@ func (p *Postgres) PostDeposit(ctx context.Context, v ledger.PostDeposit) (ledge
 	if _, err = tx.Exec(ctx, `UPDATE user_asset_balances SET `+column+`=`+column+`+$1::numeric,version=version+1,updated_at=now() WHERE user_asset_account_id=$2`, v.AmountAtomic, uaa); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	if err = outbox(ctx, tx, stableID("evt_", jid), "LedgerPosted", v.DepositID, uaa, map[string]any{"journal_id": jid, "deposit_id": v.DepositID, "bucket": v.TargetBucket}); err != nil {
+	if err = outbox(ctx, tx, stableID("evt_", jid), "LedgerPosted", v.DepositID, uaa, v.CorrelationID, v.CausationID, map[string]any{"journal_id": jid, "deposit_id": v.DepositID, "bucket": v.TargetBucket}); err != nil {
 		return ledger.OperationResult{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -200,7 +200,7 @@ func (p *Postgres) ReleaseHold(ctx context.Context, v ledger.ReleaseHold) (ledge
 	if err = entry(ctx, tx, jid+":available", jid, "account_customer_available", uaa, v.AssetID, "", "available", "credit", v.AmountAtomic); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	if err = outbox(ctx, tx, stableID("evt_", jid), "HoldReleased", v.DepositID, uaa, map[string]any{"journal_id": jid}); err != nil {
+	if err = outbox(ctx, tx, stableID("evt_", jid), "HoldReleased", v.DepositID, uaa, v.CorrelationID, v.CausationID, map[string]any{"journal_id": jid}); err != nil {
 		return ledger.OperationResult{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -227,7 +227,7 @@ func (p *Postgres) ReserveForOrder(ctx context.Context, v ledger.ReserveOrder) (
 	rid := stableID("rsv_", v.OrderID)
 	jid := stableID("jrn_", "order-service", v.CommandID)
 	eid := stableID("evt_", jid)
-	outboxPayload, err := makeOutboxPayload(eid, "FundsReserved", v.OrderID, time.Now().UTC(), map[string]any{"journal_id": jid, "reservation_id": rid, "amount_atomic": v.AmountAtomic})
+	outboxPayload, err := makeOutboxPayload(eid, "FundsReserved", v.OrderID, v.CorrelationID, v.CausationID, v.TraceParent, v.TraceState, time.Now().UTC(), map[string]any{"journal_id": jid, "reservation_id": rid, "amount_atomic": v.AmountAtomic})
 	if err != nil {
 		return ledger.Reservation{}, err
 	}
@@ -453,7 +453,7 @@ func (p *Postgres) BookTrade(ctx context.Context, v ledger.TradeExecuted) (ledge
 	if err = setSequence(ctx, tx, v.EngineID, v.EnginePartition, v.SequenceNumber); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	if err = outbox(ctx, tx, stableID("evt_", jid), "TradeBooked", v.TradeID, v.EngineID+fmt.Sprint(":", v.EnginePartition), map[string]any{"journal_id": jid, "trade_id": v.TradeID, "sequence_number": v.SequenceNumber}); err != nil {
+	if err = outbox(ctx, tx, stableID("evt_", jid), "TradeBooked", v.TradeID, v.EngineID+fmt.Sprint(":", v.EnginePartition), v.CorrelationID, v.CausationID, map[string]any{"journal_id": jid, "trade_id": v.TradeID, "sequence_number": v.SequenceNumber}); err != nil {
 		return ledger.OperationResult{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -526,7 +526,7 @@ func (p *Postgres) CancelOrder(ctx context.Context, v ledger.CancelOrder) (ledge
 	if err = setSequence(ctx, tx, v.EngineID, v.EnginePartition, v.SequenceNumber); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	if err = outbox(ctx, tx, stableID("evt_", jid), "FundsReleased", v.OrderID, r.userAccount, map[string]any{"journal_id": jid, "amount_atomic": r.remaining}); err != nil {
+	if err = outbox(ctx, tx, stableID("evt_", jid), "FundsReleased", v.OrderID, r.userAccount, v.CorrelationID, v.CausationID, map[string]any{"journal_id": jid, "amount_atomic": r.remaining}); err != nil {
 		return ledger.OperationResult{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {

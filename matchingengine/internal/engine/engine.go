@@ -20,6 +20,8 @@ type Publisher interface {
 }
 type Event struct {
 	ID, Type, AggregateID, MessageKey string
+	CorrelationID, CausationID        string
+	TraceParent, TraceState           string
 	OccurredAt                        time.Time
 	Data                              any
 }
@@ -66,7 +68,7 @@ func (s *Service) SubmitOrder(ctx context.Context, req *matchingv1.SubmitOrderRe
 	s.Metrics.EngineNS.Add(uint64(time.Since(engineStart)))
 
 	kafkaStart := time.Now()
-	err := s.Publisher.Publish(ctx, Event{ID: req.RequestId, Type: "OrderAccepted", AggregateID: req.OrderId, MessageKey: key, OccurredAt: time.Now().UTC(), Data: map[string]any{"order": req, "engine_sequence": state.sequence}})
+	err := s.Publisher.Publish(ctx, Event{ID: req.RequestId, Type: "OrderAccepted", AggregateID: req.OrderId, MessageKey: key, CorrelationID: req.CorrelationId, CausationID: req.CausationId, TraceParent: req.TraceParent, TraceState: req.TraceState, OccurredAt: time.Now().UTC(), Data: map[string]any{"order": req, "engine_sequence": state.sequence}})
 	s.Metrics.KafkaNS.Add(uint64(time.Since(kafkaStart)))
 	if err != nil {
 		state.sequence--
@@ -119,13 +121,26 @@ func NewKafkaPublisher(brokers []string, topic string, size int, bytes int64, ba
 	return &KafkaPublisher{topic: topic, timeout: timeout, writer: &kafka.Writer{Addr: kafka.TCP(brokers...), Balancer: &kafka.Hash{}, RequiredAcks: kafka.RequireAll, Async: false, BatchSize: size, BatchBytes: bytes, BatchTimeout: batchTimeout, Compression: kafka.Lz4, MaxAttempts: 5, WriteTimeout: timeout, ReadTimeout: timeout}}
 }
 func (p *KafkaPublisher) Publish(ctx context.Context, event Event) error {
-	payload, err := json.Marshal(map[string]any{"id": event.ID, "type": event.Type, "aggregate_id": event.AggregateID, "occurred_at": event.OccurredAt, "data": event.Data})
+	payload, err := json.Marshal(map[string]any{"id": event.ID, "type": event.Type, "aggregate_id": event.AggregateID, "correlation_id": event.CorrelationID, "causation_id": event.CausationID, "trace_parent": event.TraceParent, "trace_state": event.TraceState, "occurred_at": event.OccurredAt, "data": event.Data})
 	if err != nil {
 		return err
 	}
 	callCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
-	return p.writer.WriteMessages(callCtx, kafka.Message{Topic: p.topic, Key: []byte(event.MessageKey), Value: payload, Headers: []kafka.Header{{Key: "event-id", Value: []byte(event.ID)}, {Key: "event-type", Value: []byte(event.Type)}}})
+	headers := []kafka.Header{{Key: "event-id", Value: []byte(event.ID)}, {Key: "event-type", Value: []byte(event.Type)}}
+	if event.CorrelationID != "" {
+		headers = append(headers, kafka.Header{Key: "correlation-id", Value: []byte(event.CorrelationID)})
+	}
+	if event.CausationID != "" {
+		headers = append(headers, kafka.Header{Key: "causation-id", Value: []byte(event.CausationID)})
+	}
+	if event.TraceParent != "" {
+		headers = append(headers, kafka.Header{Key: "traceparent", Value: []byte(event.TraceParent)})
+	}
+	if event.TraceState != "" {
+		headers = append(headers, kafka.Header{Key: "tracestate", Value: []byte(event.TraceState)})
+	}
+	return p.writer.WriteMessages(callCtx, kafka.Message{Topic: p.topic, Key: []byte(event.MessageKey), Value: payload, Headers: headers})
 }
 func (p *KafkaPublisher) Close() error { return p.writer.Close() }
 

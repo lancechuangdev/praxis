@@ -33,6 +33,10 @@ type SubmitOrderRequest struct {
 	Price           string                 `protobuf:"bytes,8,opt,name=price,proto3" json:"price,omitempty"`
 	ReservationId   string                 `protobuf:"bytes,9,opt,name=reservation_id,json=reservationId,proto3" json:"reservation_id,omitempty"`
 	EnginePartition int32                  `protobuf:"varint,10,opt,name=engine_partition,json=enginePartition,proto3" json:"engine_partition,omitempty"`
+	CorrelationId   string                 `protobuf:"bytes,11,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	CausationId     string                 `protobuf:"bytes,12,opt,name=causation_id,json=causationId,proto3" json:"causation_id,omitempty"`
+	TraceParent     string                 `protobuf:"bytes,13,opt,name=trace_parent,json=traceParent,proto3" json:"trace_parent,omitempty"`
+	TraceState      string                 `protobuf:"bytes,14,opt,name=trace_state,json=traceState,proto3" json:"trace_state,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -137,6 +141,34 @@ func (x *SubmitOrderRequest) GetEnginePartition() int32 {
 	return 0
 }
 
+func (x *SubmitOrderRequest) GetCorrelationId() string {
+	if x != nil {
+		return x.CorrelationId
+	}
+	return ""
+}
+
+func (x *SubmitOrderRequest) GetCausationId() string {
+	if x != nil {
+		return x.CausationId
+	}
+	return ""
+}
+
+func (x *SubmitOrderRequest) GetTraceParent() string {
+	if x != nil {
+		return x.TraceParent
+	}
+	return ""
+}
+
+func (x *SubmitOrderRequest) GetTraceState() string {
+	if x != nil {
+		return x.TraceState
+	}
+	return ""
+}
+
 type SubmitOrderResponse struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	OrderId        string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
@@ -201,7 +233,7 @@ var File_api_matching_v1_matching_proto protoreflect.FileDescriptor
 
 const file_api_matching_v1_matching_proto_rawDesc = "" +
 	"\n" +
-	"\x1eapi/matching/v1/matching.proto\x12\vmatching.v1\"\xb6\x02\n" +
+	"\x1eapi/matching/v1/matching.proto\x12\vmatching.v1\"\xc4\x03\n" +
 	"\x12SubmitOrderRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
@@ -215,13 +247,18 @@ const file_api_matching_v1_matching_proto_rawDesc = "" +
 	"\x05price\x18\b \x01(\tR\x05price\x12%\n" +
 	"\x0ereservation_id\x18\t \x01(\tR\rreservationId\x12)\n" +
 	"\x10engine_partition\x18\n" +
-	" \x01(\x05R\x0fenginePartition\"q\n" +
+	" \x01(\x05R\x0fenginePartition\x12%\n" +
+	"\x0ecorrelation_id\x18\v \x01(\tR\rcorrelationId\x12!\n" +
+	"\fcausation_id\x18\f \x01(\tR\vcausationId\x12!\n" +
+	"\ftrace_parent\x18\r \x01(\tR\vtraceParent\x12\x1f\n" +
+	"\vtrace_state\x18\x0e \x01(\tR\n" +
+	"traceState\"q\n" +
 	"\x13SubmitOrderResponse\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12'\n" +
 	"\x0fengine_sequence\x18\x03 \x01(\x03R\x0eengineSequence2b\n" +
 	"\x0eMatchingEngine\x12P\n" +
-	"\vSubmitOrder\x12\x1f.matching.v1.SubmitOrderRequest\x1a .matching.v1.SubmitOrderResponseB8Z6praxis/orderservice/gen/matching/v1;matchingv1b\x06proto3"
+	"\vSubmitOrder\x12\x1f.matching.v1.SubmitOrderRequest\x1a .matching.v1.SubmitOrderResponseB0Z.praxis/orderservice/gen/matching/v1;matchingv1b\x06proto3"
 
 var (
 	file_api_matching_v1_matching_proto_rawDescOnce sync.Once

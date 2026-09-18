@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
 	ledgerv1 "praxis/orderservice/gen/ledger/v1"
 	"praxis/orderservice/internal/order"
 )
@@ -43,18 +44,43 @@ func (l *GRPCLedger) Ready(ctx context.Context) error {
 }
 
 func (l *GRPCLedger) Reserve(ctx context.Context, req order.Request) (order.Reservation, error) {
+	ctx = outgoingTraceContext(ctx, req.TraceParent, req.TraceState)
 	callCtx, cancel := context.WithTimeout(ctx, l.timeout)
 	defer cancel()
+	correlationID, causationID := requestContext(req)
 	response, err := l.client.ReserveForOrder(callCtx, &ledgerv1.ReserveForOrderRequest{
 		CommandId: req.RequestID, OrderId: req.OrderID, UserId: req.UserID,
 		AssetId: req.ReserveAssetID, AmountAtomic: req.ReserveAmountAtomic,
-		CorrelationId: req.RequestID, CausationId: req.RequestID,
-		OccurredAt: time.Now().UTC().Format(time.RFC3339Nano),
+		CorrelationId: correlationID, CausationId: causationID,
+		OccurredAt: time.Now().UTC().Format(time.RFC3339Nano), TraceParent: req.TraceParent, TraceState: req.TraceState,
 	})
 	if err != nil {
 		return order.Reservation{}, err
 	}
 	return order.Reservation{ID: response.ReservationId, BalanceVersion: response.BalanceVersion, Replay: response.IdempotentReplay}, nil
+}
+
+func outgoingTraceContext(ctx context.Context, traceParent, traceState string) context.Context {
+	if traceParent == "" {
+		return ctx
+	}
+	pairs := []string{"traceparent", traceParent}
+	if traceState != "" {
+		pairs = append(pairs, "tracestate", traceState)
+	}
+	return metadata.AppendToOutgoingContext(ctx, pairs...)
+}
+
+func requestContext(req order.Request) (string, string) {
+	correlationID := req.CorrelationID
+	if correlationID == "" {
+		correlationID = req.RequestID
+	}
+	causationID := req.CausationID
+	if causationID == "" {
+		causationID = req.RequestID
+	}
+	return correlationID, causationID
 }
 func (l *GRPCLedger) Close() error { return l.connection.Close() }
 

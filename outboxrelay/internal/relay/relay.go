@@ -18,6 +18,10 @@ type Event struct {
 	Topic          string
 	EventType      string
 	MessageKey     string
+	CorrelationID  string
+	CausationID    string
+	TraceParent    string
+	TraceState     string
 	Payload        []byte
 }
 
@@ -80,7 +84,20 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 	sort.Slice(events, func(i, j int) bool { return events[i].SequenceNumber < events[j].SequenceNumber })
 	messages := make([]kafka.Message, len(events))
 	for i, event := range events {
-		messages[i] = kafka.Message{Topic: event.Topic, Key: []byte(event.MessageKey), Value: event.Payload, Headers: []kafka.Header{{Key: "event-id", Value: []byte(event.ID)}, {Key: "event-type", Value: []byte(event.EventType)}}}
+		headers := []kafka.Header{{Key: "event-id", Value: []byte(event.ID)}, {Key: "event-type", Value: []byte(event.EventType)}}
+		if event.CorrelationID != "" {
+			headers = append(headers, kafka.Header{Key: "correlation-id", Value: []byte(event.CorrelationID)})
+		}
+		if event.CausationID != "" {
+			headers = append(headers, kafka.Header{Key: "causation-id", Value: []byte(event.CausationID)})
+		}
+		if event.TraceParent != "" {
+			headers = append(headers, kafka.Header{Key: "traceparent", Value: []byte(event.TraceParent)})
+		}
+		if event.TraceState != "" {
+			headers = append(headers, kafka.Header{Key: "tracestate", Value: []byte(event.TraceState)})
+		}
+		messages[i] = kafka.Message{Topic: event.Topic, Key: []byte(event.MessageKey), Value: event.Payload, Headers: headers}
 	}
 	err = r.Publisher.WriteMessages(ctx, messages...)
 	if err == nil {

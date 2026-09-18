@@ -69,7 +69,7 @@ func (s *GRPC) ReserveForOrder(ctx context.Context, r *ledgerv1.ReserveForOrderR
 		s.Metrics.ReserveFailures.Add(1)
 		return nil, status.Error(codes.InvalidArgument, "invalid occurred_at")
 	}
-	v, e := s.Store.ReserveForOrder(ctx, ledger.ReserveOrder{CommandID: r.CommandId, OrderID: r.OrderId, UserID: r.UserId, AssetID: r.AssetId, AmountAtomic: r.AmountAtomic, CorrelationID: r.CorrelationId, CausationID: r.CausationId, OccurredAt: at})
+	v, e := s.Store.ReserveForOrder(ctx, ledger.ReserveOrder{CommandID: r.CommandId, OrderID: r.OrderId, UserID: r.UserId, AssetID: r.AssetId, AmountAtomic: r.AmountAtomic, CorrelationID: r.CorrelationId, CausationID: r.CausationId, TraceParent: r.TraceParent, TraceState: r.TraceState, OccurredAt: at})
 	if e != nil {
 		s.Metrics.ReserveFailures.Add(1)
 		return nil, grpcErr(e)

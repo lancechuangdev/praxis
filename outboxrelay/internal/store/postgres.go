@@ -12,7 +12,7 @@ import (
 type Postgres struct{ DB *pgxpool.Pool }
 
 func (p Postgres) Claim(ctx context.Context, worker string, limit int, lease time.Duration) ([]relay.Event, error) {
-	rows, err := p.DB.Query(ctx, `WITH candidates AS (SELECT id FROM outbox_events WHERE published_at IS NULL AND next_attempt_at<=now() AND (claimed_until IS NULL OR claimed_until<now()) ORDER BY sequence_number FOR UPDATE SKIP LOCKED LIMIT $1) UPDATE outbox_events o SET claimed_by=$2,claimed_until=now()+($3*interval '1 millisecond') FROM candidates c WHERE o.id=c.id RETURNING o.sequence_number,o.id,o.topic,o.event_type,o.message_key,o.payload`, limit, worker, lease.Milliseconds())
+	rows, err := p.DB.Query(ctx, `WITH candidates AS (SELECT id FROM outbox_events WHERE published_at IS NULL AND next_attempt_at<=now() AND (claimed_until IS NULL OR claimed_until<now()) ORDER BY sequence_number FOR UPDATE SKIP LOCKED LIMIT $1) UPDATE outbox_events o SET claimed_by=$2,claimed_until=now()+($3*interval '1 millisecond') FROM candidates c WHERE o.id=c.id RETURNING o.sequence_number,o.id,o.topic,o.event_type,o.message_key,COALESCE(o.payload->>'correlation_id',''),COALESCE(o.payload->>'causation_id',''),COALESCE(o.payload->>'trace_parent',''),COALESCE(o.payload->>'trace_state',''),o.payload`, limit, worker, lease.Milliseconds())
 	if err != nil {
 		return nil, fmt.Errorf("claim outbox: %w", err)
 	}
@@ -20,7 +20,7 @@ func (p Postgres) Claim(ctx context.Context, worker string, limit int, lease tim
 	var out []relay.Event
 	for rows.Next() {
 		var e relay.Event
-		if err = rows.Scan(&e.SequenceNumber, &e.ID, &e.Topic, &e.EventType, &e.MessageKey, &e.Payload); err != nil {
+		if err = rows.Scan(&e.SequenceNumber, &e.ID, &e.Topic, &e.EventType, &e.MessageKey, &e.CorrelationID, &e.CausationID, &e.TraceParent, &e.TraceState, &e.Payload); err != nil {
 			return nil, err
 		}
 		out = append(out, e)

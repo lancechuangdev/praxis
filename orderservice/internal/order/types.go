@@ -2,6 +2,10 @@ package order
 
 type Request struct {
 	RequestID           string `json:"request_id"`
+	CorrelationID       string `json:"-"`
+	CausationID         string `json:"-"`
+	TraceParent         string `json:"-"`
+	TraceState          string `json:"-"`
 	OrderID             string `json:"order_id"`
 	UserID              string `json:"user_id"`
 	Symbol              string `json:"symbol"`

@@ -31,6 +31,8 @@ type ReserveForOrderRequest struct {
 	CorrelationId string                 `protobuf:"bytes,6,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
 	CausationId   string                 `protobuf:"bytes,7,opt,name=causation_id,json=causationId,proto3" json:"causation_id,omitempty"`
 	OccurredAt    string                 `protobuf:"bytes,8,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	TraceParent   string                 `protobuf:"bytes,9,opt,name=trace_parent,json=traceParent,proto3" json:"trace_parent,omitempty"`
+	TraceState    string                 `protobuf:"bytes,10,opt,name=trace_state,json=traceState,proto3" json:"trace_state,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -117,6 +119,20 @@ func (x *ReserveForOrderRequest) GetCausationId() string {
 func (x *ReserveForOrderRequest) GetOccurredAt() string {
 	if x != nil {
 		return x.OccurredAt
+	}
+	return ""
+}
+
+func (x *ReserveForOrderRequest) GetTraceParent() string {
+	if x != nil {
+		return x.TraceParent
+	}
+	return ""
+}
+
+func (x *ReserveForOrderRequest) GetTraceState() string {
+	if x != nil {
+		return x.TraceState
 	}
 	return ""
 }
@@ -217,7 +233,7 @@ var File_api_ledger_v1_ledger_proto protoreflect.FileDescriptor
 
 const file_api_ledger_v1_ledger_proto_rawDesc = "" +
 	"\n" +
-	"\x1aapi/ledger/v1/ledger.proto\x12\tledger.v1\"\x96\x02\n" +
+	"\x1aapi/ledger/v1/ledger.proto\x12\tledger.v1\"\xda\x02\n" +
 	"\x16ReserveForOrderRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x19\n" +
@@ -228,7 +244,11 @@ const file_api_ledger_v1_ledger_proto_rawDesc = "" +
 	"\x0ecorrelation_id\x18\x06 \x01(\tR\rcorrelationId\x12!\n" +
 	"\fcausation_id\x18\a \x01(\tR\vcausationId\x12\x1f\n" +
 	"\voccurred_at\x18\b \x01(\tR\n" +
-	"occurredAt\"\x99\x02\n" +
+	"occurredAt\x12!\n" +
+	"\ftrace_parent\x18\t \x01(\tR\vtraceParent\x12\x1f\n" +
+	"\vtrace_state\x18\n" +
+	" \x01(\tR\n" +
+	"traceState\"\x99\x02\n" +
 	"\x13ReservationResponse\x12%\n" +
 	"\x0ereservation_id\x18\x01 \x01(\tR\rreservationId\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\tR\aorderId\x12\x16\n" +
@@ -238,7 +258,7 @@ const file_api_ledger_v1_ledger_proto_rawDesc = "" +
 	"\x0fbalance_version\x18\x06 \x01(\x03R\x0ebalanceVersion\x12+\n" +
 	"\x11idempotent_replay\x18\a \x01(\bR\x10idempotentReplay2e\n" +
 	"\rLedgerService\x12T\n" +
-	"\x0fReserveForOrder\x12!.ledger.v1.ReserveForOrderRequest\x1a\x1e.ledger.v1.ReservationResponseB4Z2praxis/orderservice/gen/ledger/v1;ledgerv1b\x06proto3"
+	"\x0fReserveForOrder\x12!.ledger.v1.ReserveForOrderRequest\x1a\x1e.ledger.v1.ReservationResponseB,Z*praxis/orderservice/gen/ledger/v1;ledgerv1b\x06proto3"
 
 var (
 	file_api_ledger_v1_ledger_proto_rawDescOnce sync.Once

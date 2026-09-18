@@ -27,9 +27,9 @@ type ReleaseHold struct {
 }
 
 type ReserveOrder struct {
-	CommandID, OrderID, UserID, AssetID, AmountAtomic string
-	CorrelationID, CausationID                        string
-	OccurredAt                                        time.Time
+	CommandID, OrderID, UserID, AssetID, AmountAtomic   string
+	CorrelationID, CausationID, TraceParent, TraceState string
+	OccurredAt                                          time.Time
 }
 
 type TradeExecuted struct {

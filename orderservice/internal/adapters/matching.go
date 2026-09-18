@@ -42,13 +42,19 @@ func (m *GRPCMatching) Ready(ctx context.Context) error {
 }
 
 func (m *GRPCMatching) Submit(ctx context.Context, req order.Request, reservation order.Reservation) (order.MatchResult, error) {
+	ctx = outgoingTraceContext(ctx, req.TraceParent, req.TraceState)
 	callCtx, cancel := context.WithTimeout(ctx, m.timeout)
 	defer cancel()
+	correlationID, causationID := requestContext(req)
 	response, err := m.client.SubmitOrder(callCtx, &matchingv1.SubmitOrderRequest{
 		RequestId: req.RequestID, OrderId: req.OrderID, UserId: req.UserID,
 		Symbol: req.Symbol, Side: req.Side, OrderType: req.OrderType,
 		Quantity: req.Quantity, Price: req.Price, ReservationId: reservation.ID,
 		EnginePartition: req.EnginePartition,
+		CorrelationId:   correlationID,
+		CausationId:     causationID,
+		TraceParent:     req.TraceParent,
+		TraceState:      req.TraceState,
 	})
 	if err != nil {
 		return order.MatchResult{}, err

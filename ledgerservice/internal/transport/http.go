@@ -153,6 +153,8 @@ func (h HTTP) reserve(w http.ResponseWriter, r *http.Request) {
 		AmountAtomic  string `json:"amount_atomic"`
 		CorrelationID string `json:"correlation_id"`
 		CausationID   string `json:"causation_id"`
+		TraceParent   string `json:"trace_parent"`
+		TraceState    string `json:"trace_state"`
 		OccurredAt    string `json:"occurred_at"`
 	}
 	if e := decode(r, &v); e != nil {
@@ -164,7 +166,7 @@ func (h HTTP) reserve(w http.ResponseWriter, r *http.Request) {
 		problem(w, e)
 		return
 	}
-	out, e := h.Store.ReserveForOrder(r.Context(), ledger.ReserveOrder{CommandID: v.CommandID, OrderID: v.OrderID, UserID: v.UserID, AssetID: v.AssetID, AmountAtomic: v.AmountAtomic, CorrelationID: v.CorrelationID, CausationID: v.CausationID, OccurredAt: at})
+	out, e := h.Store.ReserveForOrder(r.Context(), ledger.ReserveOrder{CommandID: v.CommandID, OrderID: v.OrderID, UserID: v.UserID, AssetID: v.AssetID, AmountAtomic: v.AmountAtomic, CorrelationID: v.CorrelationID, CausationID: v.CausationID, TraceParent: v.TraceParent, TraceState: v.TraceState, OccurredAt: at})
 	if e != nil {
 		problem(w, e)
 		return

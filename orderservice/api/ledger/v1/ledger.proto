@@ -17,6 +17,8 @@ message ReserveForOrderRequest {
   string correlation_id = 6;
   string causation_id = 7;
   string occurred_at = 8;
+  string trace_parent = 9;
+  string trace_state = 10;
 }
 
 message ReservationResponse {

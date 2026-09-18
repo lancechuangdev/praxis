@@ -48,7 +48,7 @@ func (*fakePublisher) Close() error { return nil }
 func TestRunOncePublishesClaimAsOneBatch(t *testing.T) {
 	store := &fakeStore{events: []Event{
 		{SequenceNumber: 3, ID: "e3", Topic: "ledger.events", MessageKey: "alice", Payload: []byte(`3`)},
-		{SequenceNumber: 1, ID: "e1", Topic: "ledger.events", MessageKey: "alice", Payload: []byte(`1`)},
+		{SequenceNumber: 1, ID: "e1", Topic: "ledger.events", MessageKey: "alice", CorrelationID: "correlation-1", CausationID: "cause-1", TraceParent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", TraceState: "vendor=value", Payload: []byte(`1`)},
 		{SequenceNumber: 2, ID: "e2", Topic: "ledger.events", MessageKey: "alice", Payload: []byte(`2`)},
 	}}
 	publisher := &fakePublisher{}
@@ -63,9 +63,27 @@ func TestRunOncePublishesClaimAsOneBatch(t *testing.T) {
 	if string(publisher.messages[0].Value) != "1" || string(publisher.messages[2].Value) != "3" {
 		t.Fatalf("messages were not ordered by outbox sequence")
 	}
+	if value := headerValue(publisher.messages[0].Headers, "correlation-id"); value != "correlation-1" {
+		t.Fatalf("correlation header=%q", value)
+	}
+	if value := headerValue(publisher.messages[0].Headers, "causation-id"); value != "cause-1" {
+		t.Fatalf("causation header=%q", value)
+	}
+	if value := headerValue(publisher.messages[0].Headers, "traceparent"); value != "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" {
+		t.Fatalf("traceparent header=%q", value)
+	}
 	if len(store.published) != 3 || len(store.failed) != 0 || store.publishCalls != 1 {
 		t.Fatalf("published=%v failed=%v", store.published, store.failed)
 	}
+}
+
+func headerValue(headers []kafka.Header, key string) string {
+	for _, header := range headers {
+		if header.Key == key {
+			return string(header.Value)
+		}
+	}
+	return ""
 }
 
 func TestRunOnceHandlesPerMessageFailures(t *testing.T) {

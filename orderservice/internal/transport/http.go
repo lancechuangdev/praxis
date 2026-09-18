@@ -25,7 +25,7 @@ func (h HTTP) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", h.ready)
 	mux.HandleFunc("GET /metrics", h.metrics)
 	mux.HandleFunc("POST /v1/orders", h.admit)
-	return mux
+	return withRequestMetadata(mux)
 }
 
 func (h HTTP) ready(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +46,11 @@ func (h HTTP) admit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	metadata := metadataFromContext(r.Context())
+	request.CorrelationID = metadata.CorrelationID
+	request.CausationID = metadata.RequestID
+	request.TraceParent = metadata.TraceParent
+	request.TraceState = metadata.TraceState
 	response, err := h.Service.Admit(r.Context(), request)
 	if err != nil {
 		status := http.StatusServiceUnavailable

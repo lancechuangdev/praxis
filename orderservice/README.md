@@ -30,6 +30,19 @@ Every successful response contains stage timings and a `Server-Timing` header:
 }
 ```
 
+## Request context
+
+Clients may send `X-Request-ID` and `X-Correlation-ID`. The service validates
+and echoes both headers, generating safe values when either is absent or
+invalid. The request ID identifies this HTTP attempt; the correlation ID stays
+with the wider order workflow. Both IDs are propagated to Ledger and Matching
+and appear in their Kafka event envelopes and headers.
+
+The service also accepts valid W3C `traceparent` and `tracestate` headers and
+forwards them through gRPC and Kafka. This preserves incoming trace context;
+actual spans and export to a tracing backend require the later OpenTelemetry
+instrumentation step.
+
 ## Run
 
 Baseline without external dependencies:
