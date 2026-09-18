@@ -66,6 +66,10 @@ services:
       LEDGER_KAFKA_BROKERS: kafka:9092
       LEDGER_HTTP_ADDRESS: :8081
       LEDGER_GRPC_ADDRESS: :9091
+      OTEL_TRACES_ENABLED: ${OTEL_TRACES_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_TRACE_SAMPLE_RATIO: ${OTEL_TRACE_SAMPLE_RATIO:-1}
     ports: ["8081:8081", "9091:9091"]
 
   order-service:
@@ -80,6 +84,10 @@ services:
       ORDER_MATCHING_MODE: grpc
       ORDER_MATCHING_GRPC_ADDRESS: matching-engine:9092
       ORDER_RISK_LATENCY: 1ms
+      OTEL_TRACES_ENABLED: ${OTEL_TRACES_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_TRACE_SAMPLE_RATIO: ${OTEL_TRACE_SAMPLE_RATIO:-1}
     ports: ["8083:8083"]
 
   matching-engine:
@@ -93,6 +101,10 @@ services:
       MATCHING_KAFKA_ENABLED: "true"
       MATCHING_KAFKA_BROKERS: kafka:9092
       MATCHING_KAFKA_TOPIC: matching.events.v1
+      OTEL_TRACES_ENABLED: ${OTEL_TRACES_ENABLED:-false}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+      OTEL_TRACE_SAMPLE_RATIO: ${OTEL_TRACE_SAMPLE_RATIO:-1}
     ports: ["8084:8084", "9094:9092"]
 
   prometheus:
@@ -127,6 +139,26 @@ services:
     ports: ["3000:3000"]
     depends_on:
       prometheus: {condition: service_started}
+      tempo: {condition: service_started}
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    profiles: ["observability"]
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ../observability/otel-collector.yml:/etc/otelcol-contrib/config.yaml:ro
+    ports: ["4317:4317", "4318:4318"]
+    depends_on:
+      tempo: {condition: service_started}
+
+  tempo:
+    image: grafana/tempo:3.0.3
+    profiles: ["observability"]
+    command: ["-config.file=/etc/tempo/config.yml"]
+    volumes:
+      - ../observability/tempo.yml:/etc/tempo/config.yml:ro
+      - tempo-data:/var/tempo
+    ports: ["3200:3200"]
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.55.1
@@ -154,3 +186,4 @@ services:
 volumes:
   prometheus-data:
   grafana-data:
+  tempo-data:

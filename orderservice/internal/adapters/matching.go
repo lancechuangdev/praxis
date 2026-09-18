@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -21,7 +22,7 @@ type GRPCMatching struct {
 }
 
 func NewGRPCMatching(address string, timeout time.Duration) (*GRPCMatching, error) {
-	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +43,6 @@ func (m *GRPCMatching) Ready(ctx context.Context) error {
 }
 
 func (m *GRPCMatching) Submit(ctx context.Context, req order.Request, reservation order.Reservation) (order.MatchResult, error) {
-	ctx = outgoingTraceContext(ctx, req.TraceParent, req.TraceState)
 	callCtx, cancel := context.WithTimeout(ctx, m.timeout)
 	defer cancel()
 	correlationID, causationID := requestContext(req)

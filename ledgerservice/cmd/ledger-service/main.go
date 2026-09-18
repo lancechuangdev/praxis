@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -19,6 +21,7 @@ import (
 	"praxis/ledgerservice/internal/config"
 	"praxis/ledgerservice/internal/messaging"
 	"praxis/ledgerservice/internal/store"
+	"praxis/ledgerservice/internal/telemetry"
 	"praxis/ledgerservice/internal/transport"
 	"praxis/ledgerservice/migrations"
 )
@@ -32,6 +35,18 @@ func main() {
 		log.Error("configuration", "error", err)
 		os.Exit(1)
 	}
+	telemetryShutdown, err := telemetry.Setup(ctx, "ledger-service")
+	if err != nil {
+		log.Error("telemetry", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if shutdownErr := telemetryShutdown(shutdownCtx); shutdownErr != nil {
+			log.Error("telemetry shutdown", "error", shutdownErr)
+		}
+	}()
 	poolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		log.Error("database configuration", "error", err)
@@ -57,12 +72,12 @@ func main() {
 		log.Error("grpc listen", "error", err)
 		os.Exit(1)
 	}
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	ledgerv1.RegisterLedgerServiceServer(grpcServer, &transport.GRPC{Store: repo, Metrics: metrics})
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: transport.HTTP{Store: repo, DB: db, Metrics: metrics}.Handler(), ReadHeaderTimeout: 5 * time.Second}
+	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Store: repo, DB: db, Metrics: metrics}.Handler(), "ledger.http"), ReadHeaderTimeout: 5 * time.Second}
 	consumer := messaging.NewConsumer(cfg.KafkaBrokers, cfg.CommandsTopic, cfg.ConsumerGroup, db, repo, log)
 	errCh := make(chan error, 3)
 	go func() { errCh <- grpcServer.Serve(listener) }()

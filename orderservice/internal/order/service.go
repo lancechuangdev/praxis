@@ -9,9 +9,14 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 var ErrRiskRejected = errors.New("risk rejected order")
+var tracer = otel.Tracer("praxis/order-service")
 
 type Ledger interface {
 	Reserve(context.Context, Request) (Reservation, error)
@@ -70,17 +75,25 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	}
 
 	riskStart := time.Now()
-	if err := wait(ctx, s.RiskLatency); err != nil {
+	riskCtx, riskSpan := tracer.Start(ctx, "risk.check")
+	if err := wait(riskCtx, s.RiskLatency); err != nil {
+		riskSpan.RecordError(err)
+		riskSpan.SetStatus(codes.Error, err.Error())
+		riskSpan.End()
 		s.failed(started)
 		return Response{}, err
 	}
 	riskDuration := time.Since(riskStart)
 	s.Metrics.RiskNS.Add(uint64(riskDuration))
 	if rejected(req.RequestID, s.RiskRejectBPS) {
+		riskSpan.SetAttributes(attribute.Bool("risk.rejected", true))
+		riskSpan.End()
 		s.Metrics.RiskRejected.Add(1)
 		s.Metrics.TotalNS.Add(uint64(time.Since(started)))
 		return Response{}, ErrRiskRejected
 	}
+	riskSpan.SetAttributes(attribute.Bool("risk.rejected", false))
+	riskSpan.End()
 
 	reserveStart := time.Now()
 	reservation, err := s.Ledger.Reserve(ctx, req)

@@ -21,10 +21,10 @@ compose-down:
 	docker compose -f ledgerservice/compose.yaml down
 
 observability-up:
-	docker compose -f ledgerservice/compose.yaml --profile observability up -d --build
+	OTEL_TRACES_ENABLED=true docker compose -f ledgerservice/compose.yaml --profile observability up -d --build
 
 observability-down:
-	docker compose -f ledgerservice/compose.yaml --profile observability stop grafana prometheus cadvisor node-exporter
+	docker compose -f ledgerservice/compose.yaml --profile observability stop grafana prometheus cadvisor node-exporter otel-collector tempo
 
 reset-load-data:
 	docker compose -f ledgerservice/compose.yaml stop order-service ledger-service matching-engine

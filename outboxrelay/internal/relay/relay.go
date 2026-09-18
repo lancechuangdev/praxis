@@ -10,7 +10,14 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
+
+var tracer = otel.Tracer("praxis/outbox-relay")
 
 type Event struct {
 	SequenceNumber int64
@@ -83,7 +90,11 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 	r.Metrics.Claimed.Add(uint64(len(events)))
 	sort.Slice(events, func(i, j int) bool { return events[i].SequenceNumber < events[j].SequenceNumber })
 	messages := make([]kafka.Message, len(events))
+	spans := make([]trace.Span, len(events))
 	for i, event := range events {
+		carrier := propagation.MapCarrier{"traceparent": event.TraceParent, "tracestate": event.TraceState}
+		eventCtx := otel.GetTextMapPropagator().Extract(ctx, carrier)
+		eventCtx, spans[i] = tracer.Start(eventCtx, "kafka.produce", trace.WithSpanKind(trace.SpanKindProducer), trace.WithAttributes(attribute.String("messaging.system", "kafka"), attribute.String("messaging.destination.name", event.Topic), attribute.String("messaging.message.id", event.ID)))
 		headers := []kafka.Header{{Key: "event-id", Value: []byte(event.ID)}, {Key: "event-type", Value: []byte(event.EventType)}}
 		if event.CorrelationID != "" {
 			headers = append(headers, kafka.Header{Key: "correlation-id", Value: []byte(event.CorrelationID)})
@@ -97,9 +108,20 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 		if event.TraceState != "" {
 			headers = append(headers, kafka.Header{Key: "tracestate", Value: []byte(event.TraceState)})
 		}
+		traceCarrier := propagation.MapCarrier{}
+		otel.GetTextMapPropagator().Inject(eventCtx, traceCarrier)
+		headers = replaceHeader(headers, "traceparent", traceCarrier.Get("traceparent"))
+		headers = replaceHeader(headers, "tracestate", traceCarrier.Get("tracestate"))
 		messages[i] = kafka.Message{Topic: event.Topic, Key: []byte(event.MessageKey), Value: event.Payload, Headers: headers}
 	}
 	err = r.Publisher.WriteMessages(ctx, messages...)
+	for _, span := range spans {
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+		}
+		span.End()
+	}
 	if err == nil {
 		ids := make([]string, len(events))
 		for i := range events {
@@ -145,4 +167,17 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 		r.Metrics.Failed.Add(uint64(len(failed)))
 	}
 	return len(events), fmt.Errorf("publish batch: %w", err)
+}
+
+func replaceHeader(headers []kafka.Header, key, value string) []kafka.Header {
+	if value == "" {
+		return headers
+	}
+	for i := range headers {
+		if headers[i].Key == key {
+			headers[i].Value = []byte(value)
+			return headers
+		}
+	}
+	return append(headers, kafka.Header{Key: key, Value: []byte(value)})
 }

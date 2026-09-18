@@ -39,9 +39,10 @@ with the wider order workflow. Both IDs are propagated to Ledger and Matching
 and appear in their Kafka event envelopes and headers.
 
 The service also accepts valid W3C `traceparent` and `tracestate` headers and
-forwards them through gRPC and Kafka. This preserves incoming trace context;
-actual spans and export to a tracing backend require the later OpenTelemetry
-instrumentation step.
+propagates them through gRPC and Kafka. With `OTEL_TRACES_ENABLED=true`, the
+services create HTTP, gRPC, risk-check, and Kafka-producer spans and export
+them over OTLP. `make observability-up` enables this automatically and sends
+the spans through the local OpenTelemetry Collector to Tempo.
 
 ## Run
 
@@ -390,6 +391,7 @@ Open:
 - Grafana: <http://localhost:3000> (`admin` / `admin`, local development only)
 - Prometheus: <http://localhost:9090>
 - Prometheus target health: <http://localhost:9090/targets>
+- Tempo API: <http://localhost:3200>
 
 Grafana automatically provisions the **CEX / CEX Load Test** dashboard. It
 shows workflow throughput, average stage latency, pgx pool usage and acquisition
@@ -401,6 +403,11 @@ with read-only host mounts in this local development stack. Do not copy that
 configuration into production; use ECS Container Insights and RDS monitoring in
 AWS. A k6 container started during the test appears automatically in the
 container panels.
+
+To inspect traces, open Grafana **Explore**, select the **Tempo** data source,
+choose **Search**, and filter on a service such as `order-service`. A request to
+the Order Service can include `X-Correlation-ID` for business-workflow lookup
+and `traceparent` for trace continuation; these remain distinct identifiers.
 
 Stop only the observability containers with:
 

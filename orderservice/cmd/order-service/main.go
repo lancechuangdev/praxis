@@ -11,9 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"praxis/orderservice/internal/adapters"
 	"praxis/orderservice/internal/config"
 	"praxis/orderservice/internal/order"
+	"praxis/orderservice/internal/telemetry"
 	"praxis/orderservice/internal/transport"
 )
 
@@ -26,6 +28,18 @@ func main() {
 		log.Error("configuration", "error", err)
 		os.Exit(1)
 	}
+	telemetryShutdown, err := telemetry.Setup(ctx, "order-service")
+	if err != nil {
+		log.Error("telemetry", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if shutdownErr := telemetryShutdown(shutdownCtx); shutdownErr != nil {
+			log.Error("telemetry shutdown", "error", shutdownErr)
+		}
+	}()
 
 	var ledger order.Ledger
 	var ledgerReady func(context.Context) error
@@ -82,7 +96,7 @@ func main() {
 		}()
 		return errors.Join(<-results, <-results)
 	}
-	server := &http.Server{Addr: cfg.HTTPAddress, Handler: transport.HTTP{Service: service, Ready: ready}.Handler(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Service: service, Ready: ready}.Handler(), "order.http"), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.ListenAndServe() }()
 	log.Info("order service started", "http", cfg.HTTPAddress, "ledger_mode", cfg.LedgerMode, "matching_mode", cfg.MatchingMode)

@@ -12,10 +12,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"praxis/outboxrelay/internal/config"
 	"praxis/outboxrelay/internal/messaging"
 	"praxis/outboxrelay/internal/relay"
 	"praxis/outboxrelay/internal/store"
+	"praxis/outboxrelay/internal/telemetry"
 	"praxis/outboxrelay/migrations"
 )
 
@@ -28,6 +30,18 @@ func main() {
 		log.Error("configuration", "error", err)
 		os.Exit(1)
 	}
+	telemetryShutdown, err := telemetry.Setup(ctx, "outbox-relay")
+	if err != nil {
+		log.Error("telemetry", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if shutdownErr := telemetryShutdown(shutdownCtx); shutdownErr != nil {
+			log.Error("telemetry shutdown", "error", shutdownErr)
+		}
+	}()
 	db, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Error("database", "error", err)
@@ -64,7 +78,7 @@ func main() {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = fmt.Fprintf(w, "outbox_events_claimed_total %d\noutbox_events_published_total %d\noutbox_events_failed_total %d\n", metrics.Claimed.Load(), metrics.Published.Load(), metrics.Failed.Load())
 	})
-	server := &http.Server{Addr: cfg.HTTPAddress, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(mux, "outbox-relay.http"), ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 2)
 	go func() { errCh <- worker.Run(ctx) }()
 	go func() { errCh <- server.ListenAndServe() }()

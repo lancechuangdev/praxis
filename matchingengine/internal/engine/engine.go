@@ -11,8 +11,15 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	matchingv1 "praxis/matchingengine/gen/matching/v1"
 )
+
+var tracer = otel.Tracer("praxis/matching-engine")
 
 type Publisher interface {
 	Publish(context.Context, Event) error
@@ -121,8 +128,12 @@ func NewKafkaPublisher(brokers []string, topic string, size int, bytes int64, ba
 	return &KafkaPublisher{topic: topic, timeout: timeout, writer: &kafka.Writer{Addr: kafka.TCP(brokers...), Balancer: &kafka.Hash{}, RequiredAcks: kafka.RequireAll, Async: false, BatchSize: size, BatchBytes: bytes, BatchTimeout: batchTimeout, Compression: kafka.Lz4, MaxAttempts: 5, WriteTimeout: timeout, ReadTimeout: timeout}}
 }
 func (p *KafkaPublisher) Publish(ctx context.Context, event Event) error {
+	ctx, span := tracer.Start(ctx, "kafka.produce", trace.WithSpanKind(trace.SpanKindProducer), trace.WithAttributes(attribute.String("messaging.system", "kafka"), attribute.String("messaging.destination.name", p.topic), attribute.String("messaging.message.id", event.ID)))
+	defer span.End()
 	payload, err := json.Marshal(map[string]any{"id": event.ID, "type": event.Type, "aggregate_id": event.AggregateID, "correlation_id": event.CorrelationID, "causation_id": event.CausationID, "trace_parent": event.TraceParent, "trace_state": event.TraceState, "occurred_at": event.OccurredAt, "data": event.Data})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return err
 	}
 	callCtx, cancel := context.WithTimeout(ctx, p.timeout)
@@ -140,7 +151,29 @@ func (p *KafkaPublisher) Publish(ctx context.Context, event Event) error {
 	if event.TraceState != "" {
 		headers = append(headers, kafka.Header{Key: "tracestate", Value: []byte(event.TraceState)})
 	}
-	return p.writer.WriteMessages(callCtx, kafka.Message{Topic: p.topic, Key: []byte(event.MessageKey), Value: payload, Headers: headers})
+	carrier := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, carrier)
+	headers = replaceHeader(headers, "traceparent", carrier.Get("traceparent"))
+	headers = replaceHeader(headers, "tracestate", carrier.Get("tracestate"))
+	err = p.writer.WriteMessages(callCtx, kafka.Message{Topic: p.topic, Key: []byte(event.MessageKey), Value: payload, Headers: headers})
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
+	return err
+}
+
+func replaceHeader(headers []kafka.Header, key, value string) []kafka.Header {
+	if value == "" {
+		return headers
+	}
+	for i := range headers {
+		if headers[i].Key == key {
+			headers[i].Value = []byte(value)
+			return headers
+		}
+	}
+	return append(headers, kafka.Header{Key: key, Value: []byte(value)})
 }
 func (p *KafkaPublisher) Close() error { return p.writer.Close() }
 

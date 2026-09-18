@@ -61,6 +61,9 @@ it, or start the detached stack with live dashboards using
 | `8084` | Matching Engine | HTTP | Health and metrics |
 | `9090` | Prometheus | HTTP | Live metrics queries and target status |
 | `3000` | Grafana | HTTP | CEX load-test dashboard (`admin` / `admin`, local only) |
+| `3200` | Tempo | HTTP | Local trace search API |
+| `4317` | OpenTelemetry Collector | OTLP/gRPC | Trace ingestion |
+| `4318` | OpenTelemetry Collector | OTLP/HTTP | Trace ingestion |
 | `9094` | Matching Engine | gRPC | Synchronous `SubmitOrder` from the Order Service |
 | `5433` | PostgreSQL | PostgreSQL | Local database access; containers use `postgres:5432` |
 | `9093` | Kafka | Kafka | Local broker access; containers use `kafka:9092` |
@@ -72,7 +75,10 @@ make observability-up
 ```
 
 Prometheus scrapes the application services plus cAdvisor and Node Exporter.
-Grafana provisions the `CEX Load Test` dashboard automatically. See
+The services export OpenTelemetry traces through the Collector to Tempo.
+Grafana provisions the `CEX Load Test` dashboard and Tempo data source
+automatically. In Grafana, open **Explore**, select **Tempo**, and use
+**Search** to inspect traces by service. See
 [`orderservice/README.md`](orderservice/README.md#live-prometheus-and-grafana-dashboard)
 for dashboard contents, security scope, and shutdown instructions.
 
@@ -84,10 +90,8 @@ curl http://localhost:8081/readyz
 curl http://localhost:8083/healthz
 curl http://localhost:8083/readyz
 curl http://localhost:8084/healthz
+curl http://localhost:8084/readyz
 ```
-
-The Matching Engine currently has no `/readyz` endpoint, so
-`http://localhost:8084/readyz` returns `404`.
 
 Compose creates `ledger-commands`, `ledger-events`, and `matching.events.v1`
 before starting the Ledger Service and Matching Engine. This prevents order

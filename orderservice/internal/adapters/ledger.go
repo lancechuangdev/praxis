@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/metadata"
 	ledgerv1 "praxis/orderservice/gen/ledger/v1"
 	"praxis/orderservice/internal/order"
 )
@@ -23,7 +23,7 @@ type GRPCLedger struct {
 }
 
 func NewGRPCLedger(address string, timeout time.Duration) (*GRPCLedger, error) {
-	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,6 @@ func (l *GRPCLedger) Ready(ctx context.Context) error {
 }
 
 func (l *GRPCLedger) Reserve(ctx context.Context, req order.Request) (order.Reservation, error) {
-	ctx = outgoingTraceContext(ctx, req.TraceParent, req.TraceState)
 	callCtx, cancel := context.WithTimeout(ctx, l.timeout)
 	defer cancel()
 	correlationID, causationID := requestContext(req)
@@ -58,17 +57,6 @@ func (l *GRPCLedger) Reserve(ctx context.Context, req order.Request) (order.Rese
 		return order.Reservation{}, err
 	}
 	return order.Reservation{ID: response.ReservationId, BalanceVersion: response.BalanceVersion, Replay: response.IdempotentReplay}, nil
-}
-
-func outgoingTraceContext(ctx context.Context, traceParent, traceState string) context.Context {
-	if traceParent == "" {
-		return ctx
-	}
-	pairs := []string{"traceparent", traceParent}
-	if traceState != "" {
-		pairs = append(pairs, "tracestate", traceState)
-	}
-	return metadata.AppendToOutgoingContext(ctx, pairs...)
 }
 
 func requestContext(req order.Request) (string, string) {
