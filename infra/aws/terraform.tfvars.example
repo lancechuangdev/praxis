@@ -15,3 +15,8 @@ postgres_iops                  = 10000
 postgres_backup_retention_days = 14
 postgres_deletion_protection   = true
 postgres_skip_final_snapshot   = false
+
+# Repositories use immutable tags and scan every pushed image. Keep enough
+# tagged images for deployment rollback while pruning build leftovers.
+ecr_tagged_image_retention_count = 50
+ecr_untagged_retention_days       = 7

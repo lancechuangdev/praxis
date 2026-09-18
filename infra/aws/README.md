@@ -13,6 +13,7 @@ It creates:
 - Dedicated CEX application-client and MSK security groups
 - A three-broker MSK cluster in the new CEX private subnets
 - A PostgreSQL Multi-AZ DB cluster with one writer and two readable standbys
+- Immutable, scan-on-push ECR repositories for each current service
 - RDS-managed database credentials stored in Secrets Manager
 - IAM authentication and TLS-only client connections
 - Separate KMS encryption keys for MSK and PostgreSQL
@@ -139,3 +140,21 @@ services should run in the `private_subnet_ids` output and attach the
 `cex_client_security_group_id` output. Their IAM roles must separately receive
 the required `kafka-cluster:Connect`, read, write, and consumer-group
 permissions.
+
+## Container repositories
+
+Terraform creates separate repositories for Order, Ledger, Matching, and the
+Outbox Relay. Repository names include the application and environment, image
+tags are immutable, and every push is scanned. Lifecycle policies delete
+untagged images after seven days and retain the newest 50 tagged images by
+default; both limits are configurable.
+
+After applying the stack, retrieve image destinations with:
+
+```bash
+terraform output -json ecr_repository_urls
+```
+
+Build pipelines should publish a unique tag such as the Git commit SHA. ECS
+task definitions should deploy the resolved image digest rather than a mutable
+tag so a rollback always selects the same artifact.

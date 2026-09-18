@@ -139,6 +139,47 @@ variable "postgres_skip_final_snapshot" {
   default     = false
 }
 
+variable "ecr_repositories" {
+  description = "ECR repository suffixes keyed by service name. Repository names are prefixed with the application and environment."
+  type        = map(string)
+  default = {
+    ledger_service  = "ledger-service"
+    matching_engine = "matching-engine"
+    order_service   = "order-service"
+    outbox_relay    = "outbox-relay"
+  }
+
+  validation {
+    condition = length(var.ecr_repositories) > 0 && alltrue([
+      for name in values(var.ecr_repositories) :
+      can(regex("^[a-z0-9]+(?:[._/-][a-z0-9]+)*$", name))
+    ])
+    error_message = "ecr_repositories must contain at least one valid lowercase ECR repository suffix."
+  }
+}
+
+variable "ecr_tagged_image_retention_count" {
+  description = "Number of tagged images retained in each service repository."
+  type        = number
+  default     = 50
+
+  validation {
+    condition     = var.ecr_tagged_image_retention_count >= 2
+    error_message = "ecr_tagged_image_retention_count must be at least two to preserve rollback capacity."
+  }
+}
+
+variable "ecr_untagged_retention_days" {
+  description = "Days to retain untagged images in each service repository."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.ecr_untagged_retention_days >= 1
+    error_message = "ecr_untagged_retention_days must be at least one."
+  }
+}
+
 variable "topics" {
   description = "Kafka topics managed through the Amazon MSK topic API."
   type = map(object({

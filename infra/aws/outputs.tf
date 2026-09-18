@@ -67,3 +67,13 @@ output "topic_names" {
   description = "Kafka topic names keyed by their logical Terraform names."
   value       = { for key, topic in aws_msk_topic.this : key => topic.name }
 }
+
+output "ecr_repository_urls" {
+  description = "ECR repository URLs keyed by service name. Use immutable image digests in ECS task definitions."
+  value       = { for key, repository in aws_ecr_repository.service : key => repository.repository_url }
+}
+
+output "ecr_repository_arns" {
+  description = "ECR repository ARNs keyed by service name for CI publisher and ECS execution-role policies."
+  value       = { for key, repository in aws_ecr_repository.service : key => repository.arn }
+}
