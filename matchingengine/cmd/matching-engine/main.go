@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	matchingv1 "praxis/matchingengine/gen/matching/v1"
 	"praxis/matchingengine/internal/config"
 	"praxis/matchingengine/internal/engine"
@@ -41,8 +43,12 @@ func main() {
 	service := &engine.Service{Publisher: publisher, Latency: cfg.EngineLatency, Metrics: metrics}
 	grpcServer := grpc.NewServer()
 	matchingv1.RegisterMatchingEngineServer(grpcServer, service)
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ready\n")) })
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = fmt.Fprintf(w, "matching_orders_submitted_total %d\nmatching_orders_accepted_total %d\nmatching_orders_failed_total %d\nmatching_engine_duration_seconds_sum %.9f\nmatching_kafka_duration_seconds_sum %.9f\n", metrics.Submitted.Load(), metrics.Accepted.Load(), metrics.Failed.Load(), float64(metrics.EngineNS.Load())/1e9, float64(metrics.KafkaNS.Load())/1e9)
@@ -51,7 +57,7 @@ func main() {
 	errCh := make(chan error, 2)
 	go func() { errCh <- grpcServer.Serve(listener) }()
 	go func() { errCh <- httpServer.ListenAndServe() }()
-	log.Info("mock matching engine started", "grpc", cfg.GRPCAddress, "http", cfg.HTTPAddress, "kafka_enabled", cfg.KafkaEnabled, "events_topic", cfg.EventsTopic)
+	log.Info("matching engine started", "grpc", cfg.GRPCAddress, "http", cfg.HTTPAddress, "kafka_enabled", cfg.KafkaEnabled, "events_topic", cfg.EventsTopic)
 	select {
 	case <-ctx.Done():
 	case err = <-errCh:
@@ -60,8 +66,23 @@ func main() {
 		}
 	}
 	stop()
-	grpcServer.GracefulStop()
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_ = httpServer.Shutdown(shutdownCtx)
+	httpDone := make(chan struct{})
+	go func() {
+		_ = httpServer.Shutdown(shutdownCtx)
+		close(httpDone)
+	}()
+	grpcDone := make(chan struct{})
+	go func() {
+		grpcServer.GracefulStop()
+		close(grpcDone)
+	}()
+	select {
+	case <-grpcDone:
+	case <-shutdownCtx.Done():
+		grpcServer.Stop()
+	}
+	<-httpDone
 }

@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	ledgerv1 "praxis/orderservice/gen/ledger/v1"
 	"praxis/orderservice/internal/order"
 )
@@ -15,6 +17,7 @@ import (
 type GRPCLedger struct {
 	connection *grpc.ClientConn
 	client     ledgerv1.LedgerServiceClient
+	health     grpc_health_v1.HealthClient
 	timeout    time.Duration
 }
 
@@ -23,7 +26,20 @@ func NewGRPCLedger(address string, timeout time.Duration) (*GRPCLedger, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &GRPCLedger{connection: connection, client: ledgerv1.NewLedgerServiceClient(connection), timeout: timeout}, nil
+	return &GRPCLedger{connection: connection, client: ledgerv1.NewLedgerServiceClient(connection), health: grpc_health_v1.NewHealthClient(connection), timeout: timeout}, nil
+}
+
+func (l *GRPCLedger) Ready(ctx context.Context) error {
+	callCtx, cancel := context.WithTimeout(ctx, l.timeout)
+	defer cancel()
+	response, err := l.health.Check(callCtx, &grpc_health_v1.HealthCheckRequest{})
+	if err != nil {
+		return err
+	}
+	if response.Status != grpc_health_v1.HealthCheckResponse_SERVING {
+		return fmt.Errorf("ledger health status is %s", response.Status)
+	}
+	return nil
 }
 
 func (l *GRPCLedger) Reserve(ctx context.Context, req order.Request) (order.Reservation, error) {
@@ -43,6 +59,8 @@ func (l *GRPCLedger) Reserve(ctx context.Context, req order.Request) (order.Rese
 func (l *GRPCLedger) Close() error { return l.connection.Close() }
 
 type MockLedger struct{ Latency time.Duration }
+
+func (MockLedger) Ready(context.Context) error { return nil }
 
 func (m MockLedger) Reserve(ctx context.Context, req order.Request) (order.Reservation, error) {
 	if err := wait(ctx, m.Latency); err != nil {

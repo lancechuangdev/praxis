@@ -34,6 +34,8 @@ The repository contains:
 - [Matching Engine](matchingengine/README.md)
 - [Outbox Relay](outboxrelay/README.md)
 - [AWS infrastructure](infra/aws/README.md)
+- [Microservices migration architecture](docs/microservices-migration.md)
+- [Kubernetes one-hour crash course](docs/kubernetes-one-hour-crash-course.md)
 - [Deposit and trading reference architecture](#cex-deposit-and-trading-reference-architecture)
 
 ## Quick start

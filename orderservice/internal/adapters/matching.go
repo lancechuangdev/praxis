@@ -2,11 +2,13 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	matchingv1 "praxis/orderservice/gen/matching/v1"
 	"praxis/orderservice/internal/order"
 )
@@ -14,6 +16,7 @@ import (
 type GRPCMatching struct {
 	connection *grpc.ClientConn
 	client     matchingv1.MatchingEngineClient
+	health     grpc_health_v1.HealthClient
 	timeout    time.Duration
 }
 
@@ -22,7 +25,20 @@ func NewGRPCMatching(address string, timeout time.Duration) (*GRPCMatching, erro
 	if err != nil {
 		return nil, err
 	}
-	return &GRPCMatching{connection: connection, client: matchingv1.NewMatchingEngineClient(connection), timeout: timeout}, nil
+	return &GRPCMatching{connection: connection, client: matchingv1.NewMatchingEngineClient(connection), health: grpc_health_v1.NewHealthClient(connection), timeout: timeout}, nil
+}
+
+func (m *GRPCMatching) Ready(ctx context.Context) error {
+	callCtx, cancel := context.WithTimeout(ctx, m.timeout)
+	defer cancel()
+	response, err := m.health.Check(callCtx, &grpc_health_v1.HealthCheckRequest{})
+	if err != nil {
+		return err
+	}
+	if response.Status != grpc_health_v1.HealthCheckResponse_SERVING {
+		return fmt.Errorf("matching health status is %s", response.Status)
+	}
+	return nil
 }
 
 func (m *GRPCMatching) Submit(ctx context.Context, req order.Request, reservation order.Reservation) (order.MatchResult, error) {
@@ -45,6 +61,8 @@ type MockMatching struct {
 	Latency  time.Duration
 	sequence atomic.Int64
 }
+
+func (*MockMatching) Ready(context.Context) error { return nil }
 
 func (m *MockMatching) Submit(ctx context.Context, _ order.Request, _ order.Reservation) (order.MatchResult, error) {
 	if err := wait(ctx, m.Latency); err != nil {

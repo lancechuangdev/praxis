@@ -13,6 +13,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	ledgerv1 "praxis/ledgerservice/gen/ledger/v1"
 	"praxis/ledgerservice/internal/config"
 	"praxis/ledgerservice/internal/messaging"
@@ -57,6 +59,9 @@ func main() {
 	}
 	grpcServer := grpc.NewServer()
 	ledgerv1.RegisterLedgerServiceServer(grpcServer, &transport.GRPC{Store: repo, Metrics: metrics})
+	healthServer := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: transport.HTTP{Store: repo, DB: db, Metrics: metrics}.Handler(), ReadHeaderTimeout: 5 * time.Second}
 	consumer := messaging.NewConsumer(cfg.KafkaBrokers, cfg.CommandsTopic, cfg.ConsumerGroup, db, repo, log)
 	errCh := make(chan error, 3)
@@ -72,9 +77,24 @@ func main() {
 		}
 	}
 	stop()
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	grpcServer.GracefulStop()
-	_ = httpServer.Shutdown(shutdownCtx)
+	httpDone := make(chan struct{})
+	go func() {
+		_ = httpServer.Shutdown(shutdownCtx)
+		close(httpDone)
+	}()
+	grpcDone := make(chan struct{})
+	go func() {
+		grpcServer.GracefulStop()
+		close(grpcDone)
+	}()
+	select {
+	case <-grpcDone:
+	case <-shutdownCtx.Done():
+		grpcServer.Stop()
+	}
+	<-httpDone
 	_ = consumer.Close()
 }

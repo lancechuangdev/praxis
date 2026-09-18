@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,19 +12,30 @@ import (
 	"praxis/orderservice/internal/order"
 )
 
-type HTTP struct{ Service *order.Service }
+type HTTP struct {
+	Service *order.Service
+	Ready   func(context.Context) error
+}
 
 func (h HTTP) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
-	})
+	mux.HandleFunc("GET /readyz", h.ready)
 	mux.HandleFunc("GET /metrics", h.metrics)
 	mux.HandleFunc("POST /v1/orders", h.admit)
 	return mux
+}
+
+func (h HTTP) ready(w http.ResponseWriter, r *http.Request) {
+	if h.Ready != nil {
+		if err := h.Ready(r.Context()); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "unavailable"})
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
 func (h HTTP) admit(w http.ResponseWriter, r *http.Request) {
