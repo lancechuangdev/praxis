@@ -1,7 +1,7 @@
 variable "name" {
   description = "Name prefix used for CEX infrastructure."
   type        = string
-  default     = "stablerail-cex"
+  default     = "praxis-cex"
 }
 
 variable "environment" {

@@ -97,3 +97,21 @@ output "ecs_service_log_group_names" {
   description = "CloudWatch application log-group names keyed by service name."
   value       = { for key, log_group in aws_cloudwatch_log_group.ecs_service : key => log_group.name }
 }
+
+output "service_discovery_namespace" {
+  description = "Private DNS namespace for ECS services in the CEX VPC."
+  value       = aws_service_discovery_private_dns_namespace.services.name
+}
+
+output "grpc_service_discovery_arns" {
+  description = "Cloud Map service ARNs to attach to the corresponding ECS service registries."
+  value       = { for key, service in aws_service_discovery_service.grpc : key => service.arn }
+}
+
+output "grpc_service_addresses" {
+  description = "Order Service gRPC targets after ECS services register their tasks with Cloud Map."
+  value = {
+    for key, service in local.grpc_services :
+    key => "${service.name}.${aws_service_discovery_private_dns_namespace.services.name}:${service.port}"
+  }
+}

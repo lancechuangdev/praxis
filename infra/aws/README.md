@@ -16,6 +16,7 @@ It creates:
 - Immutable, scan-on-push ECR repositories for each current service
 - An ECS cluster with Fargate and opt-in Fargate Spot capacity
 - A shared task execution role and per-service CloudWatch log groups
+- A private Cloud Map namespace with Ledger and Matching gRPC service records
 - RDS-managed database credentials stored in Secrets Manager
 - IAM authentication and TLS-only client connections
 - Separate KMS encryption keys for MSK and PostgreSQL
@@ -174,3 +175,19 @@ task roles: Ledger, Matching, Order, and relays will receive narrowly scoped
 roles for their own Kafka, database-authentication, secret, and other runtime
 permissions. Terraform also creates a retained CloudWatch application log group
 for every current service.
+
+## Private gRPC discovery
+
+Cloud Map provides private `A` records for Ledger and Matching inside the CEX
+VPC. Retrieve the intended Order Service targets with:
+
+```bash
+terraform output -json grpc_service_addresses
+```
+
+The targets use the existing Ledger port `9091` and Matching port `9092`.
+The records have a 10-second TTL and ECS-managed custom health status. Creating
+the namespace and services alone does **not** register task IPs: the later ECS
+service definitions must attach the corresponding
+`grpc_service_discovery_arns` as service registries. Their task security groups
+must also allow Order-to-Ledger and Order-to-Matching gRPC traffic.
