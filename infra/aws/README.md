@@ -14,6 +14,8 @@ It creates:
 - A three-broker MSK cluster in the new CEX private subnets
 - A PostgreSQL Multi-AZ DB cluster with one writer and two readable standbys
 - Immutable, scan-on-push ECR repositories for each current service
+- An ECS cluster with Fargate and opt-in Fargate Spot capacity
+- A shared task execution role and per-service CloudWatch log groups
 - RDS-managed database credentials stored in Secrets Manager
 - IAM authentication and TLS-only client connections
 - Separate KMS encryption keys for MSK and PostgreSQL
@@ -158,3 +160,17 @@ terraform output -json ecr_repository_urls
 Build pipelines should publish a unique tag such as the Git commit SHA. ECS
 task definitions should deploy the resolved image digest rather than a mutable
 tag so a rollback always selects the same artifact.
+
+## ECS cluster foundation
+
+The ECS cluster enables enhanced Container Insights and registers both
+`FARGATE` and `FARGATE_SPOT`. Its default strategy uses only `FARGATE`, so a
+service cannot land on Spot accidentally. A later service definition may opt
+an interruption-safe consumer into `FARGATE_SPOT` explicitly.
+
+The shared task execution role has AWS's managed execution policy for ECR image
+pulls and CloudWatch log delivery. It is deliberately separate from application
+task roles: Ledger, Matching, Order, and relays will receive narrowly scoped
+roles for their own Kafka, database-authentication, secret, and other runtime
+permissions. Terraform also creates a retained CloudWatch application log group
+for every current service.

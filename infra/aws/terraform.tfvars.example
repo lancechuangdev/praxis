@@ -20,3 +20,7 @@ postgres_skip_final_snapshot   = false
 # tagged images for deployment rollback while pruning build leftovers.
 ecr_tagged_image_retention_count = 50
 ecr_untagged_retention_days       = 7
+
+# Enhanced Container Insights supplies task- and container-level telemetry.
+ecs_container_insights_mode = "enhanced"
+ecs_log_retention_days       = 30

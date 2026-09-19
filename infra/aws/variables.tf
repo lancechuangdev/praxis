@@ -180,6 +180,31 @@ variable "ecr_untagged_retention_days" {
   }
 }
 
+variable "ecs_container_insights_mode" {
+  description = "Container Insights mode for the ECS cluster. Enhanced mode adds task- and container-level telemetry."
+  type        = string
+  default     = "enhanced"
+
+  validation {
+    condition     = contains(["enabled", "enhanced"], var.ecs_container_insights_mode)
+    error_message = "ecs_container_insights_mode must be enabled or enhanced."
+  }
+}
+
+variable "ecs_log_retention_days" {
+  description = "CloudWatch retention for ECS service application logs."
+  type        = number
+  default     = 30
+
+  validation {
+    condition = contains([
+      1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545,
+      731, 1096, 1827, 2192, 2557, 2922, 3288, 3653
+    ], var.ecs_log_retention_days)
+    error_message = "ecs_log_retention_days must be a retention period supported by CloudWatch Logs."
+  }
+}
+
 variable "topics" {
   description = "Kafka topics managed through the Amazon MSK topic API."
   type = map(object({

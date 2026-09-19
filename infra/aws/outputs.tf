@@ -77,3 +77,23 @@ output "ecr_repository_arns" {
   description = "ECR repository ARNs keyed by service name for CI publisher and ECS execution-role policies."
   value       = { for key, repository in aws_ecr_repository.service : key => repository.arn }
 }
+
+output "ecs_cluster_name" {
+  description = "Name of the ECS cluster used by the CEX services."
+  value       = aws_ecs_cluster.this.name
+}
+
+output "ecs_cluster_arn" {
+  description = "ARN of the ECS cluster used by the CEX services."
+  value       = aws_ecs_cluster.this.arn
+}
+
+output "ecs_task_execution_role_arn" {
+  description = "Shared ECS execution-role ARN for pulling images and delivering container logs. This is not an application task role."
+  value       = aws_iam_role.ecs_task_execution.arn
+}
+
+output "ecs_service_log_group_names" {
+  description = "CloudWatch application log-group names keyed by service name."
+  value       = { for key, log_group in aws_cloudwatch_log_group.ecs_service : key => log_group.name }
+}
