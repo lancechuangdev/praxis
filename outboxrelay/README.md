@@ -51,3 +51,6 @@ go run ./cmd/outbox-relay
 ```
 
 Endpoints are `GET /healthz`, `GET /readyz`, and Prometheus-text `GET /metrics`.
+The image also supports `/outbox-relay healthcheck` for ECS container health
+checks. It requests the local `/readyz` endpoint, which verifies PostgreSQL
+connectivity, and exits nonzero when the relay is not ready.
