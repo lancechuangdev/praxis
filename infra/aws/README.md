@@ -22,6 +22,7 @@ It creates:
 - An opt-in, private, single-replica Matching Engine ECS service
 - An opt-in, private, single-replica Ledger ECS service
 - An opt-in, private, single-replica Outbox Relay ECS service
+- An opt-in, private, single-replica Order ECS service (not ALB-connected)
 - RDS-managed database credentials stored in Secrets Manager
 - IAM authentication and TLS-only client connections
 - Separate KMS encryption keys for MSK and PostgreSQL
@@ -254,6 +255,21 @@ least-privilege database user and separate migration ownership before
 production use. The service starts at one task and uses Fargate rather than
 Spot. A secret rotation requires a new deployment to refresh the injected
 password.
+
+## Private Order ECS service
+
+Set `order_image_digest` to a pushed image digest only after Ledger and
+Matching are configured. Terraform then creates one private Fargate Order task
+that calls both gRPC services through Cloud Map and uses its local `/readyz`
+endpoint for health checks. The task has no public IP. Its security group
+allows outbound gRPC only to Ledger and Matching, plus HTTPS to AWS APIs
+through NAT for image pulls and logs.
+
+This service is deliberately **not attached to the public ALB**. Even when
+`order_alb_enabled` is true, the HTTPS listener continues to return 503.
+Edge authentication and ALB forwarding must be implemented before admitting
+public orders. The current Order service still embeds mock Risk logic and the
+Matching Engine remains an in-memory mock; this is not a production rollout.
 
 ## Application task roles
 

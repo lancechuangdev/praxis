@@ -165,3 +165,8 @@ output "outbox_ecs_service_arn" {
   description = "Outbox Relay ECS service ARN when outbox_image_digest is set."
   value       = var.outbox_image_digest == null ? null : aws_ecs_service.outbox[0].id
 }
+
+output "order_ecs_service_arn" {
+  description = "Private Order ECS service ARN when order_image_digest is set. Not yet connected to the public ALB."
+  value       = var.order_image_digest == null ? null : aws_ecs_service.order[0].id
+}
