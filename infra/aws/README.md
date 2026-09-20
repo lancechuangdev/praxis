@@ -16,6 +16,7 @@ It creates:
 - Immutable, scan-on-push ECR repositories for each current service
 - An ECS cluster with Fargate and opt-in Fargate Spot capacity
 - A shared task execution role and per-service CloudWatch log groups
+- A distinct IAM task role for each current application service
 - A private Cloud Map namespace with Ledger and Matching gRPC service records
 - RDS-managed database credentials stored in Secrets Manager
 - IAM authentication and TLS-only client connections
@@ -191,3 +192,18 @@ the namespace and services alone does **not** register task IPs: the later ECS
 service definitions must attach the corresponding
 `grpc_service_discovery_arns` as service registries. Their task security groups
 must also allow Order-to-Ledger and Order-to-Matching gRPC traffic.
+
+## Application task roles
+
+Terraform creates a separate task role for Order, Ledger, Matching, and Outbox
+Relay. Use the `service_task_role_arns` output as the corresponding ECS task
+definition's `task_role_arn`; do not substitute the shared execution role. Each
+trust policy permits ECS tasks from this account and Region to assume the role.
+AWS does not support narrowing the trust policy to one ECS cluster ARN.
+
+These roles intentionally have **no application permissions yet**. In
+particular, the current Go Kafka clients use unauthenticated connections, while
+the Terraform MSK cluster requires IAM/TLS. Before deploying those clients to
+MSK, add IAM/TLS client support and attach topic- and group-scoped permissions
+to the appropriate task roles. A role alone does not authenticate a Kafka
+connection or make the current service images deployable to this cluster.

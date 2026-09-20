@@ -115,3 +115,8 @@ output "grpc_service_addresses" {
     key => "${service.name}.${aws_service_discovery_private_dns_namespace.services.name}:${service.port}"
   }
 }
+
+output "service_task_role_arns" {
+  description = "Application ECS task-role ARNs keyed by service name; distinct from the shared task execution role."
+  value       = { for key, role in aws_iam_role.service_task : key => role.arn }
+}
