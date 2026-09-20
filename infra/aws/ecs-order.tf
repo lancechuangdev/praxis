@@ -113,4 +113,8 @@ resource "aws_ecs_service" "order" {
   }
 
   depends_on = [aws_ecs_cluster_capacity_providers.this, aws_ecs_service.ledger, aws_ecs_service.matching, aws_lb_listener.order_target_registration]
+
+  lifecycle {
+    ignore_changes = [desired_count]
+  }
 }

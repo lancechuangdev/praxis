@@ -22,7 +22,7 @@ It creates:
 - An opt-in, private, single-replica Matching Engine ECS service
 - An opt-in, private, single-replica Ledger ECS service
 - An opt-in, private, single-replica Outbox Relay ECS service
-- An opt-in, private, single-replica Order ECS service (not ALB-connected)
+- An opt-in, private Order ECS service with CPU target tracking (1–3 tasks)
 - RDS-managed database credentials stored in Secrets Manager
 - IAM authentication and TLS-only client connections
 - Separate KMS encryption keys for MSK and PostgreSQL
@@ -272,6 +272,12 @@ not open that port. The public HTTPS listener still returns 503. Edge
 authentication and HTTPS forwarding must be implemented before admitting
 public orders. The current Order service still embeds mock Risk logic and the
 Matching Engine remains an in-memory mock; this is not a production rollout.
+
+Order uses ECS CPU target tracking at 60% with a 1–3 task range. Scaling out
+waits 60 seconds and scaling in waits 120 seconds. Terraform ignores changes
+to the service's `desired_count` after creation so autoscaling can own it.
+This does not expose Order publicly; the HTTPS listener still returns 503.
+Ledger, Matching, and Outbox are not autoscaled by this policy.
 
 ## Application task roles
 
