@@ -30,6 +30,13 @@ The PostgreSQL pool is explicitly capped at 32 connections by default. Override
 it with `LEDGER_DB_MAX_CONNS`; `/metrics` reports the configured maximum and
 connection-acquisition pressure.
 
+For ECS, set `LEDGER_DB_HOST`, `LEDGER_DB_USER`, `LEDGER_DB_NAME`, and inject
+`LEDGER_DB_PASSWORD` from Secrets Manager. Ledger builds a PostgreSQL URL on
+port 5432 with `sslmode=require`; this keeps the password out of Terraform
+variables. `LEDGER_DATABASE_URL` remains available for local Compose and takes
+precedence when set. This configuration alone does not grant database access
+or deploy a Ledger ECS service.
+
 pgx uses its prepared-statement cache explicitly in `cache_statement` mode with
 128 entries per connection. Override these settings with
 `LEDGER_DB_QUERY_EXEC_MODE` and `LEDGER_DB_STATEMENT_CACHE_CAPACITY`. Direct

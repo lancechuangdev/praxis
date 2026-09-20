@@ -1,8 +1,9 @@
 package config
 
 import (
-	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -39,11 +40,31 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	c := Config{DatabaseURL: os.Getenv("LEDGER_DATABASE_URL"), DBMaxConns: maxConns, DBStatementCacheCapacity: statementCacheCapacity, DBQueryExecMode: queryExecMode, HTTPAddress: value("LEDGER_HTTP_ADDRESS", ":8081"), GRPCAddress: value("LEDGER_GRPC_ADDRESS", ":9091"), KafkaBrokers: strings.Split(value("LEDGER_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: kafkaAuth, CommandsTopic: value("LEDGER_COMMANDS_TOPIC", "ledger-commands"), ConsumerGroup: value("LEDGER_CONSUMER_GROUP", "cex-ledger-service")}
-	if c.DatabaseURL == "" {
-		return c, errors.New("LEDGER_DATABASE_URL is required")
+	databaseURL, err := databaseURL()
+	if err != nil {
+		return Config{}, err
 	}
+	c := Config{DatabaseURL: databaseURL, DBMaxConns: maxConns, DBStatementCacheCapacity: statementCacheCapacity, DBQueryExecMode: queryExecMode, HTTPAddress: value("LEDGER_HTTP_ADDRESS", ":8081"), GRPCAddress: value("LEDGER_GRPC_ADDRESS", ":9091"), KafkaBrokers: strings.Split(value("LEDGER_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: kafkaAuth, CommandsTopic: value("LEDGER_COMMANDS_TOPIC", "ledger-commands"), ConsumerGroup: value("LEDGER_CONSUMER_GROUP", "cex-ledger-service")}
 	return c, nil
+}
+
+func databaseURL() (string, error) {
+	if raw := os.Getenv("LEDGER_DATABASE_URL"); raw != "" {
+		return raw, nil
+	}
+	host := strings.TrimSpace(os.Getenv("LEDGER_DB_HOST"))
+	user := strings.TrimSpace(os.Getenv("LEDGER_DB_USER"))
+	password := os.Getenv("LEDGER_DB_PASSWORD")
+	name := strings.TrimSpace(os.Getenv("LEDGER_DB_NAME"))
+	if host == "" || user == "" || password == "" || name == "" {
+		return "", fmt.Errorf("set LEDGER_DATABASE_URL or all of LEDGER_DB_HOST, LEDGER_DB_USER, LEDGER_DB_PASSWORD, and LEDGER_DB_NAME")
+	}
+	if strings.ContainsAny(host, ":/") {
+		return "", fmt.Errorf("LEDGER_DB_HOST must be a hostname without a port")
+	}
+	u := url.URL{Scheme: "postgres", User: url.UserPassword(user, password), Host: net.JoinHostPort(host, "5432"), Path: "/" + name}
+	u.RawQuery = "sslmode=require"
+	return u.String(), nil
 }
 
 func positiveInt(name string, fallback int) (int, error) {

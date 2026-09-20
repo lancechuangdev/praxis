@@ -1,6 +1,7 @@
 package config
 
 import (
+	"net/url"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -19,6 +20,49 @@ func TestDatabaseStatementDefaults(t *testing.T) {
 	}
 	if c.DBStatementCacheCapacity != 128 {
 		t.Fatalf("statement cache capacity = %d, want 128", c.DBStatementCacheCapacity)
+	}
+}
+
+func TestDatabaseConnectionFromSeparateEnvironment(t *testing.T) {
+	t.Setenv("LEDGER_DATABASE_URL", "")
+	t.Setenv("LEDGER_DB_HOST", "ledger.example.internal")
+	t.Setenv("LEDGER_DB_USER", "ledger_user")
+	t.Setenv("LEDGER_DB_PASSWORD", "a@b:c/d")
+	t.Setenv("LEDGER_DB_NAME", "cex_ledger")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(c.DatabaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	password, _ := u.User.Password()
+	if u.Host != "ledger.example.internal:5432" || u.User.Username() != "ledger_user" || password != "a@b:c/d" || u.Path != "/cex_ledger" || u.Query().Get("sslmode") != "require" {
+		t.Fatalf("unexpected database connection settings: host=%q user=%q password_matched=%t path=%q sslmode=%q", u.Host, u.User.Username(), password == "a@b:c/d", u.Path, u.Query().Get("sslmode"))
+	}
+}
+
+func TestDatabaseURLTakesPrecedence(t *testing.T) {
+	t.Setenv("LEDGER_DATABASE_URL", "postgres://local/ledger?sslmode=disable")
+	t.Setenv("LEDGER_DB_HOST", "ledger.example.internal")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.DatabaseURL != "postgres://local/ledger?sslmode=disable" {
+		t.Fatalf("unexpected database URL: %q", c.DatabaseURL)
+	}
+}
+
+func TestSeparateDatabaseEnvironmentRequiresAllFields(t *testing.T) {
+	t.Setenv("LEDGER_DATABASE_URL", "")
+	t.Setenv("LEDGER_DB_HOST", "ledger.example.internal")
+	t.Setenv("LEDGER_DB_USER", "ledger_user")
+	t.Setenv("LEDGER_DB_PASSWORD", "")
+	t.Setenv("LEDGER_DB_NAME", "cex_ledger")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected missing password error")
 	}
 }
 
