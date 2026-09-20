@@ -39,3 +39,8 @@ matching_image_digest = null
 # This initial rollout injects the RDS-managed admin password; use a dedicated
 # least-privilege database role before treating it as production-ready.
 ledger_image_digest = null
+
+# Set only after building and pushing the outbox-relay image to ECR.
+# This initial rollout also uses the RDS-managed admin password; provision a
+# dedicated database role and separate migrations before production use.
+outbox_image_digest = null

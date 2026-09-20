@@ -160,3 +160,8 @@ output "ledger_ecs_service_arn" {
   description = "Ledger ECS service ARN when ledger_image_digest is set."
   value       = var.ledger_image_digest == null ? null : aws_ecs_service.ledger[0].id
 }
+
+output "outbox_ecs_service_arn" {
+  description = "Outbox Relay ECS service ARN when outbox_image_digest is set."
+  value       = var.outbox_image_digest == null ? null : aws_ecs_service.outbox[0].id
+}

@@ -21,6 +21,7 @@ It creates:
 - A private Cloud Map namespace with Ledger and Matching gRPC service records
 - An opt-in, private, single-replica Matching Engine ECS service
 - An opt-in, private, single-replica Ledger ECS service
+- An opt-in, private, single-replica Outbox Relay ECS service
 - RDS-managed database credentials stored in Secrets Manager
 - IAM authentication and TLS-only client connections
 - Separate KMS encryption keys for MSK and PostgreSQL
@@ -237,6 +238,22 @@ single-task rollout uses the RDS *admin* account because the stack does not
 yet provision a dedicated Ledger database role. Give Ledger a least-privilege
 database user and separate migration ownership before production use. Its
 stop-before-start deployment can briefly interrupt Ledger requests.
+
+## Outbox Relay ECS service
+
+Set `outbox_image_digest` to a pushed image digest to create one private
+Fargate relay task. The task has no public endpoint or inbound security-group
+rule. It connects to the Ledger writer database and MSK with IAM/TLS, maps
+stored `ledger-events` to `ledger.events.v1`, and reports health through its
+local `/readyz` endpoint. Its hostname supplies a distinct lease owner ID.
+
+The relay has its own execution role for the RDS-managed password and its own
+task role restricted to the Ledger event topic. This initial rollout uses the
+RDS admin account and runs migrations at startup; provision a dedicated
+least-privilege database user and separate migration ownership before
+production use. The service starts at one task and uses Fargate rather than
+Spot. A secret rotation requires a new deployment to refresh the injected
+password.
 
 ## Application task roles
 

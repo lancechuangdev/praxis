@@ -231,6 +231,18 @@ variable "ledger_image_digest" {
   }
 }
 
+variable "outbox_image_digest" {
+  description = "Opt-in Outbox Relay image digest (sha256:...) already pushed to its ECR repository. Null creates no Outbox task definition or ECS service."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.outbox_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.outbox_image_digest))
+    error_message = "outbox_image_digest must be null or a lowercase sha256 digest with 64 hexadecimal characters."
+  }
+}
+
 variable "matching_image_digest" {
   description = "Opt-in Matching image digest (sha256:...) already pushed to its ECR repository. Null creates no Matching task definition or ECS service."
   type        = string
