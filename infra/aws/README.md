@@ -285,8 +285,10 @@ Each enabled ECS service gets a CloudWatch alarm when its Container Insights
 `RunningTaskCount` stays below one for three one-minute periods. Missing metric
 data also counts as breaching, so stopped services do not silently disappear
 from the signal. These alarms are created only for services with an image
-digest; they have no notification action yet. Configure an SNS or incident
-destination before relying on them for paging.
+digest. Set `ecs_alarm_sns_topic_arn` to an existing SNS topic ARN to send
+ALARM transitions there. The topic must allow CloudWatch to publish and have
+confirmed subscribers; `null` leaves the alarms visible in CloudWatch but
+does not page anyone. Terraform does not create or subscribe a topic here.
 
 ## Application task roles
 

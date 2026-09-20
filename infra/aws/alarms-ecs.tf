@@ -21,6 +21,7 @@ resource "aws_cloudwatch_metric_alarm" "ecs_service_unavailable" {
   comparison_operator = "LessThanThreshold"
   threshold           = 1
   treat_missing_data  = "breaching"
+  alarm_actions       = var.ecs_alarm_sns_topic_arn == null ? [] : [var.ecs_alarm_sns_topic_arn]
 
   dimensions = {
     ClusterName = aws_ecs_cluster.this.name

@@ -48,3 +48,7 @@ outbox_image_digest = null
 # Set only after Ledger and Matching images are configured and healthy.
 # Order remains private and the public ALB still returns 503.
 order_image_digest = null
+
+# Optional existing SNS topic for ECS no-running-tasks alarm notifications.
+# The topic must permit CloudWatch alarms to publish and have confirmed subscribers.
+ecs_alarm_sns_topic_arn = null
