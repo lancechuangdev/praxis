@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,13 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
+		if err := checkReady(os.Getenv("ORDER_HTTP_ADDRESS")); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -110,4 +118,24 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = server.Shutdown(shutdownCtx)
+}
+
+func checkReady(address string) error {
+	if address == "" {
+		address = ":8083"
+	}
+	_, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("healthcheck address: %w", err)
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	response, err := client.Get("http://127.0.0.1:" + port + "/readyz")
+	if err != nil {
+		return fmt.Errorf("healthcheck request: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("healthcheck status: %s", response.Status)
+	}
+	return nil
 }

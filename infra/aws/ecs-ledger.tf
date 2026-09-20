@@ -32,7 +32,8 @@ resource "aws_iam_role_policy_attachment" "ledger_task_execution" {
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-data "aws_iam_policy_document" "ledger_secret_execution" {
+# Ledger and Outbox use the same RDS database secret, but separate execution roles.
+data "aws_iam_policy_document" "database_secret_execution" {
   statement {
     sid       = "ReadLedgerDatabaseSecret"
     actions   = ["secretsmanager:GetSecretValue"]
@@ -57,7 +58,7 @@ resource "aws_iam_role_policy" "ledger_secret_execution" {
 
   name   = "ledger-database-secret"
   role   = aws_iam_role.ledger_task_execution[0].id
-  policy = data.aws_iam_policy_document.ledger_secret_execution.json
+  policy = data.aws_iam_policy_document.database_secret_execution.json
 }
 
 resource "aws_ecs_task_definition" "ledger" {

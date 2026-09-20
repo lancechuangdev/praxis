@@ -297,6 +297,10 @@ Useful endpoints:
 - `GET /readyz`
 - `GET /metrics`
 
+The distroless image also supports `/order-service healthcheck` for ECS. It
+requests the local `/readyz` endpoint and exits nonzero if Ledger or Matching
+is unavailable.
+
 Key environment variables:
 
 | Variable | Default |

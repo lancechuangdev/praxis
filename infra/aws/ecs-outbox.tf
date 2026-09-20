@@ -18,7 +18,7 @@ resource "aws_iam_role_policy" "outbox_secret_execution" {
 
   name   = "outbox-database-secret"
   role   = aws_iam_role.outbox_task_execution[0].id
-  policy = data.aws_iam_policy_document.ledger_secret_execution.json
+  policy = data.aws_iam_policy_document.database_secret_execution.json
 }
 
 resource "aws_ecs_task_definition" "outbox" {
