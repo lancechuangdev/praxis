@@ -28,7 +28,12 @@ import (
 )
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
+	mode, err := commandMode(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	if mode == "healthcheck" {
 		if err := checkReady(os.Getenv("LEDGER_HTTP_ADDRESS")); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -72,6 +77,10 @@ func main() {
 	if err = migrations.Apply(ctx, db); err != nil {
 		log.Error("migrations", "error", err)
 		os.Exit(1)
+	}
+	if mode == "migrate" {
+		log.Info("ledger migrations applied")
+		return
 	}
 	repo := store.New(db)
 	metrics := &transport.Metrics{}
@@ -120,6 +129,16 @@ func main() {
 	}
 	<-httpDone
 	_ = consumer.Close()
+}
+
+func commandMode(args []string) (string, error) {
+	if len(args) == 0 {
+		return "serve", nil
+	}
+	if len(args) == 1 && (args[0] == "healthcheck" || args[0] == "migrate") {
+		return args[0], nil
+	}
+	return "", fmt.Errorf("usage: ledger-service [healthcheck|migrate]")
 }
 
 func checkReady(address string) error {

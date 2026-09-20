@@ -54,3 +54,8 @@ Endpoints are `GET /healthz`, `GET /readyz`, and Prometheus-text `GET /metrics`.
 The image also supports `/outbox-relay healthcheck` for ECS container health
 checks. It requests the local `/readyz` endpoint, which verifies PostgreSQL
 connectivity, and exits nonzero when the relay is not ready.
+
+Run `/outbox-relay migrate` as a one-off task to apply relay schema migrations
+and exit without starting the publisher or HTTP server. Normal service startup
+still runs migrations until ECS deployment is switched to a separate migration
+step and a least-privilege runtime database role.

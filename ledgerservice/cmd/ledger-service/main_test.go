@@ -29,3 +29,22 @@ func TestCheckReadyRejectsUnhealthy(t *testing.T) {
 		t.Fatal("expected unhealthy status")
 	}
 }
+
+func TestCommandMode(t *testing.T) {
+	for _, tc := range []struct {
+		args    []string
+		want    string
+		wantErr bool
+	}{
+		{want: "serve"},
+		{args: []string{"healthcheck"}, want: "healthcheck"},
+		{args: []string{"migrate"}, want: "migrate"},
+		{args: []string{"unknown"}, wantErr: true},
+		{args: []string{"migrate", "extra"}, wantErr: true},
+	} {
+		got, err := commandMode(tc.args)
+		if got != tc.want || (err != nil) != tc.wantErr {
+			t.Fatalf("commandMode(%v) = %q, %v; want %q, error=%t", tc.args, got, err, tc.want, tc.wantErr)
+		}
+	}
+}

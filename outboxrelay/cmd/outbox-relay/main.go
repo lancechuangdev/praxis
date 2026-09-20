@@ -23,7 +23,12 @@ import (
 )
 
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
+	mode, err := commandMode(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	if mode == "healthcheck" {
 		if err := checkReady(os.Getenv("OUTBOX_HTTP_ADDRESS")); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -64,6 +69,10 @@ func main() {
 		log.Error("migrations", "error", err)
 		os.Exit(1)
 	}
+	if mode == "migrate" {
+		log.Info("outbox migrations applied")
+		return
+	}
 
 	writer := messaging.NewWriter(messaging.WriterConfig{Brokers: cfg.Brokers, Auth: cfg.KafkaAuth, BatchSize: cfg.BatchSize, BatchBytes: cfg.BatchBytes, BatchTimeout: cfg.BatchTimeout})
 	metrics := &relay.Metrics{}
@@ -103,6 +112,16 @@ func main() {
 	defer cancel()
 	_ = server.Shutdown(shutdownCtx)
 	_ = writer.Close()
+}
+
+func commandMode(args []string) (string, error) {
+	if len(args) == 0 {
+		return "serve", nil
+	}
+	if len(args) == 1 && (args[0] == "healthcheck" || args[0] == "migrate") {
+		return args[0], nil
+	}
+	return "", fmt.Errorf("usage: outbox-relay [healthcheck|migrate]")
 }
 
 func checkReady(address string) error {

@@ -56,6 +56,11 @@ The image also supports `/ledger-service healthcheck` for ECS container health
 checks. It requests the local `/readyz` endpoint, which verifies PostgreSQL
 connectivity, and exits nonzero when Ledger is not ready.
 
+Run `/ledger-service migrate` as a one-off task to apply the Ledger schema and
+exit without starting HTTP, gRPC, or Kafka consumers. Normal service startup
+still runs migrations until ECS deployment is switched to a separate migration
+step and a least-privilege runtime database role.
+
 ## Reserve funds
 
 Alice must first have available funds, normally from a posted deposit:

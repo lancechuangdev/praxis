@@ -1,0 +1,301 @@
+# Praxis microservices migration
+
+## Goal and current state
+
+Move Praxis to independently deployable services without weakening Ledger
+invariants or putting asynchronous messaging in calls that need an immediate
+answer. The first production shape uses ECS Fargate. Later, Order Admission and
+Matching move to ECS EC2 capacity while Reconciliation, Reporting, and
+Notification remain on Fargate. The boundaries below also map cleanly to
+Kubernetes.
+
+This is an implementation plan, not a claim that every component exists. The
+repository currently contains Order, Ledger, a mock Matching Engine, and an
+Outbox Relay. Risk is embedded in Order. Risk, Reconciliation, Reporting, and
+Notification require extraction or implementation.
+
+## Implementation progress
+
+Phase 1 is being delivered incrementally:
+
+- [x] Existing images run as a non-root user.
+- [x] Existing services load runtime configuration from the environment.
+- [x] HTTP liveness/readiness endpoints exist for all current services.
+- [x] Ledger and Matching expose the standard gRPC health service; Order
+      readiness verifies both dependencies.
+- [x] HTTP and gRPC shutdown are bounded and respond to `SIGTERM`.
+- [x] Existing processes emit structured JSON logs.
+- [x] Propagate request, correlation, and W3C trace context through the current
+      HTTP, gRPC, outbox, and Kafka path.
+- [x] Add local OpenTelemetry SDK instrumentation, Collector export, Tempo
+      storage, and Grafana trace exploration for the current services.
+- [ ] Harden the telemetry pipeline for production (authentication, sampling,
+      retention, resource metadata, alarms, and a managed or durable backend).
+- [ ] Provision ECR, ECS, Service Connect, ALB, IAM, secrets, and autoscaling.
+  - [x] Provision immutable, scan-on-push ECR repositories with retention
+        policies for the current service images.
+  - [x] Provision the ECS cluster, Fargate capacity providers, shared task
+        execution role, enhanced Container Insights, and service log groups.
+  - [ ] Add private service discovery, service task roles, ALB, and autoscaling.
+- [ ] Implement/extract Risk, Notification, Reporting, and Reconciliation.
+
+## Design rules
+
+1. One service owns each write model; services never write each other's tables.
+2. Ledger alone owns balances, holds, journals, and entries.
+3. Calls that determine the current HTTP response are synchronous and have
+   deadlines. Kafka carries asynchronous facts, commands, and projections.
+4. Every command/event has an ID, schema version, timestamp, correlation ID,
+   causation ID, and deliberate partition key.
+5. Consumers are idempotent because Kafka delivery is at least once.
+6. A database change and its event use a transactional outbox.
+7. Schema and event changes remain compatible during rolling deployments.
+8. Infrastructure enters through configuration and workload identity, keeping
+   business code portable between ECS and Kubernetes.
+
+## Service boundaries
+
+| Service | Responsibility | Owned state | Interfaces |
+|---|---|---|---|
+| Order Admission | Validate and orchestrate an order; return its admission result | Orders and idempotency keys | Public HTTP; private gRPC to Risk, Ledger, Matching; order events |
+| Risk | Deterministic limit and policy decision | Rules, limits, decision audit | Private gRPC; consumes account/order facts; risk events |
+| Ledger | Double-entry accounting, balances, reservations | Ledger PostgreSQL schema | Private gRPC; ledger events through its outbox |
+| Matching | Sequence and match orders by market | Order books and recovery/checkpoint state | Private gRPC; ordered matching events |
+| Outbox Relay | Reliably publish committed outbox rows | Leases/checkpoints only | Database outbox to Kafka |
+| Reconciliation | Find discrepancies and coordinate controlled repair | Runs, findings, repair workflow | Consumes events; produces findings/approved commands |
+| Reporting | Build query-optimized, eventually consistent views | Reporting projections | Consumes events; read-only APIs/exports |
+| Notification | Apply preferences and deliver messages | Preferences, attempts, dedupe keys | Consumes events/commands; calls delivery providers |
+
+Pair a relay deployment and narrowly scoped credential with each owning
+database. Do not create one privileged relay that can read every database.
+
+## Runtime flow
+
+```mermaid
+flowchart LR
+    C[Client] --> E[ALB / API edge]
+    E --> O[Order Admission]
+    O -->|gRPC CheckOrder| R[Risk]
+    O -->|gRPC ReserveForOrder| L[Ledger]
+    O -->|gRPC SubmitOrder| M[Matching]
+    L --> LO[(Ledger outbox)] --> LR[Ledger relay] --> K[(MSK / Kafka)]
+    O --> OO[(Order outbox)] --> OR[Order relay] --> K
+    M --> K
+    K --> REC[Reconciliation]
+    K --> REP[Reporting]
+    K --> N[Notification]
+    K --> R
+```
+
+Admission should proceed as follows:
+
+1. Authenticate at the edge and propagate a request/correlation ID.
+2. Validate the request and claim the idempotency key in Order.
+3. Ask Risk for allow/deny and its policy version under a short deadline.
+4. Ask Ledger to atomically reserve funds and record an outbox event.
+5. Ask Matching to accept and sequence the order for its market.
+6. Persist the Order result/outbox record and return `202 Accepted`.
+7. Relays publish committed facts; consumers process them independently.
+8. If Matching fails after reservation, issue an idempotent release.
+   Reconciliation detects reservations left in an uncertain state.
+
+Never keep a database transaction open across these calls. This is a saga, not
+a distributed ACID transaction: each step commits locally and has an
+idempotent compensating action.
+
+## Kafka contract
+
+| Topic | Key | Producer | Main consumers |
+|---|---|---|---|
+| `order.events.v1` | `order_id` | Order relay | Reporting, Notification, Reconciliation |
+| `risk.events.v1` | `user_id` | Risk relay | Reporting, Reconciliation |
+| `ledger.commands.v1` | `account_id` | Approved workflows | Ledger command consumer |
+| `ledger.events.v1` | `account_id` | Ledger relay | Risk, Reporting, Reconciliation, Notification |
+| `matching.events.v1` | `market_id` | Matching | Reporting, Reconciliation, Order projection |
+| `notification.commands.v1` | `user_id` | Notification policy | Notification |
+| `*.dlq.v1` | original key | Consumer error handler | Operations/replay tooling |
+
+Use registry-controlled Protobuf schemas. Never reuse a field number or change
+an existing field's meaning. A common envelope should carry `event_id`,
+`event_type`, `schema_version`, `occurred_at`, `correlation_id`, `causation_id`,
+`producer`, and the typed payload.
+
+Consumer processing pattern:
+
+1. Read a record.
+2. In one local transaction, insert `event_id` into an inbox and apply the
+   projection/business change.
+3. Treat a duplicate inbox key as successful processing.
+4. Commit the Kafka offset only after the database commit.
+5. Retry transient failures with bounded backoff; quarantine poison records
+   with original topic, partition, offset, payload reference, and error.
+
+Partitioning affects correctness. Events for an account use `account_id`;
+matching events use `market_id`. Ordering is guaranteed only inside one topic
+partition, not globally.
+
+## Phase 1: ECS Fargate
+
+Run each long-running process as its own ECS service in private subnets across
+three Availability Zones. Use capacity providers in deployment automation.
+
+| Workload | Exposure | Scale on | Initial minimum |
+|---|---|---|---:|
+| Order Admission | Public ALB target | request rate, CPU, p95 latency | 3 |
+| Risk | Private discovery | request rate, CPU, p95 latency | 3 |
+| Ledger | Private discovery | request rate, DB pool saturation | 3 |
+| Matching | Private discovery | per-market queue depth, CPU | partition owners plus failover |
+| Outbox Relay | None | oldest unpublished-row age | 2 with safe leasing |
+| Reconciliation | None | Kafka lag/run duration | 1+ |
+| Reporting | Internal only | lag, CPU, request rate | 2 |
+| Notification | None | lag, provider latency | 2 |
+
+Add to the existing VPC/MSK/RDS Terraform:
+
+- ECR repositories with immutable tags and image scanning.
+- An ECS cluster with `FARGATE` and, only for interruption-safe consumers,
+  `FARGATE_SPOT` capacity.
+- Cloud Map or Service Connect private discovery.
+- A public ALB only for Order Admission; tasks receive no public IP.
+- Security groups for edge, synchronous services, Kafka, and databases.
+- One task role per service. Kafka topic/group and Secrets Manager permissions
+  belong to task roles, not the shared image-pull execution role.
+- Secrets Manager injection, CloudWatch logs/alarms, Container Insights, and
+  OpenTelemetry export.
+- Deployment circuit breakers, multi-AZ placement, graceful stop timeouts, and
+  health-aware rolling deployments.
+
+Suggested Terraform split:
+
+```text
+infra/aws/
+  network, kafka, database           # existing
+  ecr.tf
+  ecs-cluster.tf
+  service-discovery.tf
+  load-balancing.tf
+  iam-<service>.tf
+  ecs-<service>.tf
+  observability.tf
+```
+
+Each process must first have a non-root image, `/healthz`, dependency-aware
+`/readyz`, graceful `SIGTERM`, explicit resource/connection/time limits,
+structured correlation-aware logs, metrics, and trace propagation over HTTP,
+gRPC, and Kafka headers.
+
+## Phase 2: hybrid ECS capacity
+
+Measure Fargate before deciding it is inadequate. Then create an EC2 Auto
+Scaling group capacity provider and move Order and Matching independently.
+
+| Workload class | Target | Rationale |
+|---|---|---|
+| Order Admission, Matching | ECS on EC2 | Stable hot path, tighter CPU/network control, predictable utilization |
+| Ledger, Risk | Fargate until measurements justify a move | Stateless compute even though their dependencies hold state |
+| Relay, Reconciliation, Reporting, Notification | Fargate; Spot only where interruption-safe | Bursty/asynchronous work recovers from replacement |
+
+Spread EC2 capacity and tasks across zones, enable managed draining, and keep
+replacement headroom. Matching needs lease/coordinator-based partition
+ownership with fencing tokens so two tasks cannot own one market after a
+network partition.
+
+## Kubernetes portability
+
+| Concern | ECS | Kubernetes |
+|---|---|---|
+| Long-running workload | ECS Service | Deployment |
+| Migration/batch | Standalone task | Job |
+| Scheduled reconciliation/report | EventBridge scheduled task | CronJob |
+| Discovery | Cloud Map/Service Connect | Service and DNS |
+| Configuration | Task environment | ConfigMap |
+| Secrets | Secrets Manager injection | External Secrets/CSI plus AWS secret store |
+| Identity | Task role | ServiceAccount workload identity |
+| Autoscaling | ECS Service Auto Scaling | HPA/KEDA |
+| Maintenance availability | healthy-percent/AZ spread | rolling strategy/topology spread/PDB |
+| Placement | capacity provider | node pools, labels, taints, affinity |
+
+Use an EC2-backed performance node pool for Order and Matching and a general or
+serverless pool for asynchronous services. Keep MSK and RDS managed outside the
+cluster initially; moving them into Kubernetes adds risk without improving the
+service boundary.
+
+## Migration order and exit gates
+
+### 0. Baseline
+
+Standardize IDs, event envelopes, health, shutdown, and configuration. Record
+latency, throughput, error rates, Kafka lag, DB saturation, and financial
+invariants. Add duplicate/replay contract tests.
+
+**Gate:** current behavior and objectives are measurable.
+
+### 1. Extract Risk
+
+Put the existing deterministic risk logic behind an in-process interface, add a
+versioned `CheckOrder` gRPC service, deploy it in shadow mode, compare decisions,
+then switch Order behind a feature flag. Use a strict timeout and explicit
+fail-closed policy before removing the embedded implementation.
+
+**Gate:** independent deployment, zero unexplained shadow mismatches, tested
+rollback.
+
+### 2. Make event publication durable
+
+Add transactional outboxes to Order and stateful Risk changes. Harden relay
+leasing, retries, schema validation, observability, and shutdown.
+
+**Gate:** killing a process between DB commit and publish loses no event;
+redelivery creates no duplicate business effect.
+
+### 3. Add consumers
+
+Build Notification first with an inbox and fake provider. Add rebuildable
+Reporting projections. Run Reconciliation in detect-only mode, then require
+approval for repair commands before automating proven cases.
+
+**Gate:** projections rebuild, lag is visible, poison records quarantine, and
+replay has a runbook.
+
+### 4. Deploy on Fargate
+
+Add ECS/IAM/discovery/ALB/autoscaling/telemetry pipelines. Exercise task death,
+broker interruption, DB failover, slow consumers, and provider failure.
+
+**Gate:** a task or AZ loss preserves agreed availability and Ledger invariants.
+
+### 5. Move measured hot paths to EC2
+
+Move Order and Matching one at a time; rerun load, failure, rolling-deployment,
+cost, and rollback tests.
+
+**Gate:** the move improves a named target and rollback to Fargate works.
+
+### 6. Adopt Kubernetes
+
+Move a stateless consumer first, then other asynchronous services, Ledger/Risk,
+and finally Order/Matching. Shadow consumers use separate consumer groups and
+must suppress side effects.
+
+**Gate:** behavior, load, failure, security, cost, and rollback criteria pass.
+
+## Production checklist
+
+- [ ] ADRs for synchronous calls, partition keys, failure policy, and ownership
+- [ ] Protobuf compatibility checks in CI
+- [ ] Per-service database roles and Kafka IAM policies
+- [ ] Transactional outboxes and idempotent inboxes
+- [x] Correlation/trace context across HTTP, gRPC, and Kafka for current services
+- [ ] RED metrics, consumer-lag alarms, and per-service dashboards
+- [ ] Replay, DLQ, stuck-reservation, broker, and database runbooks
+- [ ] Load tests for normal traffic, hot accounts, and partition skew
+- [ ] Backup restore and reconciliation proof
+- [ ] ECS and Kubernetes rollback drills
+
+## References
+
+- [AWS ECS capacity providers](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/capacity-launch-type-comparison.html)
+- [AWS ECS service discovery](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/create-service-discovery.html)
+- [AWS MSK IAM access control](https://docs.aws.amazon.com/msk/latest/developerguide/iam-access-control.html)
+- [Kubernetes Horizontal Pod Autoscaling](https://kubernetes.io/docs/concepts/workloads/autoscaling/horizontal-pod-autoscale/)
+- [Kubernetes disruptions](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/)

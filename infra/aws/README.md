@@ -22,6 +22,7 @@ It creates:
 - An opt-in, private, single-replica Matching Engine ECS service
 - An opt-in, private, single-replica Ledger ECS service
 - An opt-in, private, single-replica Outbox Relay ECS service
+- One-off Ledger and Outbox schema migration task definitions
 - An opt-in, private Order ECS service with CPU target tracking (1–3 tasks)
 - RDS-managed database credentials stored in Secrets Manager
 - IAM authentication and TLS-only client connections
@@ -255,6 +256,25 @@ least-privilege database user and separate migration ownership before
 production use. The service starts at one task and uses Fargate rather than
 Spot. A secret rotation requires a new deployment to refresh the injected
 password.
+
+## One-off database migration tasks
+
+When the Ledger or Outbox image digest is set, Terraform also registers a
+separate Fargate task definition with the same image and `migrate` command.
+The task receives only database connection settings and the RDS-managed
+password; it does not receive the application's MSK task role, open a service
+port, or run continuously. Retrieve its ARN with
+`ledger_migration_task_definition_arn` or
+`outbox_migration_task_definition_arn`. Run it as a standalone ECS task in a
+private subnet with `cex_client_security_group_id` attached and public IP
+assignment disabled. Wait for the task to stop and verify its container exit
+code is zero before proceeding; `tasks-stopped` alone does not mean success.
+
+Terraform **registers but does not execute** these tasks. Normal Ledger and
+Outbox service startup still runs migrations, so deployment ordering and a
+separate least-privilege runtime database user are not yet in place. The
+one-off definitions are a prerequisite for that later split, not a claim that
+it has already happened.
 
 ## Private Order ECS service
 

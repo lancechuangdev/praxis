@@ -166,6 +166,16 @@ output "outbox_ecs_service_arn" {
   value       = var.outbox_image_digest == null ? null : aws_ecs_service.outbox[0].id
 }
 
+output "ledger_migration_task_definition_arn" {
+  description = "One-off Ledger migration task definition ARN when ledger_image_digest is set. Terraform does not run the task."
+  value       = var.ledger_image_digest == null ? null : aws_ecs_task_definition.ledger_migration[0].arn
+}
+
+output "outbox_migration_task_definition_arn" {
+  description = "One-off Outbox migration task definition ARN when outbox_image_digest is set. Terraform does not run the task."
+  value       = var.outbox_image_digest == null ? null : aws_ecs_task_definition.outbox_migration[0].arn
+}
+
 output "order_ecs_service_arn" {
   description = "Private Order ECS service ARN when order_image_digest is set. The public ALB listener still returns 503."
   value       = var.order_image_digest == null ? null : aws_ecs_service.order[0].id
