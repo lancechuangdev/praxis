@@ -34,3 +34,8 @@ order_alb_deletion_protection = false
 # Set only after building and pushing the matching-engine image to its ECR
 # repository. This mock remains single-replica and is not production matching.
 matching_image_digest = null
+
+# Set only after building and pushing the ledger-service image to ECR.
+# This initial rollout injects the RDS-managed admin password; use a dedicated
+# least-privilege database role before treating it as production-ready.
+ledger_image_digest = null

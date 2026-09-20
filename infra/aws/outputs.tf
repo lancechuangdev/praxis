@@ -150,3 +150,13 @@ output "matching_ecs_service_arn" {
   description = "Matching ECS service ARN when matching_image_digest is set."
   value       = var.matching_image_digest == null ? null : aws_ecs_service.matching[0].id
 }
+
+output "ledger_task_security_group_id" {
+  description = "Private Ledger task ingress security group."
+  value       = aws_security_group.ledger_task.id
+}
+
+output "ledger_ecs_service_arn" {
+  description = "Ledger ECS service ARN when ledger_image_digest is set."
+  value       = var.ledger_image_digest == null ? null : aws_ecs_service.ledger[0].id
+}

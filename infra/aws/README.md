@@ -20,6 +20,7 @@ It creates:
 - An optional HTTPS-only Order ALB foundation, disabled by default
 - A private Cloud Map namespace with Ledger and Matching gRPC service records
 - An opt-in, private, single-replica Matching Engine ECS service
+- An opt-in, private, single-replica Ledger ECS service
 - RDS-managed database credentials stored in Secrets Manager
 - IAM authentication and TLS-only client connections
 - Separate KMS encryption keys for MSK and PostgreSQL
@@ -173,9 +174,11 @@ service cannot land on Spot accidentally. A later service definition may opt
 an interruption-safe consumer into `FARGATE_SPOT` explicitly.
 
 The shared task execution role has AWS's managed execution policy for ECR image
-pulls and CloudWatch log delivery. It is deliberately separate from application
-task roles: Ledger, Matching, Order, and relays will receive narrowly scoped
-roles for their own Kafka, database-authentication, secret, and other runtime
+pulls and CloudWatch log delivery. Ledger uses a dedicated execution role so
+its database secret permission is not shared. Execution roles are deliberately
+separate from application task roles: Ledger, Matching, Order, and relays
+receive narrowly scoped roles for their own Kafka, database-authentication,
+secret, and other runtime
 permissions. Terraform also creates a retained CloudWatch application log group
 for every current service.
 
@@ -215,6 +218,25 @@ partition leasing, fencing, and recovery are implemented. Order tasks must
 later attach `order_grpc_client_security_group_id` to call its private gRPC
 port `9092`; the Matching task group permits that source only. The existing
 CEX client group supplies the task's outbound MSK access.
+
+## Ledger ECS service
+
+Ledger is also disabled by default. Build and push the Ledger image, then set
+`ledger_image_digest` to its `sha256:...` digest to create one private Fargate
+task. It registers its gRPC port `9091` in Cloud Map, consumes
+`ledger.commands.v1` through MSK IAM/TLS, and uses `/readyz` for container
+health checks. Only tasks with `order_grpc_client_security_group_id` can call
+its gRPC port; there is no public Ledger listener.
+
+The task reads the RDS-managed secret's `password` JSON key through a dedicated
+Ledger execution role; the shared execution role cannot read that secret. Its
+database host, name, and username come from Terraform;
+the password itself is not put in Terraform state. ECS injects the password at
+task startup, so a secret rotation requires a new deployment. This first
+single-task rollout uses the RDS *admin* account because the stack does not
+yet provision a dedicated Ledger database role. Give Ledger a least-privilege
+database user and separate migration ownership before production use. Its
+stop-before-start deployment can briefly interrupt Ledger requests.
 
 ## Application task roles
 

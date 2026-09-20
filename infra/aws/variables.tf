@@ -219,6 +219,18 @@ variable "ledger_consumer_group" {
   }
 }
 
+variable "ledger_image_digest" {
+  description = "Opt-in Ledger image digest (sha256:...) already pushed to its ECR repository. Null creates no Ledger task definition or ECS service."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.ledger_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.ledger_image_digest))
+    error_message = "ledger_image_digest must be null or a lowercase sha256 digest with 64 hexadecimal characters."
+  }
+}
+
 variable "matching_image_digest" {
   description = "Opt-in Matching image digest (sha256:...) already pushed to its ECR repository. Null creates no Matching task definition or ECS service."
   type        = string
