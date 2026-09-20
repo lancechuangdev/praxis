@@ -51,7 +51,7 @@ func main() {
 	}
 	var publisher engine.Publisher = engine.NoopPublisher{}
 	if cfg.KafkaEnabled {
-		publisher = engine.NewKafkaPublisher(cfg.KafkaBrokers, cfg.EventsTopic, cfg.KafkaBatchSize, cfg.KafkaBatchBytes, cfg.KafkaBatchTimeout, cfg.KafkaTimeout)
+		publisher = engine.NewKafkaPublisher(cfg.KafkaBrokers, cfg.EventsTopic, cfg.KafkaAuth, cfg.KafkaBatchSize, cfg.KafkaBatchBytes, cfg.KafkaBatchTimeout, cfg.KafkaTimeout)
 	}
 	defer publisher.Close()
 	metrics := &engine.Metrics{}

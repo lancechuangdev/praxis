@@ -78,7 +78,7 @@ func main() {
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Store: repo, DB: db, Metrics: metrics}.Handler(), "ledger.http"), ReadHeaderTimeout: 5 * time.Second}
-	consumer := messaging.NewConsumer(cfg.KafkaBrokers, cfg.CommandsTopic, cfg.ConsumerGroup, db, repo, log)
+	consumer := messaging.NewConsumer(cfg.KafkaBrokers, cfg.CommandsTopic, cfg.ConsumerGroup, cfg.KafkaAuth, db, repo, log)
 	errCh := make(chan error, 3)
 	go func() { errCh <- grpcServer.Serve(listener) }()
 	go func() { errCh <- httpServer.ListenAndServe() }()

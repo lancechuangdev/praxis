@@ -57,7 +57,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	writer := messaging.NewWriter(messaging.WriterConfig{Brokers: cfg.Brokers, BatchSize: cfg.BatchSize, BatchBytes: cfg.BatchBytes, BatchTimeout: cfg.BatchTimeout})
+	writer := messaging.NewWriter(messaging.WriterConfig{Brokers: cfg.Brokers, Auth: cfg.KafkaAuth, BatchSize: cfg.BatchSize, BatchBytes: cfg.BatchBytes, BatchTimeout: cfg.BatchTimeout})
 	metrics := &relay.Metrics{}
 	worker := &relay.Relay{Store: store.Postgres{DB: db}, Publisher: writer, InstanceID: cfg.InstanceID, ClaimSize: cfg.ClaimSize, LeaseDuration: cfg.LeaseDuration, PollInterval: cfg.PollInterval, Log: log, Metrics: metrics}
 

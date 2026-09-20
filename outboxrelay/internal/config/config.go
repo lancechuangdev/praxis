@@ -6,11 +6,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"praxis/outboxrelay/internal/kafkaauth"
 )
 
 type Config struct {
 	DatabaseURL   string
 	Brokers       []string
+	KafkaAuth     kafkaauth.Config
 	InstanceID    string
 	HTTPAddress   string
 	ClaimSize     int
@@ -23,7 +26,11 @@ type Config struct {
 
 func Load() (Config, error) {
 	host, _ := os.Hostname()
-	c := Config{DatabaseURL: os.Getenv("OUTBOX_DATABASE_URL"), Brokers: strings.Split(value("OUTBOX_KAFKA_BROKERS", "localhost:9092"), ","), InstanceID: value("OUTBOX_INSTANCE_ID", host), HTTPAddress: value("OUTBOX_HTTP_ADDRESS", ":8082"), ClaimSize: integer("OUTBOX_CLAIM_SIZE", 500), LeaseDuration: duration("OUTBOX_LEASE_DURATION", 30*time.Second), PollInterval: duration("OUTBOX_POLL_INTERVAL", 100*time.Millisecond), BatchSize: integer("OUTBOX_KAFKA_BATCH_SIZE", 500), BatchBytes: int64(integer("OUTBOX_KAFKA_BATCH_BYTES", 512*1024)), BatchTimeout: duration("OUTBOX_KAFKA_BATCH_TIMEOUT", 5*time.Millisecond)}
+	kafkaAuth, err := kafkaauth.Load()
+	if err != nil {
+		return Config{}, err
+	}
+	c := Config{DatabaseURL: os.Getenv("OUTBOX_DATABASE_URL"), Brokers: strings.Split(value("OUTBOX_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: kafkaAuth, InstanceID: value("OUTBOX_INSTANCE_ID", host), HTTPAddress: value("OUTBOX_HTTP_ADDRESS", ":8082"), ClaimSize: integer("OUTBOX_CLAIM_SIZE", 500), LeaseDuration: duration("OUTBOX_LEASE_DURATION", 30*time.Second), PollInterval: duration("OUTBOX_POLL_INTERVAL", 100*time.Millisecond), BatchSize: integer("OUTBOX_KAFKA_BATCH_SIZE", 500), BatchBytes: int64(integer("OUTBOX_KAFKA_BATCH_BYTES", 512*1024)), BatchTimeout: duration("OUTBOX_KAFKA_BATCH_TIMEOUT", 5*time.Millisecond)}
 	if c.DatabaseURL == "" {
 		return c, errors.New("OUTBOX_DATABASE_URL is required")
 	}

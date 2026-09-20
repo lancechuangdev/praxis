@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"praxis/matchingengine/internal/kafkaauth"
 )
 
 type Config struct {
@@ -13,6 +15,7 @@ type Config struct {
 	EngineLatency            time.Duration
 	KafkaEnabled             bool
 	KafkaBrokers             []string
+	KafkaAuth                kafkaauth.Config
 	EventsTopic              string
 	KafkaTimeout             time.Duration
 	KafkaBatchSize           int
@@ -21,10 +24,14 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	kafkaAuth, err := kafkaauth.Load()
+	if err != nil {
+		return Config{}, err
+	}
 	c := Config{
 		GRPCAddress: value("MATCHING_GRPC_ADDRESS", ":9092"), HTTPAddress: value("MATCHING_HTTP_ADDRESS", ":8084"),
 		EngineLatency: duration("MATCHING_ENGINE_LATENCY", time.Millisecond), KafkaEnabled: boolean("MATCHING_KAFKA_ENABLED", true),
-		KafkaBrokers: split(value("MATCHING_KAFKA_BROKERS", "localhost:9092")), EventsTopic: value("MATCHING_KAFKA_TOPIC", "matching.events.v1"),
+		KafkaBrokers: split(value("MATCHING_KAFKA_BROKERS", "localhost:9092")), KafkaAuth: kafkaAuth, EventsTopic: value("MATCHING_KAFKA_TOPIC", "matching.events.v1"),
 		KafkaTimeout: duration("MATCHING_KAFKA_TIMEOUT", 2*time.Second), KafkaBatchSize: integer("MATCHING_KAFKA_BATCH_SIZE", 500),
 		KafkaBatchBytes: int64(integer("MATCHING_KAFKA_BATCH_BYTES", 512*1024)), KafkaBatchTimeout: duration("MATCHING_KAFKA_BATCH_TIMEOUT", 2*time.Millisecond),
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/segmentio/kafka-go"
+	"praxis/ledgerservice/internal/kafkaauth"
 	"praxis/ledgerservice/internal/ledger"
 )
 
@@ -66,8 +67,8 @@ type Consumer struct {
 	Log    *slog.Logger
 }
 
-func NewConsumer(brokers []string, topic, group string, db *pgxpool.Pool, s ledger.Store, log *slog.Logger) *Consumer {
-	return &Consumer{Reader: kafka.NewReader(kafka.ReaderConfig{Brokers: brokers, Topic: topic, GroupID: group, CommitInterval: 0, MinBytes: 1, MaxBytes: 10e6}), DB: db, Store: s, Name: group, Log: log}
+func NewConsumer(brokers []string, topic, group string, auth kafkaauth.Config, db *pgxpool.Pool, s ledger.Store, log *slog.Logger) *Consumer {
+	return &Consumer{Reader: kafka.NewReader(kafka.ReaderConfig{Brokers: brokers, Topic: topic, GroupID: group, CommitInterval: 0, MinBytes: 1, MaxBytes: 10e6, Dialer: auth.Dialer()}), DB: db, Store: s, Name: group, Log: log}
 }
 func (c *Consumer) Close() error { return c.Reader.Close() }
 func (c *Consumer) Run(ctx context.Context) error {

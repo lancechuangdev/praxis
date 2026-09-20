@@ -202,12 +202,28 @@ definition's `task_role_arn`; do not substitute the shared execution role. Each
 trust policy permits ECS tasks from this account and Region to assume the role.
 AWS does not support narrowing the trust policy to one ECS cluster ARN.
 
-These roles intentionally have **no application permissions yet**. In
-particular, the current Go Kafka clients use unauthenticated connections, while
-the Terraform MSK cluster requires IAM/TLS. Before deploying those clients to
-MSK, add IAM/TLS client support and attach topic- and group-scoped permissions
-to the appropriate task roles. A role alone does not authenticate a Kafka
-connection or make the current service images deployable to this cluster.
+These roles intentionally have **no application permissions yet**. The Go
+Kafka clients support opt-in IAM/TLS (below), but before deploying them to MSK,
+attach topic- and group-scoped permissions to the appropriate task roles. A
+role alone does not authorize a Kafka connection or make the current service
+images deployable to this cluster.
+
+## Kafka client authentication
+
+Ledger, Matching, and Outbox Relay default to `KAFKA_AUTH_MODE=plaintext` for
+local Compose. For the IAM-authenticated MSK bootstrap brokers, set
+`KAFKA_AUTH_MODE=msk_iam`, `AWS_REGION` to the cluster Region, and each
+service's `*_KAFKA_BROKERS` variable to `bootstrap_brokers_sasl_iam`. The IAM
+mode uses TLS certificate verification and obtains a fresh SASL/OAUTHBEARER
+token from the ECS task role for each new broker connection. It fails startup
+configuration validation if `AWS_REGION` is missing. Do not use the plaintext
+mode against the IAM-only MSK cluster.
+
+The IAM task-role policies and topic-name migration remain separate deployment
+steps. In particular, the Ledger SQL currently writes outbox rows with topic
+`ledger-events`, but this stack provisions `ledger.events.v1`; the relay will
+not publish those rows successfully until the names are aligned. Ledger's
+command-consumer topic must likewise be configured to an existing MSK topic.
 
 ## Order ALB foundation
 

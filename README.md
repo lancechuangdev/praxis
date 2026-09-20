@@ -38,6 +38,11 @@ The repository contains:
 - [Kubernetes one-hour crash course](docs/kubernetes-one-hour-crash-course.md)
 - [Deposit and trading reference architecture](#cex-deposit-and-trading-reference-architecture)
 
+For AWS MSK, the Ledger, Matching, and Outbox Relay Kafka clients support
+opt-in IAM/TLS with `KAFKA_AUTH_MODE=msk_iam` and `AWS_REGION`. The local
+Compose stack remains plaintext by default. See the AWS infrastructure guide
+for remaining IAM-policy and topic-name deployment prerequisites.
+
 ## Quick start
 
 Prerequisites are Go, Docker with the Compose plugin, GNU Make, and `curl`.

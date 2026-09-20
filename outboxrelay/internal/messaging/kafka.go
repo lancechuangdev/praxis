@@ -4,10 +4,12 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
+	"praxis/outboxrelay/internal/kafkaauth"
 )
 
 type WriterConfig struct {
 	Brokers      []string
+	Auth         kafkaauth.Config
 	BatchSize    int
 	BatchBytes   int64
 	BatchTimeout time.Duration
@@ -16,6 +18,7 @@ type WriterConfig struct {
 func NewWriter(cfg WriterConfig) *kafka.Writer {
 	return &kafka.Writer{
 		Addr:         kafka.TCP(cfg.Brokers...),
+		Transport:    cfg.Auth.Transport(),
 		Balancer:     &kafka.Hash{},
 		RequiredAcks: kafka.RequireAll,
 		Async:        false,

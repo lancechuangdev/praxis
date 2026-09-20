@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	matchingv1 "praxis/matchingengine/gen/matching/v1"
+	"praxis/matchingengine/internal/kafkaauth"
 )
 
 var tracer = otel.Tracer("praxis/matching-engine")
@@ -124,8 +125,8 @@ type KafkaPublisher struct {
 	timeout time.Duration
 }
 
-func NewKafkaPublisher(brokers []string, topic string, size int, bytes int64, batchTimeout, timeout time.Duration) *KafkaPublisher {
-	return &KafkaPublisher{topic: topic, timeout: timeout, writer: &kafka.Writer{Addr: kafka.TCP(brokers...), Balancer: &kafka.Hash{}, RequiredAcks: kafka.RequireAll, Async: false, BatchSize: size, BatchBytes: bytes, BatchTimeout: batchTimeout, Compression: kafka.Lz4, MaxAttempts: 5, WriteTimeout: timeout, ReadTimeout: timeout}}
+func NewKafkaPublisher(brokers []string, topic string, auth kafkaauth.Config, size int, bytes int64, batchTimeout, timeout time.Duration) *KafkaPublisher {
+	return &KafkaPublisher{topic: topic, timeout: timeout, writer: &kafka.Writer{Addr: kafka.TCP(brokers...), Transport: auth.Transport(), Balancer: &kafka.Hash{}, RequiredAcks: kafka.RequireAll, Async: false, BatchSize: size, BatchBytes: bytes, BatchTimeout: batchTimeout, Compression: kafka.Lz4, MaxAttempts: 5, WriteTimeout: timeout, ReadTimeout: timeout}}
 }
 func (p *KafkaPublisher) Publish(ctx context.Context, event Event) error {
 	ctx, span := tracer.Start(ctx, "kafka.produce", trace.WithSpanKind(trace.SpanKindProducer), trace.WithAttributes(attribute.String("messaging.system", "kafka"), attribute.String("messaging.destination.name", p.topic), attribute.String("messaging.message.id", event.ID)))

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"praxis/ledgerservice/internal/kafkaauth"
 )
 
 type Config struct {
@@ -17,6 +18,7 @@ type Config struct {
 	DBQueryExecMode              pgx.QueryExecMode
 	HTTPAddress, GRPCAddress     string
 	KafkaBrokers                 []string
+	KafkaAuth                    kafkaauth.Config
 	CommandsTopic, ConsumerGroup string
 }
 
@@ -33,7 +35,11 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	c := Config{DatabaseURL: os.Getenv("LEDGER_DATABASE_URL"), DBMaxConns: maxConns, DBStatementCacheCapacity: statementCacheCapacity, DBQueryExecMode: queryExecMode, HTTPAddress: value("LEDGER_HTTP_ADDRESS", ":8081"), GRPCAddress: value("LEDGER_GRPC_ADDRESS", ":9091"), KafkaBrokers: strings.Split(value("LEDGER_KAFKA_BROKERS", "localhost:9092"), ","), CommandsTopic: value("LEDGER_COMMANDS_TOPIC", "ledger-commands"), ConsumerGroup: value("LEDGER_CONSUMER_GROUP", "cex-ledger-service")}
+	kafkaAuth, err := kafkaauth.Load()
+	if err != nil {
+		return Config{}, err
+	}
+	c := Config{DatabaseURL: os.Getenv("LEDGER_DATABASE_URL"), DBMaxConns: maxConns, DBStatementCacheCapacity: statementCacheCapacity, DBQueryExecMode: queryExecMode, HTTPAddress: value("LEDGER_HTTP_ADDRESS", ":8081"), GRPCAddress: value("LEDGER_GRPC_ADDRESS", ":9091"), KafkaBrokers: strings.Split(value("LEDGER_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: kafkaAuth, CommandsTopic: value("LEDGER_COMMANDS_TOPIC", "ledger-commands"), ConsumerGroup: value("LEDGER_CONSUMER_GROUP", "cex-ledger-service")}
 	if c.DatabaseURL == "" {
 		return c, errors.New("LEDGER_DATABASE_URL is required")
 	}
