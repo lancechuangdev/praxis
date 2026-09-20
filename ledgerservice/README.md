@@ -45,6 +45,10 @@ GET /readyz
 GET /metrics
 ```
 
+The image also supports `/ledger-service healthcheck` for ECS container health
+checks. It requests the local `/readyz` endpoint, which verifies PostgreSQL
+connectivity, and exits nonzero when Ledger is not ready.
+
 ## Reserve funds
 
 Alice must first have available funds, normally from a posted deposit:
