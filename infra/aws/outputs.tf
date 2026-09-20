@@ -135,3 +135,18 @@ output "order_task_security_group_id" {
   description = "Private Order task security group allowing inbound HTTP only from the ALB."
   value       = var.order_alb_enabled ? aws_security_group.order_task[0].id : null
 }
+
+output "order_grpc_client_security_group_id" {
+  description = "Security group to attach to future Order tasks so they can reach private gRPC services."
+  value       = aws_security_group.order_grpc_clients.id
+}
+
+output "matching_task_security_group_id" {
+  description = "Private Matching task ingress security group."
+  value       = aws_security_group.matching_task.id
+}
+
+output "matching_ecs_service_arn" {
+  description = "Matching ECS service ARN when matching_image_digest is set."
+  value       = var.matching_image_digest == null ? null : aws_ecs_service.matching[0].id
+}

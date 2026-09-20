@@ -30,3 +30,7 @@ ecs_log_retention_days       = 30
 order_alb_enabled             = false
 order_alb_certificate_arn     = null
 order_alb_deletion_protection = false
+
+# Set only after building and pushing the matching-engine image to its ECR
+# repository. This mock remains single-replica and is not production matching.
+matching_image_digest = null

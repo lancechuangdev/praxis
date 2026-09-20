@@ -19,6 +19,7 @@ It creates:
 - A distinct IAM task role for each current application service
 - An optional HTTPS-only Order ALB foundation, disabled by default
 - A private Cloud Map namespace with Ledger and Matching gRPC service records
+- An opt-in, private, single-replica Matching Engine ECS service
 - RDS-managed database credentials stored in Secrets Manager
 - IAM authentication and TLS-only client connections
 - Separate KMS encryption keys for MSK and PostgreSQL
@@ -193,6 +194,27 @@ the namespace and services alone does **not** register task IPs: the later ECS
 service definitions must attach the corresponding
 `grpc_service_discovery_arns` as service registries. Their task security groups
 must also allow Order-to-Ledger and Order-to-Matching gRPC traffic.
+
+## First ECS service: mock Matching Engine
+
+Matching is the first ECS workload because it does not need a database secret.
+It is **not** a production matching engine: partition sequence and request
+deduplication live only in memory. The ECS service is absent by default. After
+building and pushing an image to the Matching ECR repository, set
+`matching_image_digest` to its `sha256:...` digest to create the task definition
+and one private Fargate task. The task runs without a public IP, exports JSON
+logs to its CloudWatch log group, authenticates to MSK with IAM/TLS, and
+registers its private IP in Cloud Map.
+
+The task's health command calls its local `/readyz` endpoint without requiring
+a shell or `curl` in the non-root distroless image. ECS uses a stop-before-start
+deployment (`minimum_healthy_percent = 0`, `maximum_percent = 100`) so a
+replacement cannot overlap this mock's in-memory partition ownership; expect
+brief unavailability during deployments. Do not scale it above one task until
+partition leasing, fencing, and recovery are implemented. Order tasks must
+later attach `order_grpc_client_security_group_id` to call its private gRPC
+port `9092`; the Matching task group permits that source only. The existing
+CEX client group supplies the task's outbound MSK access.
 
 ## Application task roles
 

@@ -17,3 +17,8 @@ recovery, so it is not a production matching engine.
 
 Set `MATCHING_KAFKA_ENABLED=false` to measure gRPC/engine overhead without
 Kafka. Default ports are gRPC `:9092` and HTTP health/metrics `:8084`.
+
+The binary also supports a `healthcheck` command used by ECS: it exits
+successfully only when the local `/readyz` endpoint returns HTTP 200. The
+Terraform Matching ECS service is opt-in by image digest and deliberately
+single-replica because this mock has no durable partition ownership.
