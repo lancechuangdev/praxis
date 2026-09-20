@@ -102,5 +102,15 @@ resource "aws_ecs_service" "order" {
     assign_public_ip = false
   }
 
-  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_ecs_service.ledger, aws_ecs_service.matching]
+  dynamic "load_balancer" {
+    for_each = var.order_alb_enabled ? [1] : []
+
+    content {
+      target_group_arn = aws_lb_target_group.order[0].arn
+      container_name   = "order-service"
+      container_port   = 8083
+    }
+  }
+
+  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_ecs_service.ledger, aws_ecs_service.matching, aws_lb_listener.order_target_registration]
 }

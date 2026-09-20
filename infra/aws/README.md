@@ -265,9 +265,11 @@ endpoint for health checks. The task has no public IP. Its security group
 allows outbound gRPC only to Ledger and Matching, plus HTTPS to AWS APIs
 through NAT for image pulls and logs.
 
-This service is deliberately **not attached to the public ALB**. Even when
-`order_alb_enabled` is true, the HTTPS listener continues to return 503.
-Edge authentication and ALB forwarding must be implemented before admitting
+When `order_alb_enabled` is true, ECS registers Order tasks with the ALB target
+group so ALB health checks can run. A separate HTTP listener associates the
+target group but has **no security-group ingress rule** on its port 8080; do
+not open that port. The public HTTPS listener still returns 503. Edge
+authentication and HTTPS forwarding must be implemented before admitting
 public orders. The current Order service still embeds mock Risk logic and the
 Matching Engine remains an in-memory mock; this is not a production rollout.
 

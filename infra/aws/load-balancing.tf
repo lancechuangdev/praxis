@@ -115,3 +115,19 @@ resource "aws_lb_listener" "order_https" {
     }
   }
 }
+
+# Associates the target group with this ALB so ECS can register Order tasks.
+# The ALB security group intentionally has no ingress rule for port 8080.
+# Public HTTPS stays on the fixed 503 response until authentication is ready.
+resource "aws_lb_listener" "order_target_registration" {
+  count = var.order_alb_enabled && var.order_image_digest != null ? 1 : 0
+
+  load_balancer_arn = aws_lb.order[0].arn
+  port              = 8080
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.order[0].arn
+  }
+}

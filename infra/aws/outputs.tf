@@ -167,6 +167,6 @@ output "outbox_ecs_service_arn" {
 }
 
 output "order_ecs_service_arn" {
-  description = "Private Order ECS service ARN when order_image_digest is set. Not yet connected to the public ALB."
+  description = "Private Order ECS service ARN when order_image_digest is set. The public ALB listener still returns 503."
   value       = var.order_image_digest == null ? null : aws_ecs_service.order[0].id
 }
