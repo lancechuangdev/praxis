@@ -279,6 +279,15 @@ to the service's `desired_count` after creation so autoscaling can own it.
 This does not expose Order publicly; the HTTPS listener still returns 503.
 Ledger, Matching, and Outbox are not autoscaled by this policy.
 
+## ECS availability alarms
+
+Each enabled ECS service gets a CloudWatch alarm when its Container Insights
+`RunningTaskCount` stays below one for three one-minute periods. Missing metric
+data also counts as breaching, so stopped services do not silently disappear
+from the signal. These alarms are created only for services with an image
+digest; they have no notification action yet. Configure an SNS or incident
+destination before relying on them for paging.
+
 ## Application task roles
 
 Terraform creates a separate task role for Order, Ledger, Matching, and Outbox
