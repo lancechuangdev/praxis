@@ -27,9 +27,13 @@ Defaults:
 | `OUTBOX_KAFKA_BATCH_BYTES` | `524288` |
 | `OUTBOX_KAFKA_BATCH_TIMEOUT` | `5ms` |
 
-`OUTBOX_DATABASE_URL` is required and should point to the ledger database. The
-relay migration creates `outbox_events` when it is absent and upgrades an older
-ledger-created table with the lease columns when it is already present.
+`OUTBOX_DATABASE_URL` should point to the ledger database for local Compose.
+For ECS, instead set `OUTBOX_DB_HOST`, `OUTBOX_DB_USER`, `OUTBOX_DB_NAME`, and
+inject `OUTBOX_DB_PASSWORD` from Secrets Manager. The resulting PostgreSQL URL
+uses port 5432 and `sslmode=require`. `OUTBOX_DATABASE_URL` takes precedence
+when set. This configuration alone does not deploy the relay or grant database
+access. The relay migration creates `outbox_events` when absent and upgrades an
+older ledger-created table with lease columns when already present.
 
 For the AWS MSK deployment, the Ledger outbox currently stores `ledger-events`
 while the provisioned versioned topic is `ledger.events.v1`. Set
