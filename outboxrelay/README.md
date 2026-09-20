@@ -17,6 +17,7 @@ Defaults:
 | Variable | Default |
 |---|---:|
 | `OUTBOX_KAFKA_BROKERS` | `localhost:9092` |
+| `OUTBOX_KAFKA_TOPIC_MAP` | empty (publish each stored topic unchanged) |
 | `OUTBOX_INSTANCE_ID` | hostname |
 | `OUTBOX_HTTP_ADDRESS` | `:8082` |
 | `OUTBOX_CLAIM_SIZE` | `500` |
@@ -29,6 +30,13 @@ Defaults:
 `OUTBOX_DATABASE_URL` is required and should point to the ledger database. The
 relay migration creates `outbox_events` when it is absent and upgrades an older
 ledger-created table with the lease columns when it is already present.
+
+For the AWS MSK deployment, the Ledger outbox currently stores `ledger-events`
+while the provisioned versioned topic is `ledger.events.v1`. Set
+`OUTBOX_KAFKA_TOPIC_MAP=ledger-events=ledger.events.v1` on the Ledger relay.
+The mapping is applied only to outgoing Kafka messages; committed rows keep
+their original topic. The setting accepts comma-separated `source=destination`
+pairs and rejects invalid or duplicate source names.
 
 Run locally:
 

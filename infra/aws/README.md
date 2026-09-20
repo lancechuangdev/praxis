@@ -202,11 +202,11 @@ definition's `task_role_arn`; do not substitute the shared execution role. Each
 trust policy permits ECS tasks from this account and Region to assume the role.
 AWS does not support narrowing the trust policy to one ECS cluster ARN.
 
-These roles intentionally have **no application permissions yet**. The Go
-Kafka clients support opt-in IAM/TLS (below), but before deploying them to MSK,
-attach topic- and group-scoped permissions to the appropriate task roles. A
-role alone does not authorize a Kafka connection or make the current service
-images deployable to this cluster.
+The Ledger, Matching, and Outbox Relay roles receive separate MSK policies.
+Ledger can read only `ledger.commands.v1` as the configured consumer group;
+Matching can write only `matching.events.v1`; the relay can write only
+`ledger.events.v1`. Order receives no MSK grant. These roles still need other
+runtime permissions, including database access, before ECS deployment.
 
 ## Kafka client authentication
 
@@ -219,11 +219,15 @@ token from the ECS task role for each new broker connection. It fails startup
 configuration validation if `AWS_REGION` is missing. Do not use the plaintext
 mode against the IAM-only MSK cluster.
 
-The IAM task-role policies and topic-name migration remain separate deployment
-steps. In particular, the Ledger SQL currently writes outbox rows with topic
-`ledger-events`, but this stack provisions `ledger.events.v1`; the relay will
-not publish those rows successfully until the names are aligned. Ledger's
-command-consumer topic must likewise be configured to an existing MSK topic.
+For the current Ledger schema, set
+`OUTBOX_KAFKA_TOPIC_MAP=ledger-events=ledger.events.v1` on its dedicated relay.
+This changes the Kafka destination during publication without rewriting
+committed outbox rows, preserving local Compose behavior and retry semantics.
+Set `LEDGER_COMMANDS_TOPIC=ledger.commands.v1` on Ledger; its local default is
+still `ledger-commands`. Set `LEDGER_CONSUMER_GROUP` to the Terraform
+`ledger_consumer_group` value (default `cex-ledger-service`). The relay must
+only read the owning Ledger database; do not reuse its credential or topic map
+for another service's outbox.
 
 ## Order ALB foundation
 

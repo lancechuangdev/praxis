@@ -153,8 +153,11 @@ variable "ecr_repositories" {
     condition = length(var.ecr_repositories) > 0 && alltrue([
       for name in values(var.ecr_repositories) :
       can(regex("^[a-z0-9]+(?:[._/-][a-z0-9]+)*$", name))
+      ]) && length(distinct(values(var.ecr_repositories))) == length(var.ecr_repositories) && alltrue([
+      for key in ["ledger_service", "matching_engine", "order_service", "outbox_relay"] :
+      contains(keys(var.ecr_repositories), key)
     ])
-    error_message = "ecr_repositories must contain at least one valid lowercase ECR repository suffix."
+    error_message = "ecr_repositories must contain all four current service keys with unique, valid lowercase suffixes."
   }
 }
 
@@ -202,6 +205,17 @@ variable "ecs_log_retention_days" {
       731, 1096, 1827, 2192, 2557, 2922, 3288, 3653
     ], var.ecs_log_retention_days)
     error_message = "ecs_log_retention_days must be a retention period supported by CloudWatch Logs."
+  }
+}
+
+variable "ledger_consumer_group" {
+  description = "Ledger Kafka consumer group authorized by the Ledger task role; set LEDGER_CONSUMER_GROUP to the same value in ECS."
+  type        = string
+  default     = "cex-ledger-service"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9._-]+$", var.ledger_consumer_group))
+    error_message = "ledger_consumer_group must be a valid non-empty Kafka group name."
   }
 }
 

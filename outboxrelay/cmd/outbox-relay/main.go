@@ -59,7 +59,7 @@ func main() {
 
 	writer := messaging.NewWriter(messaging.WriterConfig{Brokers: cfg.Brokers, Auth: cfg.KafkaAuth, BatchSize: cfg.BatchSize, BatchBytes: cfg.BatchBytes, BatchTimeout: cfg.BatchTimeout})
 	metrics := &relay.Metrics{}
-	worker := &relay.Relay{Store: store.Postgres{DB: db}, Publisher: writer, InstanceID: cfg.InstanceID, ClaimSize: cfg.ClaimSize, LeaseDuration: cfg.LeaseDuration, PollInterval: cfg.PollInterval, Log: log, Metrics: metrics}
+	worker := &relay.Relay{Store: store.Postgres{DB: db}, Publisher: writer, TopicMap: cfg.TopicMap, InstanceID: cfg.InstanceID, ClaimSize: cfg.ClaimSize, LeaseDuration: cfg.LeaseDuration, PollInterval: cfg.PollInterval, Log: log, Metrics: metrics}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {

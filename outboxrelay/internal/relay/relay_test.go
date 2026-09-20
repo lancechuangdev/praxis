@@ -100,3 +100,18 @@ func TestRunOnceHandlesPerMessageFailures(t *testing.T) {
 		t.Fatalf("failed=%v", store.failed)
 	}
 }
+
+func TestRunOnceMapsLegacyTopic(t *testing.T) {
+	store := &fakeStore{events: []Event{{SequenceNumber: 1, ID: "e1", Topic: "ledger-events", Payload: []byte(`1`)}}}
+	publisher := &fakePublisher{}
+	r := &Relay{Store: store, Publisher: publisher, TopicMap: map[string]string{"ledger-events": "ledger.events.v1"}, InstanceID: "test", ClaimSize: 1, LeaseDuration: time.Second, Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Metrics: &Metrics{}}
+	if _, err := r.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(publisher.messages) != 1 || publisher.messages[0].Topic != "ledger.events.v1" {
+		t.Fatalf("published messages=%v", publisher.messages)
+	}
+	if store.events[0].Topic != "ledger-events" {
+		t.Fatalf("committed outbox topic changed: %q", store.events[0].Topic)
+	}
+}
