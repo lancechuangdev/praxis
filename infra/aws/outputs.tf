@@ -120,3 +120,18 @@ output "service_task_role_arns" {
   description = "Application ECS task-role ARNs keyed by service name; distinct from the shared task execution role."
   value       = { for key, role in aws_iam_role.service_task : key => role.arn }
 }
+
+output "order_alb_dns_name" {
+  description = "Public Order ALB DNS name, if enabled. The listener returns 503 until the authenticated Order ECS rollout."
+  value       = var.order_alb_enabled ? aws_lb.order[0].dns_name : null
+}
+
+output "order_target_group_arn" {
+  description = "Order IP target group ARN to attach to the future ECS service."
+  value       = var.order_alb_enabled ? aws_lb_target_group.order[0].arn : null
+}
+
+output "order_task_security_group_id" {
+  description = "Private Order task security group allowing inbound HTTP only from the ALB."
+  value       = var.order_alb_enabled ? aws_security_group.order_task[0].id : null
+}

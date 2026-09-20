@@ -24,3 +24,9 @@ ecr_untagged_retention_days       = 7
 # Enhanced Container Insights supplies task- and container-level telemetry.
 ecs_container_insights_mode = "enhanced"
 ecs_log_retention_days       = 30
+
+# Keep the public ALB disabled until edge authentication and the Order ECS
+# service are ready. Enabling it requires an ACM certificate in this Region.
+order_alb_enabled             = false
+order_alb_certificate_arn     = null
+order_alb_deletion_protection = false

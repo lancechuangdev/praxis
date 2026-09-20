@@ -17,6 +17,7 @@ It creates:
 - An ECS cluster with Fargate and opt-in Fargate Spot capacity
 - A shared task execution role and per-service CloudWatch log groups
 - A distinct IAM task role for each current application service
+- An optional HTTPS-only Order ALB foundation, disabled by default
 - A private Cloud Map namespace with Ledger and Matching gRPC service records
 - RDS-managed database credentials stored in Secrets Manager
 - IAM authentication and TLS-only client connections
@@ -207,3 +208,20 @@ the Terraform MSK cluster requires IAM/TLS. Before deploying those clients to
 MSK, add IAM/TLS client support and attach topic- and group-scoped permissions
 to the appropriate task roles. A role alone does not authenticate a Kafka
 connection or make the current service images deployable to this cluster.
+
+## Order ALB foundation
+
+The public Order ALB is off by default. To create it, set
+`order_alb_enabled = true` and provide an ACM certificate ARN in the same AWS
+Region through `order_alb_certificate_arn`. There is no public HTTP listener.
+The HTTPS listener deliberately returns `503` rather than forwarding requests:
+the current Order API does not yet authenticate clients at the edge.
+
+Terraform also creates an `ip` target group on port `8083` with `/readyz`
+health checks, plus security groups that permit only ALB-to-Order HTTP traffic.
+The future Order ECS service must attach `order_target_group_arn` and
+`order_task_security_group_id`. Before changing the listener to forward traffic,
+implement edge authentication, configure the Order service, and verify the
+health checks and load-test behavior. The task group has no outbound rules of
+its own; attach only the additional narrowly scoped groups needed for its
+private dependencies.

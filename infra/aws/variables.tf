@@ -205,6 +205,25 @@ variable "ecs_log_retention_days" {
   }
 }
 
+variable "order_alb_enabled" {
+  description = "Create the public Order ALB foundation. The HTTPS listener returns 503 until edge authentication and the ECS rollout are implemented."
+  type        = bool
+  default     = false
+}
+
+variable "order_alb_certificate_arn" {
+  description = "ACM certificate ARN for the Order HTTPS listener; required when order_alb_enabled is true."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "order_alb_deletion_protection" {
+  description = "Protect the Order ALB from accidental deletion; enable for production."
+  type        = bool
+  default     = false
+}
+
 variable "topics" {
   description = "Kafka topics managed through the Amazon MSK topic API."
   type = map(object({
