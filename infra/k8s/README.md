@@ -8,10 +8,12 @@ Notification are not implemented.
 ## Apply order
 
 First apply the AWS stack. Set a real `eks_admin_principal_arn` and a pinned
-`ledger_migration_image_digest` in `infra/aws/terraform.tfvars`. If deploying
-Outbox, also set `outbox_migration_image_digest`. The Kubernetes
-stack reads that stack's local `terraform.tfstate` directly. If the AWS state
-is elsewhere, set `aws_state_path` to its local path.
+`ledger_migration_image_digest` in `infra/aws/terraform.tfvars`. Create the
+distinct Ledger and Outbox runtime password secrets described in
+[`../aws/README.md`](../aws/README.md) and set both secret ARNs. Also set
+`outbox_migration_image_digest`. The Kubernetes stack reads that stack's local
+`terraform.tfstate` directly. If the AWS state is elsewhere, set
+`aws_state_path` to its local path.
 
 ```bash
 terraform -chdir=infra/aws init
@@ -27,11 +29,10 @@ terraform -chdir=infra/k8s init
 terraform -chdir=infra/k8s apply -var='deploy_workloads=false'
 ```
 
-After the Job completes, run the Outbox ECS migration if deploying Outbox,
-then create the restricted PostgreSQL runtime roles and Ledger runtime secret
-as described in [`../aws/README.md`](../aws/README.md).
-Set `ledger_runtime_secret_arn` and the pinned Order, Ledger, and Matching
-image digests in `infra/aws/terraform.tfvars`, then apply that stack again.
+After the Job completes, run the Outbox ECS migration. It applies the Outbox
+schema and creates the restricted Ledger and Outbox runtime roles using the
+pre-created secrets. Then set the pinned Order, Ledger, and Matching image
+digests in `infra/aws/terraform.tfvars` and apply that stack again.
 Finally, deploy the workloads with the Kubernetes stack's default setting:
 
 ```bash
@@ -72,7 +73,8 @@ kubectl -n praxis port-forward service/order 8083:8083
 
 Outbox Relay and its migration task remain on ECS Fargate. Run
 `./infra/aws/run-migrations.sh outbox` separately after the Ledger migration
-has completed and before bootstrapping the Outbox runtime role. Kubernetes application log shipping,
-managed trace/metric export, network policies, authenticated ingress, restore
-drills, and durable Matching remain separate work. No live AWS deployment or
-failure drill has been performed by this repository change.
+has completed; the task also bootstraps both runtime roles. Kubernetes
+application log shipping, managed trace/metric export, network policies,
+authenticated ingress, restore drills, and durable Matching remain separate
+work. No live AWS deployment or failure drill has been performed by this
+repository change.

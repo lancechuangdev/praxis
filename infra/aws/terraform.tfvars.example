@@ -39,8 +39,9 @@ ecs_log_retention_days       = 30
 # remains single-replica and is not production matching.
 matching_image_digest = null
 
-# First run the one-off Ledger migration Job on EKS, then set the same digest
-# for the long-running service. Only migration jobs/tasks use the RDS admin password.
+# Create distinct Ledger and Outbox runtime password secrets first, and set
+# their ARNs before the Outbox migration task. Only migration jobs/tasks use
+# the RDS admin password. Run the Ledger migration Job before Outbox migration.
 ledger_migration_image_digest = null
 ledger_image_digest           = null
 ledger_runtime_secret_arn     = ""
@@ -48,7 +49,7 @@ ledger_runtime_secret_arn     = ""
 # Alarm when Ledger falls this many records behind ledger.commands.v1.
 ledger_consumer_max_offset_lag = 1000
 
-# Run Ledger migrations before Outbox migrations, then deploy the relay.
+# Outbox migration also creates the restricted runtime roles; then deploy the relay.
 outbox_migration_image_digest = null
 outbox_image_digest           = null
 outbox_runtime_secret_arn     = ""

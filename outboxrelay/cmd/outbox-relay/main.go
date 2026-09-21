@@ -75,6 +75,14 @@ func main() {
 		os.Exit(1)
 	}
 	if mode == "migrate" {
+		if os.Getenv("OUTBOX_BOOTSTRAP_RUNTIME_ROLES") == "true" {
+			ledgerPassword := os.Getenv("LEDGER_RUNTIME_PASSWORD")
+			outboxPassword := os.Getenv("OUTBOX_RUNTIME_PASSWORD")
+			if err := migrations.BootstrapRuntimeRoles(ctx, db, ledgerPassword, outboxPassword); err != nil {
+				log.Error("runtime role bootstrap", "error", err)
+				os.Exit(1)
+			}
+		}
 		log.Info("outbox migrations applied")
 		return
 	}

@@ -44,23 +44,24 @@ from Secrets Manager through its dedicated Pod Identity role. The operator
 needs access to the private EKS API but not to the admin password. The
 password never enters Terraform state or a Kubernetes Secret.
 
-Outbox migration remains a one-off ECS Fargate task. Set
-`outbox_migration_image_digest`, apply Terraform, and run
-`./run-migrations.sh outbox`. Run it after the Ledger Job completes and before
-bootstrapping restricted database roles. Use the exact migration image digest
-that will be deployed as the service. Both migration paths serialize through
-the same PostgreSQL advisory lock.
+Before applying the Outbox migration task definition, create two distinct
+Secrets Manager secrets with JSON shape `{"password":"..."}` and set
+`ledger_runtime_secret_arn` and `outbox_runtime_secret_arn` in Terraform.
+Keep passwords out of Terraform state and shell history. Outbox migration
+remains a one-off ECS Fargate task. Set `outbox_migration_image_digest`, apply
+Terraform, and run `./run-migrations.sh outbox` after the Ledger Job completes.
+Use the exact migration image digest that will be deployed as the service.
+ECS injects the two runtime passwords from Secrets Manager into the migration
+task. After applying the Outbox schema, it creates or updates the restricted
+`ledger_runtime` and `outbox_runtime` PostgreSQL roles and grants their
+privileges; no manual `psql` step is needed. Re-running the task reapplies
+the passwords and grants. Both schema migration paths and role bootstrap
+serialize through the same PostgreSQL advisory lock.
 
-Then connect to the writer database inside the VPC as the RDS admin and run
-`psql -f bootstrap-runtime-roles.sql`. It prompts for distinct Ledger and
-Outbox runtime passwords and creates restricted `ledger_runtime` and
-`outbox_runtime` roles. Store those passwords in separate Secrets Manager
-secrets with JSON shape `{"password":"..."}` and set
-`ledger_runtime_secret_arn` and `outbox_runtime_secret_arn`. Keep passwords out
-of Terraform state and shell history. Ledger reads its password directly from
-Secrets Manager using Pod Identity; the Outbox password is injected into its
-ECS task from Secrets Manager. Use the RDS writer endpoint for both
-services and reserve the reader endpoint for replica-lag-tolerant queries.
+Ledger reads its runtime password directly from Secrets Manager using Pod
+Identity; the Outbox password is injected into its ECS task from Secrets
+Manager. Use the RDS writer endpoint for both services and reserve the reader
+endpoint for replica-lag-tolerant queries.
 
 ## Kubernetes hot path
 

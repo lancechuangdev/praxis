@@ -175,13 +175,13 @@ variable "postgres_master_username" {
 }
 
 variable "ledger_runtime_secret_arn" {
-  description = "Secrets Manager ARN of the Ledger runtime password. Required when ledger_image_digest is set; create the matching restricted PostgreSQL role first."
+  description = "Secrets Manager ARN of the Ledger runtime password. Create the secret before the Outbox migration task; that task creates the restricted PostgreSQL role."
   type        = string
   default     = ""
 }
 
 variable "outbox_runtime_secret_arn" {
-  description = "Secrets Manager ARN of the Outbox runtime password. Required when outbox_image_digest is set; create the matching restricted PostgreSQL role first."
+  description = "Secrets Manager ARN of the Outbox runtime password. Create the secret before the Outbox migration task; that task creates the restricted PostgreSQL role."
   type        = string
   default     = ""
 }

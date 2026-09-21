@@ -322,8 +322,9 @@ order book. The deployment runbook is in `infra/k8s/README.md`.
   - [x] Local Buf lint and `FILE`-level compatibility policies are configured
         independently for Ledger, Matching, and Order service contracts.
 - [ ] Per-service database roles and Kafka IAM policies for every planned service
-  - [x] Restricted Ledger and Outbox runtime roles are provisionable separately
-        from RDS-admin migration tasks; current ECS Kafka task roles are scoped.
+  - [x] The one-off Outbox migration task provisions restricted Ledger and
+        Outbox runtime roles from separate Secrets Manager passwords; current
+        ECS Kafka task roles are scoped.
 - [ ] Transactional outboxes and idempotent inboxes
   - [x] Ledger writes its outbox in the local transaction, deduplicates Kafka
         commands through an inbox, and has a separate leased Outbox Relay.
