@@ -31,24 +31,25 @@ Terraform creates immutable, scan-on-push ECR repositories for all four
 services. Publish images with unique tags, resolve their digests, and set
 `order_image_digest`, `ledger_image_digest`, `matching_image_digest`, and
 `outbox_image_digest` as appropriate. The three hot-path digests are consumed
-by the Kubernetes deployment script, not ECS task definitions.
+by the `infra/k8s` Terraform stack, not ECS task definitions.
 
 ## Database migrations and credentials
 
 Ledger migration runs as a one-off EKS Job on EC2 nodes. Set
-`ledger_migration_image_digest` and apply Terraform, then run
-`./run-migrations.sh ledger` from this directory. The Job reads the RDS admin
-password directly from Secrets Manager through its dedicated Pod Identity
-role. The script waits for the Job, prints its logs, and deletes the Job. The
-operator needs access to the private EKS API but not to the admin password.
-The password never enters Terraform state or a Kubernetes Secret.
+`ledger_migration_image_digest` and apply this AWS stack, then run
+`terraform -chdir=infra/k8s apply -var='deploy_workloads=false'` from the
+repository root. The Kubernetes Terraform stack waits for the Job to complete
+before it can deploy Ledger. The Job reads the RDS admin password directly
+from Secrets Manager through its dedicated Pod Identity role. The operator
+needs access to the private EKS API but not to the admin password. The
+password never enters Terraform state or a Kubernetes Secret.
 
 Outbox migration remains a one-off ECS Fargate task. Set
 `outbox_migration_image_digest`, apply Terraform, and run
-`./run-migrations.sh outbox`. Running `./run-migrations.sh all` executes Ledger
-first, then Outbox, and checks their exit status. Use the exact migration image
-digest that will be deployed as the service. Both migration runners serialize
-through the same PostgreSQL advisory lock.
+`./run-migrations.sh outbox`. Run it after the Ledger Job completes and before
+bootstrapping restricted database roles. Use the exact migration image digest
+that will be deployed as the service. Both migration paths serialize through
+the same PostgreSQL advisory lock.
 
 Then connect to the writer database inside the VPC as the RDS admin and run
 `psql -f bootstrap-runtime-roles.sql`. It prompts for distinct Ledger and
@@ -63,10 +64,11 @@ services and reserve the reader endpoint for replica-lag-tolerant queries.
 
 ## Kubernetes hot path
 
-EKS is always provisioned. Terraform creates the private control plane, EC2
-node group, core add-ons, Pod Identity roles for Ledger and Matching, and
-security-group paths to MSK and RDS. It does not apply Kubernetes manifests.
-Follow [`../k8s/README.md`](../k8s/README.md) to deploy Order, Ledger, and
+EKS is always provisioned. This AWS Terraform stack creates the private
+control plane, EC2 node group, core add-ons, Pod Identity roles for Ledger and
+Matching, and security-group paths to MSK and RDS. The separate Kubernetes
+Terraform stack applies the workload resources. Follow
+[`../k8s/README.md`](../k8s/README.md) to deploy Order, Ledger, and
 Matching. Order has no AWS role; Ledger can consume its command topic and
 Matching can publish its event topic through separate scoped Pod Identity
 roles. The mock Matching Engine must remain single-replica until it has

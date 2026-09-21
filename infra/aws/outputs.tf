@@ -160,6 +160,11 @@ output "eks_cluster_endpoint" {
   value       = aws_eks_cluster.this.endpoint
 }
 
+output "eks_cluster_ca_data" {
+  description = "Base64-encoded EKS cluster certificate authority data for the Kubernetes Terraform provider."
+  value       = aws_eks_cluster.this.certificate_authority[0].data
+}
+
 output "eks_cluster_security_group_id" {
   description = "EKS cluster security group used by managed nodes for VPC access to MSK and RDS."
   value       = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
@@ -180,7 +185,7 @@ output "eks_image_refs" {
 }
 
 output "eks_runtime_config" {
-  description = "Non-secret application settings for the Kubernetes deployment script."
+  description = "Non-secret application settings for the Kubernetes Terraform stack."
   value = {
     aws_region                = var.aws_region
     ledger_db_host            = aws_rds_cluster.ledger.endpoint

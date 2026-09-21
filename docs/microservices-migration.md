@@ -306,11 +306,10 @@ side effects.
 
 The default Terraform path provisions an EKS control plane, EC2 node group,
 and Pod Identity roles; Order, Ledger, and Matching have no ECS services.
-Their private Kubernetes workloads are deployed separately with
-`infra/k8s/deploy.sh`. No cluster has been applied or verified in AWS. Order
-has no public Kubernetes ingress; the mock
-Matching Engine still cannot overlap an ECS instance or recover its order
-book. The deployment runbook is in `infra/k8s/README.md`.
+Their private Kubernetes workloads are managed by the separate `infra/k8s`
+Terraform stack. No cluster has been applied or verified in AWS. Order has no
+public Kubernetes ingress; the mock Matching Engine still cannot recover its
+order book. The deployment runbook is in `infra/k8s/README.md`.
 
 **Gate:** behavior, load, failure, security, cost, and rollback criteria pass.
 

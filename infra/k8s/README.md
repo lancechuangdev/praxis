@@ -1,90 +1,78 @@
 # Praxis workloads on EKS
 
-This directory deploys **Order, Ledger, and the mock Matching Engine** onto
-EC2-backed EKS nodes. The AWS Terraform stack continues to own MSK, PostgreSQL,
-ECR, and the ECS Fargate Outbox Relay. Reporting and Notification are not
-implemented and have no Kubernetes workloads here.
+This Terraform stack deploys Order, Ledger, and the mock Matching Engine to
+the EC2-backed EKS cluster created by `infra/aws`. The AWS stack also owns
+MSK, PostgreSQL, ECR, IAM, and the ECS Fargate Outbox Relay. Reporting and
+Notification are not implemented.
 
-## Provision the cluster
+## Apply order
 
-EKS is always provisioned; Order, Ledger, and Matching have no ECS service
-definitions. In `infra/aws/terraform.tfvars`, set `eks_admin_principal_arn` to a
-dedicated IAM operator role and review the pinned `eks_version`.
-EKS is billable. The default node group has three `m6i.xlarge` EC2 instances;
-review instance type, node count, subnet IP capacity, and cost before applying.
-The Kubernetes API is private by default. Run `kubectl` from within the VPC or
-set narrow `eks_public_access_cidrs` for operator access. Do not use
-`0.0.0.0/0`. The operator must use the role named by
-`eks_admin_principal_arn`.
+First apply the AWS stack. Set a real `eks_admin_principal_arn` and a pinned
+`ledger_migration_image_digest` in `infra/aws/terraform.tfvars`. If deploying
+Outbox, also set `outbox_migration_image_digest`. The Kubernetes
+stack reads that stack's local `terraform.tfstate` directly. If the AWS state
+is elsewhere, set `aws_state_path` to its local path.
 
 ```bash
-terraform -chdir=infra/aws plan
+terraform -chdir=infra/aws init
 terraform -chdir=infra/aws apply
 ```
 
-Terraform provisions the EKS control plane, EC2 managed node group, standard
-networking add-ons, Pod Identity agent, scoped Ledger/Matching MSK IAM roles,
-and separate Secrets Manager access for the Ledger runtime and migration Job,
-and security-group paths to the existing MSK and RDS. It does **not** deploy
-Kubernetes objects or run database migrations. Run the serialized one-off
-Ledger migration Job before deploying a new Ledger image:
+The EKS API is private by default, so run the Kubernetes commands from a
+machine with network access to the VPC and AWS credentials for the IAM role
+named by `eks_admin_principal_arn`. First apply in migration-only mode:
 
 ```bash
-./infra/aws/run-migrations.sh ledger
+terraform -chdir=infra/k8s init
+terraform -chdir=infra/k8s apply -var='deploy_workloads=false'
 ```
 
-This requires AWS CLI, Terraform, jq, envsubst, and kubectl with access to the
-private EKS API. The Job's Pod Identity role reads the RDS admin secret
-directly from Secrets Manager; the operator does not need to retrieve the
-password. Outbox migrations still use a one-off ECS Fargate task.
-
-## Deploy workloads
-
-Set digest-pinned `order_image_digest`, `ledger_image_digest`, and
-`matching_image_digest` in Terraform and apply them first. The mock Matching
-Engine has no durable order book, partition lease, or fencing; keep it at one
-replica. Its pod starts with empty in-memory state.
-
-Ledger's Pod Identity role reads the restricted runtime password directly from
-Secrets Manager at startup. The migration Job uses a separate role with access
-to the RDS admin secret. Neither password is copied into a Kubernetes Secret,
-Terraform state, or the operator's shell. Restart Ledger after rotating its
-runtime secret so it obtains the new password. Matching has its own MSK IAM
-role, while Order has no AWS role.
-
-From a machine that can reach the EKS API and has `aws`, `terraform`, `jq`,
-`envsubst`, and `kubectl` installed:
+After the Job completes, run the Outbox ECS migration if deploying Outbox,
+then create the restricted PostgreSQL runtime roles and Ledger runtime secret
+as described in [`../aws/README.md`](../aws/README.md).
+Set `ledger_runtime_secret_arn` and the pinned Order, Ledger, and Matching
+image digests in `infra/aws/terraform.tfvars`, then apply that stack again.
+Finally, deploy the workloads with the Kubernetes stack's default setting:
 
 ```bash
-./infra/k8s/deploy.sh
-kubectl -n praxis get pods,services
+terraform -chdir=infra/aws apply
+terraform -chdir=infra/k8s plan
+terraform -chdir=infra/k8s apply
+```
+
+The Kubernetes provider authenticates with `aws eks get-token`; no kubeconfig
+or `deploy.sh` is required. Terraform creates the restricted `praxis`
+Namespace and ServiceAccounts, then runs a one-off Ledger migration Job and
+waits for success. With `deploy_workloads=true` (the default), it also creates
+the non-secret ConfigMap, private Services, and all three Deployments after
+the Job. The Job name changes with its pinned image, so a new migration image
+runs again. Ledger's database advisory lock serializes migrations with
+Outbox's independent ECS migration task.
+
+Ledger reads its runtime password directly from Secrets Manager through its
+Pod Identity role. The migration Job has a separate role limited to the RDS
+admin secret. Neither password is stored in Kubernetes Secrets or Terraform
+state. A rotated runtime password is fetched when the Ledger Pod restarts.
+
+The manifest keeps Order private (`ClusterIP`), routes its gRPC calls through
+Kubernetes Services, uses restricted non-root Pods, and keeps Matching at one
+replica with `Recreate` updates. The mock Matching Engine has no durable
+order book or fenced ownership; do not scale it above one. This Terraform
+stack adds no public ingress or edge authentication.
+
+## Verify and operate
+
+Terraform waits for the migration Job and Deployment rollouts. From a machine
+that can reach the private EKS API, verify further with `kubectl`:
+
+```bash
+kubectl -n praxis get jobs,pods,services
 kubectl -n praxis port-forward service/order 8083:8083
 ```
 
-The script verifies pinned images, configures non-secret settings, applies the
-manifests, and
-waits for all three rollouts. The manifest keeps Order private (`ClusterIP`),
-routes its gRPC calls through Kubernetes Services, uses restricted non-root
-Pods, and keeps Matching at one replica with `Recreate` updates. Do not scale
-Matching above one until it has durable state and fenced partition ownership.
-
-## Handoff and rollback
-
-EKS is the **default compute platform** for these three services, but Terraform
-does not apply Kubernetes manifests: run `deploy.sh` after provisioning the
-cluster and images. This is not an automatic traffic cutover.
-These manifests do not add a public ingress or authentication. Verify Order
-through port-forward or another controlled private route before connecting an
-authenticated edge. There is no ECS Order rollback service in this stack;
-rollback requires a prior Kubernetes image and a tested restore procedure.
-
-Keep the Outbox Relay on ECS Fargate throughout. It reads Ledger's existing
-outbox in RDS and publishes to MSK; no Kubernetes relay should be started.
-Rollback must reverse traffic routing first, then restore the prior Kubernetes
-image or manifest. For Ledger, verify journal invariants and consumer lag
-during a rollout.
-
-Kubernetes application log shipping, managed trace/metric export, workload
-network policies, ingress authentication, restore drills, and a durable
-Matching implementation remain separate work. Do not call this a completed
-production migration until those controls and live failure/rollback tests pass.
+Outbox Relay and its migration task remain on ECS Fargate. Run
+`./infra/aws/run-migrations.sh outbox` separately after the Ledger migration
+has completed and before bootstrapping the Outbox runtime role. Kubernetes application log shipping,
+managed trace/metric export, network policies, authenticated ingress, restore
+drills, and durable Matching remain separate work. No live AWS deployment or
+failure drill has been performed by this repository change.
