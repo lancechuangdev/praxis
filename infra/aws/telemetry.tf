@@ -145,5 +145,4 @@ resource "aws_cloudwatch_metric_alarm" "trace_export_failure" {
   comparison_operator = "GreaterThanOrEqualToThreshold"
   threshold           = 1
   treat_missing_data  = "notBreaching"
-  alarm_actions       = var.ecs_alarm_sns_topic_arn == null ? [] : [var.ecs_alarm_sns_topic_arn]
 }

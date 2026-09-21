@@ -326,11 +326,10 @@ Local Compose uses an unauthenticated Collector and local Tempo; do not expose
 those endpoints on a production network. ECS tracing is disabled until
 `trace_collector_image` is set to a reviewed, digest-pinned ADOT image
 (`public.ecr.aws/aws-observability/aws-otel-collector@sha256:...`). Use a
-release at least v0.34.0 so the X-Ray exporter accepts W3C trace IDs. Set
-`ecs_alarm_sns_topic_arn` to an existing topic with confirmed subscribers
-before enabling it. Terraform then deploys an essential ADOT sidecar in each
-enabled Order, Ledger, Matching, and Outbox task. It also raises the Fargate
-task size to 1 vCPU and 2 GiB to give the collector headroom.
+release at least v0.34.0 so the X-Ray exporter accepts W3C trace IDs. Terraform
+then deploys an essential ADOT sidecar in each enabled Order, Ledger, Matching,
+and Outbox task. It also raises the Fargate task size to 1 vCPU and 2 GiB to
+give the collector headroom.
 
 Application OTLP/gRPC export goes only to `127.0.0.1:4317` inside the same ECS
 task; the receiver binds to loopback and has no port mapping or inbound
@@ -344,12 +343,11 @@ log groups use `ecs_log_retention_days` (default 30 days). The local Tempo
 dashboard is not the AWS trace viewer; use the X-Ray console for ECS traces.
 
 The existing no-running-tasks alarm covers an essential sidecar that exits.
-A separate alarm counts collector `Exporting failed` log messages and sends
-ALARM transitions to the configured SNS topic. Verify that a test trace
-appears in X-Ray and that the alarm topic reaches an operator after deploying;
-Terraform cannot verify either external delivery path. This setup handles
-traces and ECS infrastructure metrics. Enable managed application metric
-ingestion separately as described below.
+A separate CloudWatch alarm counts collector `Exporting failed` log messages.
+These alarms have no notification actions. Verify that a test trace appears in
+X-Ray after deploying. This setup handles traces and ECS infrastructure
+metrics. Enable managed application metric ingestion separately as described
+below.
 
 ## Managed application metrics
 
@@ -369,9 +367,11 @@ AWS-authenticated Prometheus-compatible client. AMP query access is separate
 from the collector's write-only permission.
 
 Terraform installs AMP rules for sustained Order, Ledger, and Matching error
-rates, Order p95 latency, and Outbox publish failures. These rules evaluate in
-AMP but do not notify until an AMP Alertmanager definition routes them to an
-approved receiver. The repository's
+rates, Order p95 latency, and Outbox publish failures. No Alertmanager receiver
+or notification channel is configured. The rules remain visible in AMP for
+inspection until an alert delivery mechanism is selected later.
+
+The repository's
 `observability/grafana/dashboards/cex-service-red.json` dashboard shows rates,
 error ratios, p95 histograms, and Outbox outcomes. Import it into a Grafana
 workspace configured to query this AMP workspace; Terraform does not create a
@@ -383,10 +383,7 @@ Each enabled ECS service gets a CloudWatch alarm when its Container Insights
 `RunningTaskCount` stays below one for three one-minute periods. Missing metric
 data also counts as breaching, so stopped services do not silently disappear
 from the signal. These alarms are created only for services with an image
-digest. Set `ecs_alarm_sns_topic_arn` to an existing SNS topic ARN to send
-ALARM transitions there. The topic must allow CloudWatch to publish and have
-confirmed subscribers; `null` leaves the alarms visible in CloudWatch but
-does not page anyone. Terraform does not create or subscribe a topic here.
+digest. They have no notification actions and do not page anyone.
 
 ## Application task roles
 

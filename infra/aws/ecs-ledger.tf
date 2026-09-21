@@ -57,10 +57,6 @@ resource "aws_ecs_task_definition" "ledger" {
       condition     = var.ledger_runtime_secret_arn != ""
       error_message = "Set ledger_runtime_secret_arn and provision the restricted PostgreSQL role before deploying Ledger."
     }
-    precondition {
-      condition     = var.trace_collector_image == null || var.ecs_alarm_sns_topic_arn != null
-      error_message = "Set ecs_alarm_sns_topic_arn before enabling the ECS trace collector."
-    }
   }
 
   family                   = "${local.resource_name}-ledger-service"

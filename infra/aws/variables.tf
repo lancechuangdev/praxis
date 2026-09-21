@@ -291,20 +291,8 @@ variable "order_image_digest" {
   }
 }
 
-variable "ecs_alarm_sns_topic_arn" {
-  description = "Optional existing SNS topic ARN for ECS unavailable-service alarm notifications. Null leaves alarms without actions."
-  type        = string
-  default     = null
-  nullable    = true
-
-  validation {
-    condition     = var.ecs_alarm_sns_topic_arn == null || can(regex("^arn:[^:]+:sns:[^:]+:[0-9]{12}:[^:]+$", var.ecs_alarm_sns_topic_arn))
-    error_message = "ecs_alarm_sns_topic_arn must be null or a valid SNS topic ARN."
-  }
-}
-
 variable "trace_collector_image" {
-  description = "Digest-pinned AWS Distro for OpenTelemetry Collector image. Null disables ECS tracing and managed metrics; set an SNS alarm topic before enabling."
+  description = "Digest-pinned AWS Distro for OpenTelemetry Collector image. Null disables ECS tracing and managed metrics."
   type        = string
   default     = null
 

@@ -72,10 +72,6 @@ resource "aws_ecs_task_definition" "order" {
       condition     = var.ledger_image_digest != null && var.matching_image_digest != null
       error_message = "Order requires ledger_image_digest and matching_image_digest so its gRPC readiness dependencies can run."
     }
-    precondition {
-      condition     = var.trace_collector_image == null || var.ecs_alarm_sns_topic_arn != null
-      error_message = "Set ecs_alarm_sns_topic_arn before enabling the ECS trace collector."
-    }
   }
 }
 

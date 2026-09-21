@@ -34,14 +34,13 @@ Phase 1 is being delivered incrementally:
   - [x] Add opt-in ECS tracing to managed X-Ray using a loopback-only ADOT
         sidecar, task-role authentication, sampling, ECS resource metadata,
         retained logs, and export-failure alarms for current services.
-  - [ ] Deploy a pinned collector image, connect an alarm SNS topic, and
-        verify real trace delivery and alert routing in AWS.
+  - [ ] Deploy a pinned collector image and verify real trace delivery in AWS.
   - [x] Add opt-in task-local `/metrics` scraping and SigV4 remote write to
         a retained Amazon Managed Service for Prometheus workspace.
   - [x] Add RED latency histograms, a service dashboard artifact, and AMP
         alert rules for current services.
   - [ ] Deploy and verify metric ingestion, import the dashboard into a
-        production Grafana workspace, and route AMP alerts to operators.
+        production Grafana workspace, and choose an alert delivery mechanism.
 - [x] Provision ECR, ECS, Cloud Map, ALB, IAM, secrets, and autoscaling for
       every planned service.
   - [x] Provision immutable, scan-on-push ECR repositories with retention

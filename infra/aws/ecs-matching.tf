@@ -74,12 +74,6 @@ resource "aws_ecs_task_definition" "matching" {
     }
   }], lookup(local.trace_collector_containers, "matching", [])))
 
-  lifecycle {
-    precondition {
-      condition     = var.trace_collector_image == null || var.ecs_alarm_sns_topic_arn != null
-      error_message = "Set ecs_alarm_sns_topic_arn before enabling the ECS trace collector."
-    }
-  }
 }
 
 resource "aws_ecs_service" "matching" {

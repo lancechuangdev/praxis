@@ -38,10 +38,6 @@ resource "aws_ecs_task_definition" "outbox" {
       condition     = var.outbox_runtime_secret_arn != ""
       error_message = "Set outbox_runtime_secret_arn and provision the restricted PostgreSQL role before deploying Outbox."
     }
-    precondition {
-      condition     = var.trace_collector_image == null || var.ecs_alarm_sns_topic_arn != null
-      error_message = "Set ecs_alarm_sns_topic_arn before enabling the ECS trace collector."
-    }
   }
 
   family                   = "${local.resource_name}-outbox-relay"
