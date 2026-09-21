@@ -377,6 +377,33 @@ error ratios, p95 histograms, and Outbox outcomes. Import it into a Grafana
 workspace configured to query this AMP workspace; Terraform does not create a
 Grafana workspace or its identity provider.
 
+## Opt-in Order on EC2
+
+After measuring Order on Fargate, set `order_ec2_enabled = true` with a pinned
+`order_image_digest`. This adds an ECS-optimized Amazon Linux 2023 host Auto
+Scaling group in private subnets, a managed-scaling EC2 capacity provider with
+instance draining and termination protection, and a **separate** Order ECS
+service. The existing Order service and Matching stay on Fargate. The EC2 host
+group starts at zero and ECS scales it when the new service needs capacity;
+instances and NAT traffic incur AWS charges. Review instance type, task memory,
+ENI density, subnet IP capacity, and `order_ec2_max_instances` before enabling.
+
+When the ALB is enabled, the new service registers in its own IP target group.
+The registration listener on port 8082 has **no public security-group ingress**;
+it is not a traffic cutover. The HTTPS listener still returns 503 by design
+until edge authentication is implemented. Verify healthy EC2 targets, traces,
+metrics, task replacement, instance draining, and database invariants against
+the Fargate baseline before planning an authenticated ALB cutover. Rollback is
+to keep the Fargate service running and restore its target group in the
+authenticated listener configuration. Do not disable the EC2 path while it
+serves traffic. This infrastructure alone does not prove an EC2 performance
+improvement or execute a production cutover.
+
+AWS does not support changing an existing ECS service between Fargate and an
+Auto Scaling group capacity provider; this is why Order uses two services.
+The EC2 instance role is separate from Order's task role, and host instances
+have no inbound security-group rules or public IPs.
+
 ## ECS availability alarms
 
 Each enabled ECS service gets a CloudWatch alarm when its Container Insights

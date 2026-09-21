@@ -53,6 +53,12 @@ outbox_runtime_secret_arn     = ""
 # Order remains private and the public ALB still returns 503.
 order_image_digest = null
 
+# Opt-in parallel EC2 Order deployment. Keep off until Fargate is measured;
+# this leaves Matching and the existing Order service on Fargate.
+order_ec2_enabled       = false
+order_ec2_instance_type = "m6i.large"
+order_ec2_max_instances = 6
+
 # Optional production tracing for enabled ECS services. Pin a reviewed ADOT
 # image by digest. The sidecar sends sampled traces to managed AWS X-Ray; no
 # collector port is exposed.

@@ -205,3 +205,18 @@ output "order_ecs_service_arn" {
   description = "Private Order ECS service ARN when order_image_digest is set. The public ALB listener still returns 503."
   value       = var.order_image_digest == null ? null : aws_ecs_service.order[0].id
 }
+
+output "order_ec2_capacity_provider_name" {
+  description = "Opt-in Order EC2 capacity provider name."
+  value       = var.order_ec2_enabled ? aws_ecs_capacity_provider.order[0].name : null
+}
+
+output "order_ec2_service_arn" {
+  description = "Parallel Order service on EC2; the Fargate service is retained."
+  value       = var.order_ec2_enabled ? aws_ecs_service.order_ec2[0].id : null
+}
+
+output "order_ec2_target_group_arn" {
+  description = "Parallel Order EC2 target group when ALB is enabled; not publicly routed."
+  value       = var.order_ec2_enabled && var.order_alb_enabled ? aws_lb_target_group.order_ec2[0].arn : null
+}

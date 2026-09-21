@@ -302,6 +302,29 @@ variable "order_image_digest" {
   }
 }
 
+variable "order_ec2_enabled" {
+  description = "Create a parallel Order ECS service on EC2; leave the Fargate service intact. Requires order_image_digest. Does not expose Order publicly."
+  type        = bool
+  default     = false
+}
+
+variable "order_ec2_instance_type" {
+  description = "Instance type for the opt-in Order ECS EC2 capacity provider. Check task and awsvpc ENI capacity before deployment."
+  type        = string
+  default     = "m6i.large"
+}
+
+variable "order_ec2_max_instances" {
+  description = "Upper bound on EC2 instances managed by the Order capacity provider."
+  type        = number
+  default     = 6
+
+  validation {
+    condition     = var.order_ec2_max_instances >= 2 && var.order_ec2_max_instances <= 100
+    error_message = "order_ec2_max_instances must be between 2 and 100."
+  }
+}
+
 variable "trace_collector_image" {
   description = "Digest-pinned AWS Distro for OpenTelemetry Collector image. Null disables ECS tracing and managed metrics."
   type        = string

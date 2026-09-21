@@ -4,10 +4,10 @@
 
 Move Praxis to independently deployable services without weakening Ledger
 invariants or putting asynchronous messaging in calls that need an immediate
-answer. The first production shape uses ECS Fargate. Later, Order Admission and
-Matching move to ECS EC2 capacity while Reconciliation, Reporting, and
-Notification remain on Fargate. The boundaries below also map cleanly to
-Kubernetes.
+answer. The first production shape uses ECS Fargate. Later, Order Admission,
+Ledger, and Matching move to ECS EC2 capacity one at a time, then to Kubernetes
+on EC2 nodes. Outbox Relay, Reconciliation, Reporting, and Notification remain
+on ECS Fargate.
 
 This is an implementation plan, not a claim that every component exists. The
 repository currently contains Order, Ledger, a mock Matching Engine, and an
@@ -203,12 +203,13 @@ gRPC, and Kafka headers.
 ## Phase 2: hybrid ECS capacity
 
 Measure Fargate before deciding it is inadequate. Then create an EC2 Auto
-Scaling group capacity provider and move Order and Matching independently.
+Scaling group capacity provider and move Order, Ledger, and Matching in that
+order, validating each move independently.
 
 | Workload class | Target | Rationale |
 |---|---|---|
-| Order Admission, Matching | ECS on EC2 | Stable hot path, tighter CPU/network control, predictable utilization |
-| Ledger, Risk | Fargate until measurements justify a move | Stateless compute even though their dependencies hold state |
+| Order Admission, Ledger, Matching | ECS on EC2, one at a time | Measure latency and cost while preserving rollback to Fargate |
+| Risk | Fargate until measurements justify a move | Its decision path is synchronous, but extraction is deferred |
 | Relay, Reconciliation, Reporting, Notification | Fargate; Spot only where interruption-safe | Bursty/asynchronous work recovers from replacement |
 
 Spread EC2 capacity and tasks across zones, enable managed draining, and keep
@@ -231,10 +232,10 @@ network partition.
 | Maintenance availability | healthy-percent/AZ spread | rolling strategy/topology spread/PDB |
 | Placement | capacity provider | node pools, labels, taints, affinity |
 
-Use an EC2-backed performance node pool for Order and Matching and a general or
-serverless pool for asynchronous services. Keep MSK and RDS managed outside the
-cluster initially; moving them into Kubernetes adds risk without improving the
-service boundary.
+Use an EC2-backed node pool for Order, Ledger, and Matching. Outbox Relay and
+other asynchronous services can remain on ECS Fargate; they share managed RDS
+and MSK with Kubernetes workloads through private networking and scoped IAM.
+Keep MSK and RDS managed outside Kubernetes.
 
 ## Migration order and exit gates
 
@@ -282,16 +283,21 @@ broker interruption, DB failover, slow consumers, and provider failure.
 
 ### 5. Move measured hot paths to EC2
 
-Move Order and Matching one at a time; rerun load, failure, rolling-deployment,
-cost, and rollback tests.
+Move Order, Ledger, and Matching in that order; rerun load, failure,
+rolling-deployment, cost, and rollback tests after each move.
+
+An opt-in parallel Order EC2 capacity provider and service are defined; the
+original Fargate service stays in place. No AWS baseline, traffic cutover, or
+rollback drill has been completed. Matching stays on Fargate.
 
 **Gate:** the move improves a named target and rollback to Fargate works.
 
 ### 6. Adopt Kubernetes
 
-Move a stateless consumer first, then other asynchronous services, Ledger/Risk,
-and finally Order/Matching. Shadow consumers use separate consumer groups and
-must suppress side effects.
+Move Order, Ledger, and Matching to Kubernetes on EC2 nodes one at a time after
+their ECS EC2 deployments have passed rollback tests. Keep Outbox Relay and
+other asynchronous services on ECS Fargate. Any shadow consumers use separate
+consumer groups and must suppress side effects.
 
 **Gate:** behavior, load, failure, security, cost, and rollback criteria pass.
 
@@ -320,6 +326,35 @@ must suppress side effects.
 - [ ] Load tests for normal traffic, hot accounts, and partition skew
 - [ ] Backup restore and reconciliation proof
 - [ ] ECS and Kubernetes rollback drills
+
+### Shadow mode
+
+Shadow mode sends realistic inputs to a candidate implementation while the
+existing implementation remains authoritative. Compare decisions and outputs,
+but suppress candidate-side writes, external calls, and published events. It is
+useful for extracting Risk (compare allow/deny and policy versions), testing a
+new Matching algorithm against a separate order book, or rebuilding a
+Reporting projection from a separate Kafka consumer group and database. A
+Ledger candidate must use isolated data and never post a second real journal.
+
+Shadow mode checks behavioral equivalence, not full-path performance. A
+side-effect-free shadow Order cannot reserve funds or submit to Matching, so
+it cannot establish whether EC2 improves real admission latency or throughput.
+For that decision, compare repeatable full-path load tests in an isolated
+environment, then use a controlled traffic shift with rollback. Shadow mode
+can be explored later; it is not a prerequisite for the EC2 move.
+
+### Canary rollout
+
+A canary rollout sends a small share of real requests to the candidate service,
+then increases that share only while its error rate, latency, availability, and
+business outcomes remain acceptable. For an Order move, keep Fargate running
+while gradually routing traffic to EC2; return traffic to Fargate if the EC2
+path fails its checks. Unlike shadow mode, canary requests execute the full
+workflow and have real side effects, so each request must reach only one Order
+service. Do not start the ramp until both paths are healthy and rollback has
+been tested. Canary routing can be explored later; it is separate from the
+current parallel EC2 service provisioning.
 
 ## References
 

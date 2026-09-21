@@ -89,6 +89,26 @@ resource "aws_lb_target_group" "order" {
   }
 }
 
+resource "aws_lb_target_group" "order_ec2" {
+  count       = var.order_ec2_enabled && var.order_alb_enabled ? 1 : 0
+  name        = "${substr(local.resource_name, 0, 17)}-order-ec2"
+  port        = 8083
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = aws_vpc.cex.id
+
+  health_check {
+    enabled             = true
+    path                = "/readyz"
+    protocol            = "HTTP"
+    matcher             = "200"
+    interval            = 15
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+  }
+}
+
 resource "aws_lb_listener" "order_https" {
   count = var.order_alb_enabled ? 1 : 0
 
@@ -129,5 +149,20 @@ resource "aws_lb_listener" "order_target_registration" {
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.order[0].arn
+  }
+}
+
+# No public ingress on 8082. The HTTPS listener remains a fixed 503 until
+# authentication is implemented and a separate, approved cutover is made.
+resource "aws_lb_listener" "order_ec2_target_registration" {
+  count = var.order_ec2_enabled && var.order_alb_enabled ? 1 : 0
+
+  load_balancer_arn = aws_lb.order[0].arn
+  port              = 8082
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.order_ec2[0].arn
   }
 }
