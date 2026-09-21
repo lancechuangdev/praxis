@@ -254,6 +254,51 @@ variable "ledger_image_digest" {
   }
 }
 
+variable "ledger_ec2_enabled" {
+  description = "Provision a parallel Ledger ECS EC2 service without changing the Fargate service or Order's Ledger endpoint. Requires ledger_image_digest."
+  type        = bool
+  default     = false
+}
+
+variable "ledger_fargate_desired_count" {
+  description = "Ledger Fargate task count. Leave at one until the EC2 Ledger service and Order endpoint have been verified; zero retains the service for rollback."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.ledger_fargate_desired_count >= 0 && var.ledger_fargate_desired_count <= 100 && floor(var.ledger_fargate_desired_count) == var.ledger_fargate_desired_count
+    error_message = "ledger_fargate_desired_count must be an integer from zero to 100."
+  }
+}
+
+variable "ledger_ec2_desired_count" {
+  description = "Number of parallel Ledger EC2 tasks. Defaults to zero because running tasks join the live Ledger Kafka consumer group and share its database."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.ledger_ec2_desired_count >= 0 && var.ledger_ec2_desired_count <= 100 && floor(var.ledger_ec2_desired_count) == var.ledger_ec2_desired_count
+    error_message = "ledger_ec2_desired_count must be an integer from zero to 100."
+  }
+}
+
+variable "ledger_ec2_instance_type" {
+  description = "EC2 instance type for the opt-in Ledger capacity provider."
+  type        = string
+  default     = "m6i.large"
+}
+
+variable "ledger_ec2_max_instances" {
+  description = "Maximum EC2 instances for the Ledger capacity provider."
+  type        = number
+  default     = 6
+
+  validation {
+    condition     = var.ledger_ec2_max_instances >= 2 && var.ledger_ec2_max_instances <= 100 && floor(var.ledger_ec2_max_instances) == var.ledger_ec2_max_instances
+    error_message = "ledger_ec2_max_instances must be an integer from two to 100."
+  }
+}
+
 variable "ledger_migration_image_digest" {
   description = "Ledger image digest for the one-off migration task, independently deployable before the Ledger service image."
   type        = string
@@ -299,6 +344,17 @@ variable "order_image_digest" {
   validation {
     condition     = var.order_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.order_image_digest))
     error_message = "order_image_digest must be null or a lowercase sha256 digest with 64 hexadecimal characters."
+  }
+}
+
+variable "order_ledger_target" {
+  description = "Ledger endpoint used by Order services: the original Fargate Cloud Map name or the parallel EC2 Cloud Map name."
+  type        = string
+  default     = "fargate"
+
+  validation {
+    condition     = contains(["fargate", "ec2"], var.order_ledger_target)
+    error_message = "order_ledger_target must be fargate or ec2."
   }
 }
 

@@ -53,7 +53,7 @@ resource "aws_ecs_task_definition" "order" {
     environment = concat([
       { name = "ORDER_HTTP_ADDRESS", value = ":8083" },
       { name = "ORDER_LEDGER_MODE", value = "grpc" },
-      { name = "ORDER_LEDGER_GRPC_ADDRESS", value = "${local.grpc_services["ledger_service"].name}.${aws_service_discovery_private_dns_namespace.services.name}:${local.grpc_services["ledger_service"].port}" },
+      { name = "ORDER_LEDGER_GRPC_ADDRESS", value = var.order_ledger_target == "ec2" ? "${aws_service_discovery_service.ledger_ec2[0].name}.${aws_service_discovery_private_dns_namespace.services.name}:${local.grpc_services["ledger_service"].port}" : "${local.grpc_services["ledger_service"].name}.${aws_service_discovery_private_dns_namespace.services.name}:${local.grpc_services["ledger_service"].port}" },
       { name = "ORDER_MATCHING_MODE", value = "grpc" },
       { name = "ORDER_MATCHING_GRPC_ADDRESS", value = "${local.grpc_services["matching_engine"].name}.${aws_service_discovery_private_dns_namespace.services.name}:${local.grpc_services["matching_engine"].port}" }
     ], local.trace_application_environment)
@@ -71,6 +71,16 @@ resource "aws_ecs_task_definition" "order" {
     precondition {
       condition     = var.ledger_image_digest != null && var.matching_image_digest != null
       error_message = "Order requires ledger_image_digest and matching_image_digest so its gRPC readiness dependencies can run."
+    }
+
+    precondition {
+      condition     = var.order_ledger_target != "ec2" || (var.ledger_ec2_enabled && var.ledger_ec2_desired_count > 0)
+      error_message = "Set ledger_ec2_enabled and ledger_ec2_desired_count > 0 before routing Order to Ledger EC2."
+    }
+
+    precondition {
+      condition     = var.order_ledger_target != "fargate" || var.ledger_fargate_desired_count > 0
+      error_message = "Keep Ledger Fargate running while Order targets its Cloud Map name."
     }
   }
 }

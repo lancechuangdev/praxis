@@ -57,6 +57,11 @@ resource "aws_ecs_task_definition" "ledger" {
       condition     = var.ledger_runtime_secret_arn != ""
       error_message = "Set ledger_runtime_secret_arn and provision the restricted PostgreSQL role before deploying Ledger."
     }
+
+    precondition {
+      condition     = var.ledger_fargate_desired_count > 0 || (var.ledger_ec2_enabled && var.ledger_ec2_desired_count > 0)
+      error_message = "Keep at least one Ledger Fargate or EC2 task configured."
+    }
   }
 
   family                   = "${local.resource_name}-ledger-service"
@@ -118,7 +123,7 @@ resource "aws_ecs_service" "ledger" {
   name             = "${local.resource_name}-ledger-service"
   cluster          = aws_ecs_cluster.this.id
   task_definition  = aws_ecs_task_definition.ledger[0].arn
-  desired_count    = 1
+  desired_count    = var.ledger_fargate_desired_count
   platform_version = "1.4.0"
 
   deployment_minimum_healthy_percent = 0

@@ -290,6 +290,13 @@ An opt-in parallel Order EC2 capacity provider and service are defined; the
 original Fargate service stays in place. No AWS baseline, traffic cutover, or
 rollback drill has been completed. Matching stays on Fargate.
 
+An opt-in parallel Ledger EC2 capacity provider and service are also defined,
+but default to zero tasks. Starting an EC2 Ledger task joins the live command
+consumer group; Order switches to its separate discovery name only through an
+explicit setting. The Fargate Ledger service can be scaled to zero after that
+cutover and retained for rollback. None of these AWS handoff steps have been
+executed or validated in an environment yet.
+
 **Gate:** the move improves a named target and rollback to Fargate works.
 
 ### 6. Adopt Kubernetes

@@ -404,6 +404,36 @@ Auto Scaling group capacity provider; this is why Order uses two services.
 The EC2 instance role is separate from Order's task role, and host instances
 have no inbound security-group rules or public IPs.
 
+## Opt-in Ledger on EC2
+
+After the Order EC2 move has been measured and its rollback tested, set
+`ledger_ec2_enabled = true` with the existing pinned `ledger_image_digest` and
+restricted Ledger runtime secret. This provisions a separate private EC2 Auto
+Scaling group, managed-scaling capacity provider, task definition, ECS service,
+and `ledger-service-ec2` Cloud Map name. It reuses the Ledger task role,
+execution role, database, and command consumer group. The original Fargate
+Ledger service remains available. No public listener is added.
+
+The new service starts at `ledger_ec2_desired_count = 0`. Increasing it to one
+starts **real** Ledger processing: its Kafka consumer joins the existing
+consumer group, partitions rebalance, and it can write to the same database.
+Do not use this against production data as a side-effect-free shadow test. Run
+the existing Ledger migration task before deploying a new Ledger image; do
+not run migrations independently in each EC2 task.
+
+For a controlled move, first verify the EC2 task, Cloud Map endpoint, command
+lag, database pool, traces, metrics, and Ledger invariants. Then set
+`order_ledger_target = "ec2"` to redeploy Order with the EC2 Ledger DNS name.
+Only after Order is healthy on that endpoint, set
+`ledger_fargate_desired_count = 0`. This preserves the Fargate service and
+task definition for rollback while stopping its Kafka consumer. To roll back,
+restore the Fargate count to one and verify readiness **before** setting
+`order_ledger_target = "fargate"`; then reduce the EC2 count to zero. Apply
+these stages separately, not in one Terraform apply. The EC2 service has a
+no-running-tasks alarm only while its desired count is positive; the existing
+MSK lag alarm continues to watch the shared Ledger consumer group. Alarms have
+no notification actions.
+
 ## ECS availability alarms
 
 Each enabled ECS service gets a CloudWatch alarm when its Container Insights

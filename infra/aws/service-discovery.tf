@@ -34,3 +34,21 @@ resource "aws_service_discovery_service" "grpc" {
 
   health_check_custom_config {}
 }
+
+resource "aws_service_discovery_service" "ledger_ec2" {
+  count = var.ledger_ec2_enabled ? 1 : 0
+
+  name = "ledger-service-ec2"
+
+  dns_config {
+    namespace_id   = aws_service_discovery_private_dns_namespace.services.id
+    routing_policy = "MULTIVALUE"
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+  }
+
+  health_check_custom_config {}
+}

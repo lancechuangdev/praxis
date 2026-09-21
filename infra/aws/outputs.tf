@@ -186,6 +186,21 @@ output "ledger_ecs_service_arn" {
   value       = var.ledger_image_digest == null ? null : aws_ecs_service.ledger[0].id
 }
 
+output "ledger_ec2_capacity_provider_name" {
+  description = "Opt-in Ledger EC2 capacity provider name."
+  value       = var.ledger_ec2_enabled ? aws_ecs_capacity_provider.ledger[0].name : null
+}
+
+output "ledger_ec2_service_arn" {
+  description = "Parallel Ledger service on EC2; the Fargate service remains available for rollback."
+  value       = var.ledger_ec2_enabled ? aws_ecs_service.ledger_ec2[0].id : null
+}
+
+output "ledger_ec2_grpc_address" {
+  description = "Private Ledger EC2 endpoint for a deliberate Order client cutover; null when EC2 is disabled."
+  value       = var.ledger_ec2_enabled ? "${aws_service_discovery_service.ledger_ec2[0].name}.${aws_service_discovery_private_dns_namespace.services.name}:9091" : null
+}
+
 output "outbox_ecs_service_arn" {
   description = "Outbox Relay ECS service ARN when outbox_image_digest is set."
   value       = var.outbox_image_digest == null ? null : aws_ecs_service.outbox[0].id
