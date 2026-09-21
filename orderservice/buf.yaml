@@ -1,0 +1,15 @@
+version: v2
+modules:
+  - path: api
+lint:
+  use:
+    - STANDARD
+  except:
+    # The Ledger client mirrors the server's existing response message names.
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_RESPONSE_STANDARD_NAME
+    # The Matching client mirrors the server's established service name.
+    - SERVICE_SUFFIX
+breaking:
+  use:
+    - FILE

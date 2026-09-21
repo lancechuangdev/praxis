@@ -1,0 +1,12 @@
+version: v2
+modules:
+  - path: api
+lint:
+  use:
+    - STANDARD
+  except:
+    # Keep the established gRPC service name until a versioned API migration.
+    - SERVICE_SUFFIX
+breaking:
+  use:
+    - FILE

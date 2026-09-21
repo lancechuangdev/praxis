@@ -299,6 +299,8 @@ must suppress side effects.
 
 - [ ] ADRs for synchronous calls, partition keys, failure policy, and ownership
 - [ ] Protobuf compatibility checks in CI
+  - [x] Local Buf lint and `FILE`-level compatibility policies are configured
+        independently for Ledger, Matching, and Order service contracts.
 - [ ] Per-service database roles and Kafka IAM policies for every planned service
   - [x] Restricted Ledger and Outbox runtime roles are provisionable separately
         from RDS-admin migration tasks; current ECS Kafka task roles are scoped.
