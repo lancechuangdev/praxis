@@ -306,9 +306,12 @@ must suppress side effects.
   - [x] Ledger writes its outbox in the local transaction, deduplicates Kafka
         commands through an inbox, and has a separate leased Outbox Relay.
 - [x] Correlation/trace context across HTTP, gRPC, and Kafka for current services
-- [ ] RED metrics, consumer-lag alarms, and per-service dashboards
+- [ ] RED metrics, consumer-lag alarms, and per-service dashboards for every
+      planned service
   - [x] Current services expose rates, failures, and latency histograms; an AMP
         rule group and an importable RED dashboard are defined.
+  - [x] Ledger has a configurable MSK `MaxOffsetLag` alarm for its command
+        consumer group and topic.
 - [ ] Replay, DLQ, stuck-reservation, broker, and database runbooks
 - [ ] Load tests for normal traffic, hot accounts, and partition skew
 - [ ] Backup restore and reconciliation proof

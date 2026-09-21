@@ -108,6 +108,11 @@ output "trace_export_alarm_names" {
   value       = { for key, alarm in aws_cloudwatch_metric_alarm.trace_export_failure : key => alarm.alarm_name }
 }
 
+output "ledger_consumer_lag_alarm_name" {
+  description = "Ledger MSK consumer-lag alarm name when the Ledger service is enabled."
+  value       = var.ledger_image_digest == null ? null : aws_cloudwatch_metric_alarm.ledger_consumer_lag[0].alarm_name
+}
+
 output "managed_metrics_workspace_id" {
   description = "Managed Prometheus workspace ID when application metric ingestion is enabled."
   value       = var.managed_metrics_enabled ? aws_prometheus_workspace.application[0].id : null

@@ -27,3 +27,25 @@ resource "aws_cloudwatch_metric_alarm" "ecs_service_unavailable" {
     ServiceName = each.value
   }
 }
+
+resource "aws_cloudwatch_metric_alarm" "ledger_consumer_lag" {
+  count = var.ledger_image_digest == null ? 0 : 1
+
+  alarm_name          = "${local.resource_name}-ledger-consumer-offset-lag"
+  alarm_description   = "Ledger command consumption is more than ${var.ledger_consumer_max_offset_lag} records behind for three of five minutes."
+  namespace           = "AWS/Kafka"
+  metric_name         = "MaxOffsetLag"
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 5
+  datapoints_to_alarm = 3
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = var.ledger_consumer_max_offset_lag
+  treat_missing_data  = "missing"
+
+  dimensions = {
+    "Cluster Name"   = aws_msk_cluster.this.cluster_name
+    "Consumer Group" = var.ledger_consumer_group
+    Topic            = aws_msk_topic.this["ledger_commands"].name
+  }
+}

@@ -231,6 +231,17 @@ variable "ledger_consumer_group" {
   }
 }
 
+variable "ledger_consumer_max_offset_lag" {
+  description = "Maximum tolerated Ledger consumer offset lag before its CloudWatch alarm enters ALARM."
+  type        = number
+  default     = 1000
+
+  validation {
+    condition     = var.ledger_consumer_max_offset_lag >= 1
+    error_message = "ledger_consumer_max_offset_lag must be at least one."
+  }
+}
+
 variable "ledger_image_digest" {
   description = "Opt-in Ledger image digest (sha256:...) already pushed to its ECR repository. Null creates no Ledger task definition or ECS service."
   type        = string

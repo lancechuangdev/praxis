@@ -385,6 +385,15 @@ data also counts as breaching, so stopped services do not silently disappear
 from the signal. These alarms are created only for services with an image
 digest. They have no notification actions and do not page anyone.
 
+When Ledger is enabled, Terraform also creates an `AWS/Kafka` `MaxOffsetLag`
+alarm for its configured consumer group on `ledger.commands.v1`. It enters
+ALARM when lag exceeds `ledger_consumer_max_offset_lag` (default 1,000 records)
+for three of five one-minute periods. The metric appears only after the group
+has committed an offset, requires an ASCII-only group name, and can be absent
+while a group is unstable. Treat the threshold as a starting point and tune it
+against the command rate and recovery objective. This alarm also has no
+notification action.
+
 ## Application task roles
 
 Terraform creates a separate task role for Order, Ledger, Matching, and Outbox
