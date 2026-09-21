@@ -366,8 +366,16 @@ multiple running tasks do not write indistinguishable series. The existing
 collector export-failure alarm also covers failed AMP writes. After deployment,
 query `up{service="order"}` and the relevant `*_total` counters through an
 AWS-authenticated Prometheus-compatible client. AMP query access is separate
-from the collector's write-only permission. Dashboards, RED latency histograms,
-and application alert thresholds are still to be implemented.
+from the collector's write-only permission.
+
+Terraform installs AMP rules for sustained Order, Ledger, and Matching error
+rates, Order p95 latency, and Outbox publish failures. These rules evaluate in
+AMP but do not notify until an AMP Alertmanager definition routes them to an
+approved receiver. The repository's
+`observability/grafana/dashboards/cex-service-red.json` dashboard shows rates,
+error ratios, p95 histograms, and Outbox outcomes. Import it into a Grafana
+workspace configured to query this AMP workspace; Terraform does not create a
+Grafana workspace or its identity provider.
 
 ## ECS availability alarms
 

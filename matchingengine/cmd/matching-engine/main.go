@@ -73,7 +73,8 @@ func main() {
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ready\n")) })
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		_, _ = fmt.Fprintf(w, "matching_orders_submitted_total %d\nmatching_orders_accepted_total %d\nmatching_orders_failed_total %d\nmatching_engine_duration_seconds_sum %.9f\nmatching_kafka_duration_seconds_sum %.9f\n", metrics.Submitted.Load(), metrics.Accepted.Load(), metrics.Failed.Load(), float64(metrics.EngineNS.Load())/1e9, float64(metrics.KafkaNS.Load())/1e9)
+		_, _ = fmt.Fprintf(w, "matching_orders_submitted_total %d\nmatching_orders_accepted_total %d\nmatching_orders_failed_total %d\n", metrics.Submitted.Load(), metrics.Accepted.Load(), metrics.Failed.Load())
+		_, _ = fmt.Fprint(w, metrics.EngineDuration.Prometheus("matching_engine_duration_seconds"), metrics.KafkaDuration.Prometheus("matching_kafka_duration_seconds"))
 	})
 	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(mux, "matching.http"), ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 2)

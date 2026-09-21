@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"praxis/orderservice/internal/order"
 )
@@ -73,14 +72,10 @@ func (h HTTP) metrics(w http.ResponseWriter, _ *http.Request) {
 order_accepted_total %d
 order_risk_rejected_total %d
 order_failed_total %d
-order_risk_duration_seconds_sum %.9f
-order_reserve_duration_seconds_sum %.9f
-order_matching_duration_seconds_sum %.9f
-order_total_duration_seconds_sum %.9f
-`, m.Requests.Load(), m.Accepted.Load(), m.RiskRejected.Load(), m.Failed.Load(), seconds(m.RiskNS.Load()), seconds(m.ReserveNS.Load()), seconds(m.MatchingNS.Load()), seconds(m.TotalNS.Load()))
+`, m.Requests.Load(), m.Accepted.Load(), m.RiskRejected.Load(), m.Failed.Load())
+	_, _ = fmt.Fprint(w, m.RiskDuration.Prometheus("order_risk_duration_seconds"), m.ReserveDuration.Prometheus("order_reserve_duration_seconds"), m.MatchingDuration.Prometheus("order_matching_duration_seconds"), m.TotalDuration.Prometheus("order_total_duration_seconds"))
 }
 
-func seconds(ns uint64) float64 { return float64(time.Duration(ns)) / float64(time.Second) }
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

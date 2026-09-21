@@ -31,6 +31,8 @@ type MatchingEngine interface {
 type Metrics struct {
 	Requests, Accepted, RiskRejected, Failed atomic.Uint64
 	RiskNS, ReserveNS, MatchingNS, TotalNS   atomic.Uint64
+	RiskDuration, ReserveDuration            DurationHistogram
+	MatchingDuration, TotalDuration          DurationHistogram
 }
 
 type Service struct {
@@ -85,11 +87,14 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	}
 	riskDuration := time.Since(riskStart)
 	s.Metrics.RiskNS.Add(uint64(riskDuration))
+	s.Metrics.RiskDuration.Observe(riskDuration)
 	if rejected(req.RequestID, s.RiskRejectBPS) {
 		riskSpan.SetAttributes(attribute.Bool("risk.rejected", true))
 		riskSpan.End()
 		s.Metrics.RiskRejected.Add(1)
-		s.Metrics.TotalNS.Add(uint64(time.Since(started)))
+		total := time.Since(started)
+		s.Metrics.TotalNS.Add(uint64(total))
+		s.Metrics.TotalDuration.Observe(total)
 		return Response{}, ErrRiskRejected
 	}
 	riskSpan.SetAttributes(attribute.Bool("risk.rejected", false))
@@ -99,6 +104,7 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	reservation, err := s.Ledger.Reserve(ctx, req)
 	reserveDuration := time.Since(reserveStart)
 	s.Metrics.ReserveNS.Add(uint64(reserveDuration))
+	s.Metrics.ReserveDuration.Observe(reserveDuration)
 	if err != nil {
 		s.failed(started)
 		return Response{}, fmt.Errorf("reserve funds: %w", err)
@@ -108,6 +114,7 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	match, err := s.Matching.Submit(ctx, req, reservation)
 	matchingDuration := time.Since(matchingStart)
 	s.Metrics.MatchingNS.Add(uint64(matchingDuration))
+	s.Metrics.MatchingDuration.Observe(matchingDuration)
 	if err != nil {
 		s.failed(started)
 		return Response{}, fmt.Errorf("matching admission: %w", err)
@@ -116,12 +123,15 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	total := time.Since(started)
 	s.Metrics.Accepted.Add(1)
 	s.Metrics.TotalNS.Add(uint64(total))
+	s.Metrics.TotalDuration.Observe(total)
 	return Response{OrderID: req.OrderID, Status: match.Status, Reservation: reservation, EngineSequence: match.EngineSequence, Timings: Timings{RiskMS: milliseconds(riskDuration), ReserveMS: milliseconds(reserveDuration), MatchingMS: milliseconds(matchingDuration), TotalMS: milliseconds(total)}}, nil
 }
 
 func (s *Service) failed(started time.Time) {
 	s.Metrics.Failed.Add(1)
-	s.Metrics.TotalNS.Add(uint64(time.Since(started)))
+	total := time.Since(started)
+	s.Metrics.TotalNS.Add(uint64(total))
+	s.Metrics.TotalDuration.Observe(total)
 }
 func milliseconds(v time.Duration) float64 { return float64(v) / float64(time.Millisecond) }
 func rejected(key string, bps int) bool {

@@ -47,7 +47,10 @@ type Publisher interface {
 	Close() error
 }
 
-type Metrics struct{ Claimed, Published, Failed atomic.Uint64 }
+type Metrics struct {
+	Claimed, Published, Failed atomic.Uint64
+	BatchDuration              DurationHistogram
+}
 type Relay struct {
 	Store                       Store
 	Publisher                   Publisher
@@ -88,6 +91,8 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 	if len(events) == 0 {
 		return 0, nil
 	}
+	started := time.Now()
+	defer func() { r.Metrics.BatchDuration.Observe(time.Since(started)) }()
 	r.Metrics.Claimed.Add(uint64(len(events)))
 	sort.Slice(events, func(i, j int) bool { return events[i].SequenceNumber < events[j].SequenceNumber })
 	messages := make([]kafka.Message, len(events))

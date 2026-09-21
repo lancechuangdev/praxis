@@ -63,7 +63,11 @@ func (s *GRPC) ReleaseHold(ctx context.Context, r *ledgerv1.ReleaseHoldRequest) 
 func (s *GRPC) ReserveForOrder(ctx context.Context, r *ledgerv1.ReserveForOrderRequest) (*ledgerv1.ReservationResponse, error) {
 	started := time.Now()
 	s.Metrics.ReserveRequests.Add(1)
-	defer func() { s.Metrics.ReserveNS.Add(uint64(time.Since(started))) }()
+	defer func() {
+		d := time.Since(started)
+		s.Metrics.ReserveNS.Add(uint64(d))
+		s.Metrics.ReserveDuration.Observe(d)
+	}()
 	at, e := eventTime(r.OccurredAt)
 	if e != nil {
 		s.Metrics.ReserveFailures.Add(1)

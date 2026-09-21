@@ -37,7 +37,6 @@ func (h HTTP) metrics(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	_, _ = fmt.Fprintf(w, `ledger_reserve_requests_total %d
 ledger_reserve_failures_total %d
-ledger_reserve_duration_seconds_sum %.9f
 ledger_db_pool_acquired_connections %d
 ledger_db_pool_idle_connections %d
 ledger_db_pool_total_connections %d
@@ -46,12 +45,10 @@ ledger_db_pool_acquire_total %d
 ledger_db_pool_empty_acquire_total %d
 ledger_db_pool_canceled_acquire_total %d
 ledger_db_pool_acquire_duration_seconds_total %.9f
-`, h.Metrics.ReserveRequests.Load(), h.Metrics.ReserveFailures.Load(), seconds(h.Metrics.ReserveNS.Load()), pool.AcquiredConns(), pool.IdleConns(), pool.TotalConns(), pool.MaxConns(), pool.AcquireCount(), pool.EmptyAcquireCount(), pool.CanceledAcquireCount(), pool.AcquireDuration().Seconds())
+`, h.Metrics.ReserveRequests.Load(), h.Metrics.ReserveFailures.Load(), pool.AcquiredConns(), pool.IdleConns(), pool.TotalConns(), pool.MaxConns(), pool.AcquireCount(), pool.EmptyAcquireCount(), pool.CanceledAcquireCount(), pool.AcquireDuration().Seconds())
+	_, _ = fmt.Fprint(w, h.Metrics.ReserveDuration.Prometheus("ledger_reserve_duration_seconds"))
 }
 
-func seconds(ns uint64) float64 {
-	return float64(time.Duration(ns)) / float64(time.Second)
-}
 func decode(r *http.Request, v any) error {
 	d := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	d.DisallowUnknownFields()

@@ -38,8 +38,10 @@ Phase 1 is being delivered incrementally:
         verify real trace delivery and alert routing in AWS.
   - [x] Add opt-in task-local `/metrics` scraping and SigV4 remote write to
         a retained Amazon Managed Service for Prometheus workspace.
-  - [ ] Deploy and verify metric ingestion; add RED latency histograms,
-        per-service dashboards, and application alert thresholds.
+  - [x] Add RED latency histograms, a service dashboard artifact, and AMP
+        alert rules for current services.
+  - [ ] Deploy and verify metric ingestion, import the dashboard into a
+        production Grafana workspace, and route AMP alerts to operators.
 - [x] Provision ECR, ECS, Cloud Map, ALB, IAM, secrets, and autoscaling for
       every planned service.
   - [x] Provision immutable, scan-on-push ECR repositories with retention
@@ -306,6 +308,8 @@ must suppress side effects.
         commands through an inbox, and has a separate leased Outbox Relay.
 - [x] Correlation/trace context across HTTP, gRPC, and Kafka for current services
 - [ ] RED metrics, consumer-lag alarms, and per-service dashboards
+  - [x] Current services expose rates, failures, and latency histograms; an AMP
+        rule group and an importable RED dashboard are defined.
 - [ ] Replay, DLQ, stuck-reservation, broker, and database runbooks
 - [ ] Load tests for normal traffic, hot accounts, and partition skew
 - [ ] Backup restore and reconciliation proof

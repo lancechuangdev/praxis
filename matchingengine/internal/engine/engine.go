@@ -34,8 +34,9 @@ type Event struct {
 	Data                              any
 }
 type Metrics struct {
-	Submitted, Accepted, Failed atomic.Uint64
-	EngineNS, KafkaNS           atomic.Uint64
+	Submitted, Accepted, Failed   atomic.Uint64
+	EngineNS, KafkaNS             atomic.Uint64
+	EngineDuration, KafkaDuration DurationHistogram
 }
 type partitionState struct {
 	sync.Mutex
@@ -73,11 +74,15 @@ func (s *Service) SubmitOrder(ctx context.Context, req *matchingv1.SubmitOrderRe
 	}
 	state.sequence++
 	response := &matchingv1.SubmitOrderResponse{OrderId: req.OrderId, Status: "accepted", EngineSequence: state.sequence}
-	s.Metrics.EngineNS.Add(uint64(time.Since(engineStart)))
+	engineDuration := time.Since(engineStart)
+	s.Metrics.EngineNS.Add(uint64(engineDuration))
+	s.Metrics.EngineDuration.Observe(engineDuration)
 
 	kafkaStart := time.Now()
 	err := s.Publisher.Publish(ctx, Event{ID: req.RequestId, Type: "OrderAccepted", AggregateID: req.OrderId, MessageKey: key, CorrelationID: req.CorrelationId, CausationID: req.CausationId, TraceParent: req.TraceParent, TraceState: req.TraceState, OccurredAt: time.Now().UTC(), Data: map[string]any{"order": req, "engine_sequence": state.sequence}})
-	s.Metrics.KafkaNS.Add(uint64(time.Since(kafkaStart)))
+	kafkaDuration := time.Since(kafkaStart)
+	s.Metrics.KafkaNS.Add(uint64(kafkaDuration))
+	s.Metrics.KafkaDuration.Observe(kafkaDuration)
 	if err != nil {
 		state.sequence--
 		s.Metrics.Failed.Add(1)

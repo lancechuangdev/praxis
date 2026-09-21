@@ -1,0 +1,75 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "sum(rate(order_requests_total[5m]))", "legendFormat": "order", "refId": "A"},
+        {"expr": "sum(rate(ledger_reserve_requests_total[5m]))", "legendFormat": "ledger", "refId": "B"},
+        {"expr": "sum(rate(matching_orders_submitted_total[5m]))", "legendFormat": "matching", "refId": "C"},
+        {"expr": "sum(rate(outbox_events_published_total[5m]))", "legendFormat": "outbox published", "refId": "D"}
+      ],
+      "title": "Request and event rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"max": 100, "min": 0, "unit": "percent"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "100 * sum(rate(order_failed_total[5m])) / clamp_min(sum(rate(order_requests_total[5m])), 0.001)", "legendFormat": "order", "refId": "A"},
+        {"expr": "100 * sum(rate(ledger_reserve_failures_total[5m])) / clamp_min(sum(rate(ledger_reserve_requests_total[5m])), 0.001)", "legendFormat": "ledger", "refId": "B"},
+        {"expr": "100 * sum(rate(matching_orders_failed_total[5m])) / clamp_min(sum(rate(matching_orders_submitted_total[5m])), 0.001)", "legendFormat": "matching", "refId": "C"}
+      ],
+      "title": "Error rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 3,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(order_total_duration_seconds_bucket[5m])))", "legendFormat": "order", "refId": "A"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(ledger_reserve_duration_seconds_bucket[5m])))", "legendFormat": "ledger", "refId": "B"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(matching_engine_duration_seconds_bucket[5m])))", "legendFormat": "matching", "refId": "C"},
+        {"expr": "histogram_quantile(0.95, sum by (le) (rate(outbox_batch_duration_seconds_bucket[5m])))", "legendFormat": "outbox batch", "refId": "D"}
+      ],
+      "title": "p95 latency",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 4,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"expr": "sum(rate(outbox_events_failed_total[5m]))", "legendFormat": "failed", "refId": "A"},
+        {"expr": "sum(rate(outbox_events_published_total[5m]))", "legendFormat": "published", "refId": "B"},
+        {"expr": "sum(rate(outbox_events_claimed_total[5m]))", "legendFormat": "claimed", "refId": "C"}
+      ],
+      "title": "Outbox outcomes",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 42,
+  "tags": ["cex", "production", "red"],
+  "templating": {"list": [{"current": {"text": "Prometheus", "value": "Prometheus"}, "hide": 2, "label": "Data source", "name": "DS_PROMETHEUS", "query": "prometheus", "type": "datasource"}]},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "CEX Service RED",
+  "uid": "cex-service-red",
+  "version": 1
+}

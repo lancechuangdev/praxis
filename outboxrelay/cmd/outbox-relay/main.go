@@ -99,6 +99,7 @@ func main() {
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = fmt.Fprintf(w, "outbox_events_claimed_total %d\noutbox_events_published_total %d\noutbox_events_failed_total %d\n", metrics.Claimed.Load(), metrics.Published.Load(), metrics.Failed.Load())
+		_, _ = fmt.Fprint(w, metrics.BatchDuration.Prometheus("outbox_batch_duration_seconds"))
 	})
 	server := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(mux, "outbox-relay.http"), ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 2)
