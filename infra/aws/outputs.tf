@@ -114,13 +114,18 @@ output "ledger_consumer_lag_alarm_name" {
 }
 
 output "managed_metrics_workspace_id" {
-  description = "Managed Prometheus workspace ID when application metric ingestion is enabled."
-  value       = var.managed_metrics_enabled ? aws_prometheus_workspace.application[0].id : null
+  description = "Managed Prometheus workspace ID for application metrics."
+  value       = aws_prometheus_workspace.application.id
 }
 
 output "managed_metrics_query_endpoint" {
   description = "Prometheus-compatible workspace endpoint; requests require AWS SigV4 authentication."
-  value       = var.managed_metrics_enabled ? aws_prometheus_workspace.application[0].prometheus_endpoint : null
+  value       = aws_prometheus_workspace.application.prometheus_endpoint
+}
+
+output "managed_metrics_eks_scraper_id" {
+  description = "AMP managed scraper ID for the Order, Ledger, and Matching EKS pod metrics endpoints."
+  value       = aws_prometheus_scraper.eks_hot_path.id
 }
 
 output "service_task_role_arns" {

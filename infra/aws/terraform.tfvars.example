@@ -64,7 +64,7 @@ order_image_digest = null
 trace_collector_image = null
 trace_sample_ratio    = 0.1
 
-# Optional durable storage for each enabled service's /metrics endpoint.
-# Requires trace_collector_image; the same sidecar also signs writes to AMP.
-managed_metrics_enabled        = false
+# AMP workspace and managed EKS pod scraper are always provisioned. If
+# trace_collector_image is also set, the ECS Outbox sidecar remote-writes to
+# the same workspace.
 managed_metrics_retention_days = 30

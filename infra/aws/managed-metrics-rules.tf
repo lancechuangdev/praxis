@@ -1,8 +1,6 @@
 resource "aws_prometheus_rule_group_namespace" "application" {
-  count = var.managed_metrics_enabled ? 1 : 0
-
   name         = "praxis-application"
-  workspace_id = aws_prometheus_workspace.application[0].id
+  workspace_id = aws_prometheus_workspace.application.id
   data = yamlencode({
     groups = [
       {

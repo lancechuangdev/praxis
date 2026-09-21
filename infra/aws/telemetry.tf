@@ -13,9 +13,8 @@ locals {
 
   trace_collector_configs = {
     for key, port in local.service_metrics_ports : key => yamlencode({
-      receivers = merge({
+      receivers = {
         otlp = { protocols = { grpc = { endpoint = "127.0.0.1:4317" } } }
-        }, var.managed_metrics_enabled ? {
         prometheus = { config = {
           global = { scrape_interval = "15s", scrape_timeout = "10s" }
           scrape_configs = [{
@@ -28,31 +27,35 @@ locals {
             }]
           }]
         } }
-      } : {})
+      }
       processors = {
         memory_limiter    = { check_interval = "5s", limit_mib = 128, spike_limit_mib = 32 }
         resourcedetection = { detectors = ["env", "ecs"], timeout = "5s", override = false }
         batch             = { timeout = "5s", send_batch_size = 128 }
       }
-      exporters = merge({ awsxray = { region = var.aws_region } }, var.managed_metrics_enabled ? {
+      exporters = {
+        awsxray = { region = var.aws_region }
         prometheusremotewrite = {
-          endpoint                         = "${trimsuffix(aws_prometheus_workspace.application[0].prometheus_endpoint, "/")}/api/v1/remote_write"
+          endpoint                         = "${trimsuffix(aws_prometheus_workspace.application.prometheus_endpoint, "/")}/api/v1/remote_write"
           auth                             = { authenticator = "sigv4auth" }
           resource_to_telemetry_conversion = { enabled = true }
         }
-      } : {})
-      extensions = var.managed_metrics_enabled ? { sigv4auth = { service = "aps", region = var.aws_region } } : {}
+      }
+      extensions = { sigv4auth = { service = "aps", region = var.aws_region } }
       service = {
-        extensions = var.managed_metrics_enabled ? ["sigv4auth"] : []
-        pipelines = merge({ traces = {
-          receivers  = ["otlp"]
-          processors = ["memory_limiter", "resourcedetection", "batch"]
-          exporters  = ["awsxray"]
-          } }, var.managed_metrics_enabled ? { metrics = {
-          receivers  = ["prometheus"]
-          processors = ["memory_limiter", "resourcedetection", "batch"]
-          exporters  = ["prometheusremotewrite"]
-        } } : {})
+        extensions = ["sigv4auth"]
+        pipelines = {
+          traces = {
+            receivers  = ["otlp"]
+            processors = ["memory_limiter", "resourcedetection", "batch"]
+            exporters  = ["awsxray"]
+          }
+          metrics = {
+            receivers  = ["prometheus"]
+            processors = ["memory_limiter", "resourcedetection", "batch"]
+            exporters  = ["prometheusremotewrite"]
+          }
+        }
       }
     })
   }

@@ -86,11 +86,24 @@ scoped to that event topic. It is not deployed to Kubernetes.
 The ECS cluster also supplies the migration tasks. Its default capacity
 provider is Fargate; Fargate Spot is registered but not used by the relay.
 Only the relay receives ECS tracing and task-local metric scraping when the
-optional ADOT collector is configured. `managed_metrics_enabled` creates an
-AMP workspace; the relay collector signs remote writes to it. Terraform also
-defines AMP rules for the hot-path metrics, but these will have data only after
-a separate Kubernetes metrics pipeline is configured. No Alertmanager
-receiver or notification action is configured.
+optional ADOT collector is configured. Terraform always creates an AMP
+workspace. When present, the relay collector signs remote writes to it. An AMP
+managed scraper discovers the `praxis` namespace's Order, Ledger, and Matching
+pods and scrapes their named `http` ports (`8083`, `8081`, and `8084`) every
+30 seconds. The scraper uses private subnets, EKS API access entries, and a
+dedicated security group limited to the API and those metrics ports. No
+collector sidecars are needed in the EKS application pods. Terraform also
+defines AMP rules for the hot-path metrics. No Alertmanager receiver or
+notification action is configured.
+
+After applying both Terraform stacks and deploying the pods, check the
+`managed_metrics_eks_scraper_id` output and the scraper's status in AMP. Query
+`up{job="praxis-eks-hot-path"}`: each running Order, Ledger, and Matching pod
+should appear with value `1`. Then query, for example,
+`rate(order_requests_total{service="order"}[5m])`. Missing `up` series mean the
+pod was not discovered; `up == 0` means it was found but scraping failed.
+The EKS metrics path is independent of the still-unfinished EKS traces and
+container-log pipelines.
 
 CloudWatch alarms cover Outbox task availability, collector export failures,
 and Ledger Kafka consumer lag. Application and collector log retention is

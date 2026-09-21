@@ -389,12 +389,6 @@ variable "trace_sample_ratio" {
   }
 }
 
-variable "managed_metrics_enabled" {
-  description = "Create an Amazon Managed Service for Prometheus workspace and remote-write service metrics from ADOT sidecars. Requires trace_collector_image."
-  type        = bool
-  default     = false
-}
-
 variable "managed_metrics_retention_days" {
   description = "Retention period for the managed Prometheus workspace."
   type        = number

@@ -55,6 +55,12 @@ Pod Identity role. The migration Job has a separate role limited to the RDS
 admin secret. Neither password is stored in Kubernetes Secrets or Terraform
 state. A rotated runtime password is fetched when the Ledger Pod restarts.
 
+The AWS stack's AMP managed scraper discovers the three application pods and
+reads `/metrics` on each pod's named
+`http` port. No EKS metrics sidecar or metrics Service is required. Check
+`up{job="praxis-eks-hot-path"}` in AMP after the workloads start; traces and
+container logs need their own collection pipeline.
+
 The manifest keeps Order private (`ClusterIP`), routes its gRPC calls through
 Kubernetes Services, uses restricted non-root Pods, and keeps Matching at one
 replica with `Recreate` updates. The mock Matching Engine has no durable
