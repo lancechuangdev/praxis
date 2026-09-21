@@ -53,3 +53,9 @@ order_image_digest = null
 # Optional existing SNS topic for ECS no-running-tasks alarm notifications.
 # The topic must permit CloudWatch alarms to publish and have confirmed subscribers.
 ecs_alarm_sns_topic_arn = null
+
+# Optional production tracing for enabled ECS services. Pin a reviewed ADOT
+# image by digest and provide the SNS alarm topic before enabling. The sidecar
+# sends sampled traces to managed AWS X-Ray; no collector port is exposed.
+trace_collector_image = null
+trace_sample_ratio    = 0.1

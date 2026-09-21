@@ -33,12 +33,12 @@ resource "aws_ecs_task_definition" "matching" {
   family                   = "${local.resource_name}-matching-engine"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = "512"
-  memory                   = "1024"
+  cpu                      = var.trace_collector_image == null ? "512" : "1024"
+  memory                   = var.trace_collector_image == null ? "1024" : "2048"
   execution_role_arn       = aws_iam_role.ecs_task_execution.arn
   task_role_arn            = aws_iam_role.service_task["matching_engine"].arn
 
-  container_definitions = jsonencode([{
+  container_definitions = jsonencode(concat([{
     name                   = "matching-engine"
     image                  = "${aws_ecr_repository.service["matching_engine"].repository_url}@${var.matching_image_digest}"
     essential              = true
@@ -55,7 +55,7 @@ resource "aws_ecs_task_definition" "matching" {
       retries     = 3
       startPeriod = 30
     }
-    environment = [
+    environment = concat([
       { name = "AWS_REGION", value = var.aws_region },
       { name = "KAFKA_AUTH_MODE", value = "msk_iam" },
       { name = "MATCHING_GRPC_ADDRESS", value = ":9092" },
@@ -63,7 +63,7 @@ resource "aws_ecs_task_definition" "matching" {
       { name = "MATCHING_KAFKA_ENABLED", value = "true" },
       { name = "MATCHING_KAFKA_BROKERS", value = aws_msk_cluster.this.bootstrap_brokers_sasl_iam },
       { name = "MATCHING_KAFKA_TOPIC", value = aws_msk_topic.this["matching_events"].name }
-    ]
+    ], local.trace_application_environment)
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -72,7 +72,14 @@ resource "aws_ecs_task_definition" "matching" {
         awslogs-stream-prefix = "matching-engine"
       }
     }
-  }])
+  }], lookup(local.trace_collector_containers, "matching", [])))
+
+  lifecycle {
+    precondition {
+      condition     = var.trace_collector_image == null || var.ecs_alarm_sns_topic_arn != null
+      error_message = "Set ecs_alarm_sns_topic_arn before enabling the ECS trace collector."
+    }
+  }
 }
 
 resource "aws_ecs_service" "matching" {
@@ -106,5 +113,5 @@ resource "aws_ecs_service" "matching" {
     registry_arn = aws_service_discovery_service.grpc["matching_engine"].arn
   }
 
-  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_iam_role_policy.msk_client["matching_engine"]]
+  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_iam_role_policy.msk_client["matching_engine"], aws_iam_role_policy.xray_export]
 }

@@ -303,6 +303,28 @@ variable "ecs_alarm_sns_topic_arn" {
   }
 }
 
+variable "trace_collector_image" {
+  description = "Digest-pinned AWS Distro for OpenTelemetry Collector image. Null disables ECS tracing; set an SNS alarm topic before enabling."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.trace_collector_image == null || can(regex("^.+@sha256:[0-9a-f]{64}$", var.trace_collector_image))
+    error_message = "trace_collector_image must be null or an image URI pinned by sha256 digest."
+  }
+}
+
+variable "trace_sample_ratio" {
+  description = "Parent-based root sampling ratio for ECS service traces sent to X-Ray."
+  type        = number
+  default     = 0.1
+
+  validation {
+    condition     = var.trace_sample_ratio >= 0 && var.trace_sample_ratio <= 1
+    error_message = "trace_sample_ratio must be between zero and one."
+  }
+}
+
 variable "matching_image_digest" {
   description = "Opt-in Matching image digest (sha256:...) already pushed to its ECR repository. Null creates no Matching task definition or ECS service."
   type        = string

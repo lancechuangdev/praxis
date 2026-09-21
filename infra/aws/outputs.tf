@@ -98,6 +98,16 @@ output "ecs_service_log_group_names" {
   value       = { for key, log_group in aws_cloudwatch_log_group.ecs_service : key => log_group.name }
 }
 
+output "trace_collector_log_group_names" {
+  description = "ADOT collector log-group names for enabled ECS tracing, keyed by service."
+  value       = { for key, log_group in aws_cloudwatch_log_group.trace_collector : key => log_group.name }
+}
+
+output "trace_export_alarm_names" {
+  description = "Trace export failure alarm names for enabled ECS tracing, keyed by service."
+  value       = { for key, alarm in aws_cloudwatch_metric_alarm.trace_export_failure : key => alarm.alarm_name }
+}
+
 output "service_discovery_namespace" {
   description = "Private DNS namespace for ECS services in the CEX VPC."
   value       = aws_service_discovery_private_dns_namespace.services.name

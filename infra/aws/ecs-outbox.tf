@@ -38,17 +38,21 @@ resource "aws_ecs_task_definition" "outbox" {
       condition     = var.outbox_runtime_secret_arn != ""
       error_message = "Set outbox_runtime_secret_arn and provision the restricted PostgreSQL role before deploying Outbox."
     }
+    precondition {
+      condition     = var.trace_collector_image == null || var.ecs_alarm_sns_topic_arn != null
+      error_message = "Set ecs_alarm_sns_topic_arn before enabling the ECS trace collector."
+    }
   }
 
   family                   = "${local.resource_name}-outbox-relay"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = "512"
-  memory                   = "1024"
+  cpu                      = var.trace_collector_image == null ? "512" : "1024"
+  memory                   = var.trace_collector_image == null ? "1024" : "2048"
   execution_role_arn       = aws_iam_role.outbox_task_execution[0].arn
   task_role_arn            = aws_iam_role.service_task["outbox_relay"].arn
 
-  container_definitions = jsonencode([{
+  container_definitions = jsonencode(concat([{
     name                   = "outbox-relay"
     image                  = "${aws_ecr_repository.service["outbox_relay"].repository_url}@${var.outbox_image_digest}"
     essential              = true
@@ -62,7 +66,7 @@ resource "aws_ecs_task_definition" "outbox" {
       retries     = 3
       startPeriod = 60
     }
-    environment = [
+    environment = concat([
       { name = "AWS_REGION", value = var.aws_region },
       { name = "KAFKA_AUTH_MODE", value = "msk_iam" },
       { name = "OUTBOX_HTTP_ADDRESS", value = ":8082" },
@@ -72,7 +76,7 @@ resource "aws_ecs_task_definition" "outbox" {
       { name = "OUTBOX_MIGRATE_ON_STARTUP", value = "false" },
       { name = "OUTBOX_KAFKA_BROKERS", value = aws_msk_cluster.this.bootstrap_brokers_sasl_iam },
       { name = "OUTBOX_KAFKA_TOPIC_MAP", value = "ledger-events=${aws_msk_topic.this["ledger_events"].name}" }
-    ]
+    ], local.trace_application_environment)
     secrets = [{
       name      = "OUTBOX_DB_PASSWORD"
       valueFrom = "${var.outbox_runtime_secret_arn}:password::"
@@ -85,7 +89,7 @@ resource "aws_ecs_task_definition" "outbox" {
         awslogs-stream-prefix = "outbox-relay"
       }
     }
-  }])
+  }], lookup(local.trace_collector_containers, "outbox", [])))
 }
 
 resource "aws_ecs_service" "outbox" {
@@ -116,5 +120,5 @@ resource "aws_ecs_service" "outbox" {
     assign_public_ip = false
   }
 
-  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_iam_role_policy.msk_client["outbox_relay"], aws_iam_role_policy.outbox_secret_execution, aws_iam_role_policy_attachment.outbox_task_execution]
+  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_iam_role_policy.msk_client["outbox_relay"], aws_iam_role_policy.outbox_secret_execution, aws_iam_role_policy_attachment.outbox_task_execution, aws_iam_role_policy.xray_export]
 }

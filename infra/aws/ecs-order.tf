@@ -31,12 +31,12 @@ resource "aws_ecs_task_definition" "order" {
   family                   = "${local.resource_name}-order-service"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = "512"
-  memory                   = "1024"
+  cpu                      = var.trace_collector_image == null ? "512" : "1024"
+  memory                   = var.trace_collector_image == null ? "1024" : "2048"
   execution_role_arn       = aws_iam_role.ecs_task_execution.arn
   task_role_arn            = aws_iam_role.service_task["order_service"].arn
 
-  container_definitions = jsonencode([{
+  container_definitions = jsonencode(concat([{
     name                   = "order-service"
     image                  = "${aws_ecr_repository.service["order_service"].repository_url}@${var.order_image_digest}"
     essential              = true
@@ -50,13 +50,13 @@ resource "aws_ecs_task_definition" "order" {
       retries     = 3
       startPeriod = 60
     }
-    environment = [
+    environment = concat([
       { name = "ORDER_HTTP_ADDRESS", value = ":8083" },
       { name = "ORDER_LEDGER_MODE", value = "grpc" },
       { name = "ORDER_LEDGER_GRPC_ADDRESS", value = "${local.grpc_services["ledger_service"].name}.${aws_service_discovery_private_dns_namespace.services.name}:${local.grpc_services["ledger_service"].port}" },
       { name = "ORDER_MATCHING_MODE", value = "grpc" },
       { name = "ORDER_MATCHING_GRPC_ADDRESS", value = "${local.grpc_services["matching_engine"].name}.${aws_service_discovery_private_dns_namespace.services.name}:${local.grpc_services["matching_engine"].port}" }
-    ]
+    ], local.trace_application_environment)
     logConfiguration = {
       logDriver = "awslogs"
       options = {
@@ -65,12 +65,16 @@ resource "aws_ecs_task_definition" "order" {
         awslogs-stream-prefix = "order-service"
       }
     }
-  }])
+  }], lookup(local.trace_collector_containers, "order", [])))
 
   lifecycle {
     precondition {
       condition     = var.ledger_image_digest != null && var.matching_image_digest != null
       error_message = "Order requires ledger_image_digest and matching_image_digest so its gRPC readiness dependencies can run."
+    }
+    precondition {
+      condition     = var.trace_collector_image == null || var.ecs_alarm_sns_topic_arn != null
+      error_message = "Set ecs_alarm_sns_topic_arn before enabling the ECS trace collector."
     }
   }
 }
@@ -112,7 +116,7 @@ resource "aws_ecs_service" "order" {
     }
   }
 
-  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_ecs_service.ledger, aws_ecs_service.matching, aws_lb_listener.order_target_registration]
+  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_ecs_service.ledger, aws_ecs_service.matching, aws_lb_listener.order_target_registration, aws_iam_role_policy.xray_export]
 
   lifecycle {
     ignore_changes = [desired_count]

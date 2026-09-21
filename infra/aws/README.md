@@ -320,6 +320,37 @@ to the service's `desired_count` after creation so autoscaling can own it.
 This does not expose Order publicly; the HTTPS listener still returns 503.
 Ledger, Matching, and Outbox are not autoscaled by this policy.
 
+## Production ECS tracing
+
+Local Compose uses an unauthenticated Collector and local Tempo; do not expose
+those endpoints on a production network. ECS tracing is disabled until
+`trace_collector_image` is set to a reviewed, digest-pinned ADOT image
+(`public.ecr.aws/aws-observability/aws-otel-collector@sha256:...`). Use a
+release at least v0.34.0 so the X-Ray exporter accepts W3C trace IDs. Set
+`ecs_alarm_sns_topic_arn` to an existing topic with confirmed subscribers
+before enabling it. Terraform then deploys an essential ADOT sidecar in each
+enabled Order, Ledger, Matching, and Outbox task. It also raises the Fargate
+task size to 1 vCPU and 2 GiB to give the collector headroom.
+
+Application OTLP/gRPC export goes only to `127.0.0.1:4317` inside the same ECS
+task; the receiver binds to loopback and has no port mapping or inbound
+security-group rule. The collector uses the task role to authenticate to AWS
+X-Ray, with only trace-write IAM actions. Tracing uses parent-based sampling
+with `trace_sample_ratio` (default 0.1 for root spans) and tags the resource
+with the deployment environment and service namespace. The collector adds ECS
+task metadata. X-Ray is the managed trace backend and retains traces for 30
+days; this retention cannot be changed. Application and collector CloudWatch
+log groups use `ecs_log_retention_days` (default 30 days). The local Tempo
+dashboard is not the AWS trace viewer; use the X-Ray console for ECS traces.
+
+The existing no-running-tasks alarm covers an essential sidecar that exits.
+A separate alarm counts collector `Exporting failed` log messages and sends
+ALARM transitions to the configured SNS topic. Verify that a test trace
+appears in X-Ray and that the alarm topic reaches an operator after deploying;
+Terraform cannot verify either external delivery path. This setup handles
+traces and ECS infrastructure metrics, not application RED metric ingestion or
+per-service dashboards.
+
 ## ECS availability alarms
 
 Each enabled ECS service gets a CloudWatch alarm when its Container Insights

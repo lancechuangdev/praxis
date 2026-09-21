@@ -31,6 +31,13 @@ Phase 1 is being delivered incrementally:
       storage, and Grafana trace exploration for the current services.
 - [ ] Harden the telemetry pipeline for production (authentication, sampling,
       retention, resource metadata, alarms, and a managed or durable backend).
+  - [x] Add opt-in ECS tracing to managed X-Ray using a loopback-only ADOT
+        sidecar, task-role authentication, sampling, ECS resource metadata,
+        retained logs, and export-failure alarms for current services.
+  - [ ] Deploy a pinned collector image, connect an alarm SNS topic, and
+        verify real trace delivery and alert routing in AWS.
+  - [ ] Ingest application RED metrics into a durable backend and add
+        per-service dashboards and alerts.
 - [x] Provision ECR, ECS, Cloud Map, ALB, IAM, secrets, and autoscaling for
       every planned service.
   - [x] Provision immutable, scan-on-push ECR repositories with retention
@@ -43,8 +50,8 @@ Phase 1 is being delivered incrementally:
       verification, serialized migration execution, and separate runtime
       database credentials. AWS deployment and production verification remain
       operator steps.
-- [ ] Implement/extract Risk, Notification, Reporting, and Reconciliation.
-
+- [ ] Implement Risk and Notification.
+- [ ] Implement Reporting and Reconciliation.
 ## Design rules
 
 1. One service owns each write model; services never write each other's tables.
