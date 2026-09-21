@@ -35,6 +35,7 @@ The repository contains:
 - [Outbox Relay](outboxrelay/README.md)
 - [AWS infrastructure](infra/aws/README.md)
 - [Microservices migration architecture](docs/microservices-migration.md)
+- [ADR 0001: synchronous calls and Kafka](docs/adr/0001-synchronous-calls-and-kafka.md)
 - [Kubernetes one-hour crash course](docs/kubernetes-one-hour-crash-course.md)
 - [Deposit and trading reference architecture](#cex-deposit-and-trading-reference-architecture)
 

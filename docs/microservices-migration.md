@@ -53,7 +53,7 @@ Phase 1 is being delivered incrementally:
       verification, serialized migration execution, and separate runtime
       database credentials. AWS deployment and production verification remain
       operator steps.
-- [ ] Implement Risk and Notification.
+- [ ] Implement Risk and Notification (Implement this later).
 - [ ] Implement Reporting and Reconciliation (Implement this later).
 ## Design rules
 
@@ -298,6 +298,8 @@ must suppress side effects.
 ## Production checklist
 
 - [ ] ADRs for synchronous calls, partition keys, failure policy, and ownership
+  - [x] ADR 0001 defines synchronous request-path calls versus asynchronous
+        Kafka messaging and their failure semantics.
 - [ ] Protobuf compatibility checks in CI
   - [x] Local Buf lint and `FILE`-level compatibility policies are configured
         independently for Ledger, Matching, and Order service contracts.
