@@ -358,6 +358,17 @@ variable "order_ledger_target" {
   }
 }
 
+variable "order_matching_target" {
+  description = "Matching Cloud Map endpoint used by Order: fargate or ec2. Change only after the EC2 Matching task is healthy."
+  type        = string
+  default     = "fargate"
+
+  validation {
+    condition     = contains(["fargate", "ec2"], var.order_matching_target)
+    error_message = "order_matching_target must be fargate or ec2."
+  }
+}
+
 variable "order_ec2_enabled" {
   description = "Create a parallel Order ECS service on EC2; leave the Fargate service intact. Requires order_image_digest. Does not expose Order publicly."
   type        = bool
@@ -429,6 +440,51 @@ variable "matching_image_digest" {
   validation {
     condition     = var.matching_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.matching_image_digest))
     error_message = "matching_image_digest must be null or a lowercase sha256 digest with 64 hexadecimal characters."
+  }
+}
+
+variable "matching_ec2_enabled" {
+  description = "Provision a separate Matching ECS EC2 service without moving Order traffic. The mock engine cannot have overlapping Fargate and EC2 owners."
+  type        = bool
+  default     = false
+}
+
+variable "matching_fargate_desired_count" {
+  description = "Mock Matching Fargate task count; set to zero before starting the EC2 task."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = contains([0, 1], var.matching_fargate_desired_count)
+    error_message = "matching_fargate_desired_count must be zero or one."
+  }
+}
+
+variable "matching_ec2_desired_count" {
+  description = "Mock Matching EC2 task count; defaults to zero and must not overlap a Fargate task."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = contains([0, 1], var.matching_ec2_desired_count)
+    error_message = "matching_ec2_desired_count must be zero or one."
+  }
+}
+
+variable "matching_ec2_instance_type" {
+  description = "Instance type for the opt-in Matching ECS EC2 capacity provider."
+  type        = string
+  default     = "m6i.large"
+}
+
+variable "matching_ec2_max_instances" {
+  description = "Maximum EC2 instances for the Matching capacity provider, allowing headroom for replacement."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = var.matching_ec2_max_instances >= 2 && var.matching_ec2_max_instances <= 100 && floor(var.matching_ec2_max_instances) == var.matching_ec2_max_instances
+    error_message = "matching_ec2_max_instances must be an integer from two to 100."
   }
 }
 

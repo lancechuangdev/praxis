@@ -55,7 +55,7 @@ resource "aws_ecs_task_definition" "order" {
       { name = "ORDER_LEDGER_MODE", value = "grpc" },
       { name = "ORDER_LEDGER_GRPC_ADDRESS", value = var.order_ledger_target == "ec2" ? "${aws_service_discovery_service.ledger_ec2[0].name}.${aws_service_discovery_private_dns_namespace.services.name}:${local.grpc_services["ledger_service"].port}" : "${local.grpc_services["ledger_service"].name}.${aws_service_discovery_private_dns_namespace.services.name}:${local.grpc_services["ledger_service"].port}" },
       { name = "ORDER_MATCHING_MODE", value = "grpc" },
-      { name = "ORDER_MATCHING_GRPC_ADDRESS", value = "${local.grpc_services["matching_engine"].name}.${aws_service_discovery_private_dns_namespace.services.name}:${local.grpc_services["matching_engine"].port}" }
+      { name = "ORDER_MATCHING_GRPC_ADDRESS", value = var.order_matching_target == "ec2" ? "${aws_service_discovery_service.matching_ec2[0].name}.${aws_service_discovery_private_dns_namespace.services.name}:${local.grpc_services["matching_engine"].port}" : "${local.grpc_services["matching_engine"].name}.${aws_service_discovery_private_dns_namespace.services.name}:${local.grpc_services["matching_engine"].port}" }
     ], local.trace_application_environment)
     logConfiguration = {
       logDriver = "awslogs"
@@ -81,6 +81,11 @@ resource "aws_ecs_task_definition" "order" {
     precondition {
       condition     = var.order_ledger_target != "fargate" || var.ledger_fargate_desired_count > 0
       error_message = "Keep Ledger Fargate running while Order targets its Cloud Map name."
+    }
+
+    precondition {
+      condition     = var.order_matching_target != "ec2" || (var.matching_ec2_enabled && var.matching_ec2_desired_count == 1)
+      error_message = "Start the Matching EC2 task before routing Order to its Cloud Map name."
     }
   }
 }

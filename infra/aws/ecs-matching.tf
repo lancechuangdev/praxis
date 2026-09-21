@@ -30,6 +30,18 @@ resource "aws_vpc_security_group_ingress_rule" "matching_from_order" {
 resource "aws_ecs_task_definition" "matching" {
   count = var.matching_image_digest == null ? 0 : 1
 
+  lifecycle {
+    precondition {
+      condition     = var.matching_fargate_desired_count + var.matching_ec2_desired_count <= 1
+      error_message = "This mock Matching Engine cannot run Fargate and EC2 tasks simultaneously: set the Fargate count to zero first."
+    }
+
+    precondition {
+      condition     = var.matching_ec2_desired_count == 0 || var.matching_ec2_enabled
+      error_message = "matching_ec2_desired_count requires matching_ec2_enabled."
+    }
+  }
+
   family                   = "${local.resource_name}-matching-engine"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
@@ -82,7 +94,7 @@ resource "aws_ecs_service" "matching" {
   name            = "${local.resource_name}-matching-engine"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.matching[0].arn
-  desired_count   = 1
+  desired_count   = var.matching_fargate_desired_count
 
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 100

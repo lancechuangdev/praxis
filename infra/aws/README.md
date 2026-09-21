@@ -434,6 +434,33 @@ no-running-tasks alarm only while its desired count is positive; the existing
 MSK lag alarm continues to watch the shared Ledger consumer group. Alarms have
 no notification actions.
 
+## Opt-in Matching on EC2
+
+Set `matching_ec2_enabled = true` only after the Order and Ledger moves have
+been tested. This provisions a separate private EC2 Auto Scaling group,
+capacity provider, ECS service, and `matching-engine-ec2` Cloud Map name. The
+EC2 service starts with `matching_ec2_desired_count = 0`; Order continues to
+use the Fargate Matching endpoint by default. No public listener is added.
+
+The current Matching Engine is an in-memory admission test double. It has no
+durable order book, partition lease, fencing token, or recovery checkpoint.
+Running Fargate and EC2 instances at the same time could create competing
+sequence owners and duplicate or inconsistent events; Terraform rejects a
+configuration requesting both tasks. This is **not** a safe live production
+migration of a real matching engine, and the mock cannot establish real
+matching throughput.
+
+For a controlled test, first provision EC2 at zero tasks and pause new Order
+admissions. In separate applies, set `matching_fargate_desired_count = 0` and
+confirm the old task stopped; then set `matching_ec2_desired_count = 1` and
+verify health and event output. Set `order_matching_target = "ec2"` to point
+Order at the new private DNS name, then resume test admissions. The handoff
+has intentional downtime and loses the mock's in-memory state. To roll back,
+pause admissions again, stop EC2, restart Fargate, verify it, point Order back
+to `fargate`, and resume. Do not run these stages in one Terraform apply. An
+availability alarm is created only when the EC2 desired count is positive;
+it has no notification action.
+
 ## ECS availability alarms
 
 Each enabled ECS service gets a CloudWatch alarm when its Container Insights

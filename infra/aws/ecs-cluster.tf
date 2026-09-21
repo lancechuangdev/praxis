@@ -43,7 +43,8 @@ resource "aws_ecs_cluster_capacity_providers" "this" {
   capacity_providers = concat(
     ["FARGATE", "FARGATE_SPOT"],
     var.order_ec2_enabled ? [aws_ecs_capacity_provider.order[0].name] : [],
-    var.ledger_ec2_enabled ? [aws_ecs_capacity_provider.ledger[0].name] : []
+    var.ledger_ec2_enabled ? [aws_ecs_capacity_provider.ledger[0].name] : [],
+    var.matching_ec2_enabled ? [aws_ecs_capacity_provider.matching[0].name] : []
   )
 
   default_capacity_provider_strategy {

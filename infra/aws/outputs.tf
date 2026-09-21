@@ -176,6 +176,21 @@ output "matching_ecs_service_arn" {
   value       = var.matching_image_digest == null ? null : aws_ecs_service.matching[0].id
 }
 
+output "matching_ec2_capacity_provider_name" {
+  description = "Opt-in Matching EC2 capacity provider name."
+  value       = var.matching_ec2_enabled ? aws_ecs_capacity_provider.matching[0].name : null
+}
+
+output "matching_ec2_service_arn" {
+  description = "Separate Matching service on EC2. Never run concurrently with the Fargate mock."
+  value       = var.matching_ec2_enabled ? aws_ecs_service.matching_ec2[0].id : null
+}
+
+output "matching_ec2_grpc_address" {
+  description = "Private Matching EC2 endpoint for a deliberate Order client switch."
+  value       = var.matching_ec2_enabled ? "${aws_service_discovery_service.matching_ec2[0].name}.${aws_service_discovery_private_dns_namespace.services.name}:9092" : null
+}
+
 output "ledger_task_security_group_id" {
   description = "Private Ledger task ingress security group."
   value       = aws_security_group.ledger_task.id

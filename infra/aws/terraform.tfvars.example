@@ -34,6 +34,11 @@ order_alb_deletion_protection = false
 # Set only after building and pushing the matching-engine image to its ECR
 # repository. This mock remains single-replica and is not production matching.
 matching_image_digest = null
+matching_fargate_desired_count = 1
+matching_ec2_enabled          = false
+matching_ec2_desired_count    = 0
+matching_ec2_instance_type    = "m6i.large"
+matching_ec2_max_instances    = 2
 
 # First register and run the one-off migration task, then set the same digest
 # for the long-running service. Only migration tasks use the RDS admin password.
@@ -61,6 +66,7 @@ outbox_runtime_secret_arn     = ""
 # Order remains private and the public ALB still returns 503.
 order_image_digest = null
 order_ledger_target = "fargate"
+order_matching_target = "fargate"
 
 # Opt-in parallel EC2 Order deployment. Keep off until Fargate is measured;
 # this leaves Matching and the existing Order service on Fargate.

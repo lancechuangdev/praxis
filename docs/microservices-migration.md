@@ -297,6 +297,12 @@ explicit setting. The Fargate Ledger service can be scaled to zero after that
 cutover and retained for rollback. None of these AWS handoff steps have been
 executed or validated in an environment yet.
 
+An opt-in Matching EC2 capacity provider and service are defined at zero tasks.
+Because Matching remains an in-memory mock without partition fencing or
+recovery, the Fargate and EC2 tasks may not overlap. Its switch requires an
+admission pause and loses mock state; it is not a production-safe matching
+migration. Order changes Matching endpoints only through an explicit setting.
+
 **Gate:** the move improves a named target and rollback to Fargate works.
 
 ### 6. Adopt Kubernetes
