@@ -129,9 +129,9 @@ spec:
             - name: LEDGER_DB_NAME
               valueFrom:
                 configMapKeyRef: {name: praxis-runtime, key: LEDGER_DB_NAME}
-            - name: LEDGER_DB_PASSWORD
+            - name: LEDGER_DB_SECRET_ARN
               valueFrom:
-                secretKeyRef: {name: ledger-runtime, key: LEDGER_DB_PASSWORD}
+                configMapKeyRef: {name: praxis-runtime, key: LEDGER_DB_SECRET_ARN}
             - name: LEDGER_MIGRATE_ON_STARTUP
               value: "false"
             - name: LEDGER_KAFKA_BROKERS

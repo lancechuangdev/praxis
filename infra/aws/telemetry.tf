@@ -1,16 +1,10 @@
 locals {
   trace_service_task_role_keys = {
-    order    = "order_service"
-    ledger   = "ledger_service"
-    matching = "matching_engine"
-    outbox   = "outbox_relay"
+    outbox = "outbox_relay"
   }
 
   service_metrics_ports = {
-    order    = 8083
-    ledger   = 8081
-    matching = 8084
-    outbox   = 8082
+    outbox = 8082
   }
 
   trace_enabled_services = var.trace_collector_image == null ? {} : {

@@ -22,7 +22,7 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
 }
 
 resource "aws_cloudwatch_log_group" "ecs_service" {
-  for_each = var.ecr_repositories
+  for_each = { outbox_relay = var.ecr_repositories.outbox_relay }
 
   name              = "/ecs/${local.resource_name}/${each.value}"
   retention_in_days = var.ecs_log_retention_days
@@ -40,12 +40,7 @@ resource "aws_ecs_cluster" "this" {
 resource "aws_ecs_cluster_capacity_providers" "this" {
   cluster_name = aws_ecs_cluster.this.name
 
-  capacity_providers = concat(
-    ["FARGATE", "FARGATE_SPOT"],
-    var.order_ec2_enabled ? [aws_ecs_capacity_provider.order[0].name] : [],
-    var.ledger_ec2_enabled ? [aws_ecs_capacity_provider.ledger[0].name] : [],
-    var.matching_ec2_enabled ? [aws_ecs_capacity_provider.matching[0].name] : []
-  )
+  capacity_providers = ["FARGATE", "FARGATE_SPOT"]
 
   default_capacity_provider_strategy {
     capacity_provider = "FARGATE"

@@ -123,97 +123,9 @@ output "managed_metrics_query_endpoint" {
   value       = var.managed_metrics_enabled ? aws_prometheus_workspace.application[0].prometheus_endpoint : null
 }
 
-output "service_discovery_namespace" {
-  description = "Private DNS namespace for ECS services in the CEX VPC."
-  value       = aws_service_discovery_private_dns_namespace.services.name
-}
-
-output "grpc_service_discovery_arns" {
-  description = "Cloud Map service ARNs to attach to the corresponding ECS service registries."
-  value       = { for key, service in aws_service_discovery_service.grpc : key => service.arn }
-}
-
-output "grpc_service_addresses" {
-  description = "Order Service gRPC targets after ECS services register their tasks with Cloud Map."
-  value = {
-    for key, service in local.grpc_services :
-    key => "${service.name}.${aws_service_discovery_private_dns_namespace.services.name}:${service.port}"
-  }
-}
-
 output "service_task_role_arns" {
-  description = "Application ECS task-role ARNs keyed by service name; distinct from the shared task execution role."
+  description = "Outbox Relay ECS task-role ARN, distinct from the shared task execution role."
   value       = { for key, role in aws_iam_role.service_task : key => role.arn }
-}
-
-output "order_alb_dns_name" {
-  description = "Public Order ALB DNS name, if enabled. The listener returns 503 until the authenticated Order ECS rollout."
-  value       = var.order_alb_enabled ? aws_lb.order[0].dns_name : null
-}
-
-output "order_target_group_arn" {
-  description = "Order IP target group ARN to attach to the future ECS service."
-  value       = var.order_alb_enabled ? aws_lb_target_group.order[0].arn : null
-}
-
-output "order_task_security_group_id" {
-  description = "Private Order task security group allowing inbound HTTP only from the ALB."
-  value       = var.order_alb_enabled ? aws_security_group.order_task[0].id : null
-}
-
-output "order_grpc_client_security_group_id" {
-  description = "Security group to attach to future Order tasks so they can reach private gRPC services."
-  value       = aws_security_group.order_grpc_clients.id
-}
-
-output "matching_task_security_group_id" {
-  description = "Private Matching task ingress security group."
-  value       = aws_security_group.matching_task.id
-}
-
-output "matching_ecs_service_arn" {
-  description = "Matching ECS service ARN when matching_image_digest is set."
-  value       = var.matching_image_digest == null ? null : aws_ecs_service.matching[0].id
-}
-
-output "matching_ec2_capacity_provider_name" {
-  description = "Opt-in Matching EC2 capacity provider name."
-  value       = var.matching_ec2_enabled ? aws_ecs_capacity_provider.matching[0].name : null
-}
-
-output "matching_ec2_service_arn" {
-  description = "Separate Matching service on EC2. Never run concurrently with the Fargate mock."
-  value       = var.matching_ec2_enabled ? aws_ecs_service.matching_ec2[0].id : null
-}
-
-output "matching_ec2_grpc_address" {
-  description = "Private Matching EC2 endpoint for a deliberate Order client switch."
-  value       = var.matching_ec2_enabled ? "${aws_service_discovery_service.matching_ec2[0].name}.${aws_service_discovery_private_dns_namespace.services.name}:9092" : null
-}
-
-output "ledger_task_security_group_id" {
-  description = "Private Ledger task ingress security group."
-  value       = aws_security_group.ledger_task.id
-}
-
-output "ledger_ecs_service_arn" {
-  description = "Ledger ECS service ARN when ledger_image_digest is set."
-  value       = var.ledger_image_digest == null ? null : aws_ecs_service.ledger[0].id
-}
-
-output "ledger_ec2_capacity_provider_name" {
-  description = "Opt-in Ledger EC2 capacity provider name."
-  value       = var.ledger_ec2_enabled ? aws_ecs_capacity_provider.ledger[0].name : null
-}
-
-output "ledger_ec2_service_arn" {
-  description = "Parallel Ledger service on EC2; the Fargate service remains available for rollback."
-  value       = var.ledger_ec2_enabled ? aws_ecs_service.ledger_ec2[0].id : null
-}
-
-output "ledger_ec2_grpc_address" {
-  description = "Private Ledger EC2 endpoint for a deliberate Order client cutover; null when EC2 is disabled."
-  value       = var.ledger_ec2_enabled ? "${aws_service_discovery_service.ledger_ec2[0].name}.${aws_service_discovery_private_dns_namespace.services.name}:9091" : null
 }
 
 output "outbox_ecs_service_arn" {
@@ -221,9 +133,16 @@ output "outbox_ecs_service_arn" {
   value       = var.outbox_image_digest == null ? null : aws_ecs_service.outbox[0].id
 }
 
-output "ledger_migration_task_definition_arn" {
-  description = "One-off Ledger migration task definition ARN when ledger_migration_image_digest is set. Terraform does not run the task."
-  value       = var.ledger_migration_image_digest == null ? null : aws_ecs_task_definition.ledger_migration[0].arn
+output "ledger_migration_config" {
+  description = "Non-secret settings for the one-off EKS Ledger migration Job. Terraform does not run the Job."
+  value = {
+    image      = var.ledger_migration_image_digest == null ? null : "${aws_ecr_repository.service["ledger_service"].repository_url}@${var.ledger_migration_image_digest}"
+    db_host    = aws_rds_cluster.ledger.endpoint
+    db_user    = var.postgres_master_username
+    db_name    = var.postgres_database_name
+    secret_arn = aws_rds_cluster.ledger.master_user_secret[0].secret_arn
+    aws_region = var.aws_region
+  }
 }
 
 output "outbox_migration_task_definition_arn" {
@@ -231,44 +150,24 @@ output "outbox_migration_task_definition_arn" {
   value       = var.outbox_migration_image_digest == null ? null : aws_ecs_task_definition.outbox_migration[0].arn
 }
 
-output "order_ecs_service_arn" {
-  description = "Private Order ECS service ARN when order_image_digest is set. The public ALB listener still returns 503."
-  value       = var.order_image_digest == null ? null : aws_ecs_service.order[0].id
-}
-
-output "order_ec2_capacity_provider_name" {
-  description = "Opt-in Order EC2 capacity provider name."
-  value       = var.order_ec2_enabled ? aws_ecs_capacity_provider.order[0].name : null
-}
-
-output "order_ec2_service_arn" {
-  description = "Parallel Order service on EC2; the Fargate service is retained."
-  value       = var.order_ec2_enabled ? aws_ecs_service.order_ec2[0].id : null
-}
-
-output "order_ec2_target_group_arn" {
-  description = "Parallel Order EC2 target group when ALB is enabled; not publicly routed."
-  value       = var.order_ec2_enabled && var.order_alb_enabled ? aws_lb_target_group.order_ec2[0].arn : null
-}
-
 output "eks_cluster_name" {
-  description = "Opt-in EKS cluster for Order, Ledger, and Matching; null when disabled."
-  value       = var.eks_enabled ? aws_eks_cluster.this[0].name : null
+  description = "EKS cluster for Order, Ledger, and Matching."
+  value       = aws_eks_cluster.this.name
 }
 
 output "eks_cluster_endpoint" {
   description = "EKS API endpoint; private by default."
-  value       = var.eks_enabled ? aws_eks_cluster.this[0].endpoint : null
+  value       = aws_eks_cluster.this.endpoint
 }
 
 output "eks_cluster_security_group_id" {
   description = "EKS cluster security group used by managed nodes for VPC access to MSK and RDS."
-  value       = var.eks_enabled ? aws_eks_cluster.this[0].vpc_config[0].cluster_security_group_id : null
+  value       = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
 }
 
 output "eks_pod_role_arns" {
-  description = "Pod Identity roles for Ledger and Matching MSK clients. Order has no AWS task role."
-  value       = { for key, role in aws_iam_role.eks_pod : key => role.arn }
+  description = "Pod Identity roles for Ledger, Matching, and the one-off Ledger migration Job. Order has no AWS role."
+  value       = merge({ for key, role in aws_iam_role.eks_pod : key => role.arn }, { ledger_migration = aws_iam_role.eks_ledger_migration.arn })
 }
 
 output "eks_image_refs" {

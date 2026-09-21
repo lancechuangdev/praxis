@@ -59,7 +59,7 @@ data "aws_iam_policy_document" "msk_client" {
 }
 
 resource "aws_iam_role_policy" "msk_client" {
-  for_each = local.msk_client_access
+  for_each = { outbox_relay = local.msk_client_access.outbox_relay }
 
   name   = "msk-client"
   role   = aws_iam_role.service_task[each.key].id

@@ -16,14 +16,8 @@ variable "aws_region" {
   default     = "us-west-2"
 }
 
-variable "eks_enabled" {
-  description = "Provision an opt-in EKS cluster and EC2 managed node group for Order, Ledger, and Matching. ECS Outbox Relay remains on Fargate."
-  type        = bool
-  default     = false
-}
-
 variable "eks_version" {
-  description = "Pinned EKS Kubernetes minor version; verify availability and standard-support dates in the selected Region before enabling."
+  description = "Pinned EKS Kubernetes minor version; verify availability and standard-support dates in the selected Region."
   type        = string
   default     = "1.35"
 
@@ -34,10 +28,13 @@ variable "eks_version" {
 }
 
 variable "eks_admin_principal_arn" {
-  description = "IAM role ARN granted EKS cluster-admin access. Required when eks_enabled is true; use a dedicated operator role."
+  description = "Dedicated IAM role ARN granted EKS cluster-admin access. Required for the EKS cluster."
   type        = string
-  default     = null
-  nullable    = true
+
+  validation {
+    condition     = can(regex("^arn:[^:]+:iam::[0-9]{12}:role/.+", var.eks_admin_principal_arn))
+    error_message = "eks_admin_principal_arn must be an IAM role ARN."
+  }
 }
 
 variable "eks_public_access_cidrs" {
@@ -311,7 +308,7 @@ variable "ledger_consumer_max_offset_lag" {
 }
 
 variable "ledger_image_digest" {
-  description = "Opt-in Ledger image digest (sha256:...) already pushed to its ECR repository. Null creates no Ledger task definition or ECS service."
+  description = "Ledger image digest (sha256:...) already pushed to ECR for the Kubernetes workload."
   type        = string
   default     = null
   nullable    = true
@@ -322,53 +319,8 @@ variable "ledger_image_digest" {
   }
 }
 
-variable "ledger_ec2_enabled" {
-  description = "Provision a parallel Ledger ECS EC2 service without changing the Fargate service or Order's Ledger endpoint. Requires ledger_image_digest."
-  type        = bool
-  default     = false
-}
-
-variable "ledger_fargate_desired_count" {
-  description = "Ledger Fargate task count. Leave at one until the EC2 Ledger service and Order endpoint have been verified; zero retains the service for rollback."
-  type        = number
-  default     = 1
-
-  validation {
-    condition     = var.ledger_fargate_desired_count >= 0 && var.ledger_fargate_desired_count <= 100 && floor(var.ledger_fargate_desired_count) == var.ledger_fargate_desired_count
-    error_message = "ledger_fargate_desired_count must be an integer from zero to 100."
-  }
-}
-
-variable "ledger_ec2_desired_count" {
-  description = "Number of parallel Ledger EC2 tasks. Defaults to zero because running tasks join the live Ledger Kafka consumer group and share its database."
-  type        = number
-  default     = 0
-
-  validation {
-    condition     = var.ledger_ec2_desired_count >= 0 && var.ledger_ec2_desired_count <= 100 && floor(var.ledger_ec2_desired_count) == var.ledger_ec2_desired_count
-    error_message = "ledger_ec2_desired_count must be an integer from zero to 100."
-  }
-}
-
-variable "ledger_ec2_instance_type" {
-  description = "EC2 instance type for the opt-in Ledger capacity provider."
-  type        = string
-  default     = "m6i.large"
-}
-
-variable "ledger_ec2_max_instances" {
-  description = "Maximum EC2 instances for the Ledger capacity provider."
-  type        = number
-  default     = 6
-
-  validation {
-    condition     = var.ledger_ec2_max_instances >= 2 && var.ledger_ec2_max_instances <= 100 && floor(var.ledger_ec2_max_instances) == var.ledger_ec2_max_instances
-    error_message = "ledger_ec2_max_instances must be an integer from two to 100."
-  }
-}
-
 variable "ledger_migration_image_digest" {
-  description = "Ledger image digest for the one-off migration task, independently deployable before the Ledger service image."
+  description = "Ledger image digest for the one-off EKS migration Job, independently deployable before the Ledger service image."
   type        = string
   default     = null
   nullable    = true
@@ -404,7 +356,7 @@ variable "outbox_migration_image_digest" {
 }
 
 variable "order_image_digest" {
-  description = "Opt-in Order image digest (sha256:...) already pushed to its ECR repository. Null creates no Order task definition or ECS service."
+  description = "Order image digest (sha256:...) already pushed to ECR for the Kubernetes workload."
   type        = string
   default     = null
   nullable    = true
@@ -412,73 +364,6 @@ variable "order_image_digest" {
   validation {
     condition     = var.order_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.order_image_digest))
     error_message = "order_image_digest must be null or a lowercase sha256 digest with 64 hexadecimal characters."
-  }
-}
-
-variable "order_fargate_desired_count" {
-  description = "Minimum and desired Order Fargate task count. Set zero only after traffic has moved away; the ECS service remains for rollback."
-  type        = number
-  default     = 1
-
-  validation {
-    condition     = contains([0, 1], var.order_fargate_desired_count)
-    error_message = "order_fargate_desired_count must be zero or one."
-  }
-}
-
-variable "order_ledger_target" {
-  description = "Ledger endpoint used by Order services: the original Fargate Cloud Map name or the parallel EC2 Cloud Map name."
-  type        = string
-  default     = "fargate"
-
-  validation {
-    condition     = contains(["fargate", "ec2"], var.order_ledger_target)
-    error_message = "order_ledger_target must be fargate or ec2."
-  }
-}
-
-variable "order_matching_target" {
-  description = "Matching Cloud Map endpoint used by Order: fargate or ec2. Change only after the EC2 Matching task is healthy."
-  type        = string
-  default     = "fargate"
-
-  validation {
-    condition     = contains(["fargate", "ec2"], var.order_matching_target)
-    error_message = "order_matching_target must be fargate or ec2."
-  }
-}
-
-variable "order_ec2_enabled" {
-  description = "Create a parallel Order ECS service on EC2; leave the Fargate service intact. Requires order_image_digest. Does not expose Order publicly."
-  type        = bool
-  default     = false
-}
-
-variable "order_ec2_desired_count" {
-  description = "Minimum and desired Order ECS EC2 task count when enabled. Set zero after Kubernetes cutover."
-  type        = number
-  default     = 1
-
-  validation {
-    condition     = contains([0, 1], var.order_ec2_desired_count)
-    error_message = "order_ec2_desired_count must be zero or one."
-  }
-}
-
-variable "order_ec2_instance_type" {
-  description = "Instance type for the opt-in Order ECS EC2 capacity provider. Check task and awsvpc ENI capacity before deployment."
-  type        = string
-  default     = "m6i.large"
-}
-
-variable "order_ec2_max_instances" {
-  description = "Upper bound on EC2 instances managed by the Order capacity provider."
-  type        = number
-  default     = 6
-
-  validation {
-    condition     = var.order_ec2_max_instances >= 2 && var.order_ec2_max_instances <= 100
-    error_message = "order_ec2_max_instances must be between 2 and 100."
   }
 }
 
@@ -522,7 +407,7 @@ variable "managed_metrics_retention_days" {
 }
 
 variable "matching_image_digest" {
-  description = "Opt-in Matching image digest (sha256:...) already pushed to its ECR repository. Null creates no Matching task definition or ECS service."
+  description = "Matching image digest (sha256:...) already pushed to ECR for the Kubernetes workload."
   type        = string
   default     = null
   nullable    = true
@@ -531,70 +416,6 @@ variable "matching_image_digest" {
     condition     = var.matching_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.matching_image_digest))
     error_message = "matching_image_digest must be null or a lowercase sha256 digest with 64 hexadecimal characters."
   }
-}
-
-variable "matching_ec2_enabled" {
-  description = "Provision a separate Matching ECS EC2 service without moving Order traffic. The mock engine cannot have overlapping Fargate and EC2 owners."
-  type        = bool
-  default     = false
-}
-
-variable "matching_fargate_desired_count" {
-  description = "Mock Matching Fargate task count; set to zero before starting the EC2 task."
-  type        = number
-  default     = 1
-
-  validation {
-    condition     = contains([0, 1], var.matching_fargate_desired_count)
-    error_message = "matching_fargate_desired_count must be zero or one."
-  }
-}
-
-variable "matching_ec2_desired_count" {
-  description = "Mock Matching EC2 task count; defaults to zero and must not overlap a Fargate task."
-  type        = number
-  default     = 0
-
-  validation {
-    condition     = contains([0, 1], var.matching_ec2_desired_count)
-    error_message = "matching_ec2_desired_count must be zero or one."
-  }
-}
-
-variable "matching_ec2_instance_type" {
-  description = "Instance type for the opt-in Matching ECS EC2 capacity provider."
-  type        = string
-  default     = "m6i.large"
-}
-
-variable "matching_ec2_max_instances" {
-  description = "Maximum EC2 instances for the Matching capacity provider, allowing headroom for replacement."
-  type        = number
-  default     = 2
-
-  validation {
-    condition     = var.matching_ec2_max_instances >= 2 && var.matching_ec2_max_instances <= 100 && floor(var.matching_ec2_max_instances) == var.matching_ec2_max_instances
-    error_message = "matching_ec2_max_instances must be an integer from two to 100."
-  }
-}
-
-variable "order_alb_enabled" {
-  description = "Create the public Order ALB foundation. The HTTPS listener returns 503 until edge authentication and the ECS rollout are implemented."
-  type        = bool
-  default     = false
-}
-
-variable "order_alb_certificate_arn" {
-  description = "ACM certificate ARN for the Order HTTPS listener; required when order_alb_enabled is true."
-  type        = string
-  default     = null
-  nullable    = true
-}
-
-variable "order_alb_deletion_protection" {
-  description = "Protect the Order ALB from accidental deletion; enable for production."
-  type        = bool
-  default     = false
 }
 
 variable "topics" {

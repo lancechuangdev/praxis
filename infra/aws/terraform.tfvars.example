@@ -3,11 +3,11 @@ environment = "development"
 aws_region  = "us-west-2"
 vpc_cidr    = "10.80.0.0/16"
 
-# EKS is opt-in. Supply a dedicated operator IAM role ARN; the Kubernetes API
-# is private unless narrow operator CIDRs are explicitly listed.
-eks_enabled             = false
+# EKS is the home for Order, Ledger, and Matching. Supply a dedicated
+# operator IAM role ARN before applying; the Kubernetes API is private unless
+# narrow operator CIDRs are explicitly listed.
 eks_version             = "1.35"
-eks_admin_principal_arn = null
+eks_admin_principal_arn = "arn:aws:iam::123456789012:role/replace-with-dedicated-eks-operator-role"
 eks_public_access_cidrs = []
 eks_node_instance_types = ["m6i.xlarge"]
 eks_node_min_size       = 3
@@ -35,34 +35,15 @@ ecr_untagged_retention_days       = 7
 ecs_container_insights_mode = "enhanced"
 ecs_log_retention_days       = 30
 
-# Keep the public ALB disabled until edge authentication and the Order ECS
-# service are ready. Enabling it requires an ACM certificate in this Region.
-order_alb_enabled             = false
-order_alb_certificate_arn     = null
-order_alb_deletion_protection = false
-
-# Set only after building and pushing the matching-engine image to its ECR
-# repository. This mock remains single-replica and is not production matching.
+# Set after building and pushing the matching-engine image to ECR. This mock
+# remains single-replica and is not production matching.
 matching_image_digest = null
-matching_fargate_desired_count = 1
-matching_ec2_enabled          = false
-matching_ec2_desired_count    = 0
-matching_ec2_instance_type    = "m6i.large"
-matching_ec2_max_instances    = 2
 
-# First register and run the one-off migration task, then set the same digest
-# for the long-running service. Only migration tasks use the RDS admin password.
+# First run the one-off Ledger migration Job on EKS, then set the same digest
+# for the long-running service. Only migration jobs/tasks use the RDS admin password.
 ledger_migration_image_digest = null
 ledger_image_digest           = null
 ledger_runtime_secret_arn     = ""
-ledger_fargate_desired_count  = 1
-
-# Provision EC2 Ledger separately. It starts with zero tasks: raising this
-# count joins the existing Kafka consumer group and processes real commands.
-ledger_ec2_enabled       = false
-ledger_ec2_desired_count = 0
-ledger_ec2_instance_type = "m6i.large"
-ledger_ec2_max_instances = 6
 
 # Alarm when Ledger falls this many records behind ledger.commands.v1.
 ledger_consumer_max_offset_lag = 1000
@@ -73,18 +54,8 @@ outbox_image_digest           = null
 outbox_runtime_secret_arn     = ""
 
 # Set only after Ledger and Matching images are configured and healthy.
-# Order remains private and the public ALB still returns 503.
+# Order remains private until an authenticated Kubernetes ingress is added.
 order_image_digest = null
-order_fargate_desired_count = 1
-order_ec2_desired_count = 1
-order_ledger_target = "fargate"
-order_matching_target = "fargate"
-
-# Opt-in parallel EC2 Order deployment. Keep off until Fargate is measured;
-# this leaves Matching and the existing Order service on Fargate.
-order_ec2_enabled       = false
-order_ec2_instance_type = "m6i.large"
-order_ec2_max_instances = 6
 
 # Optional production tracing for enabled ECS services. Pin a reviewed ADOT
 # image by digest. The sidecar sends sampled traces to managed AWS X-Ray; no

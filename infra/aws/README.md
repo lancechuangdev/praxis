@@ -1,539 +1,96 @@
-# CEX AWS infrastructure
+# Praxis AWS infrastructure
 
-This Terraform stack provisions a production-oriented, provisioned Amazon MSK
-cluster, its Kafka topics, and a PostgreSQL Multi-AZ DB cluster for the ledger.
+This Terraform stack creates a three-AZ VPC, provisioned MSK cluster and
+topics, PostgreSQL Multi-AZ Ledger database, ECR repositories, and an EKS
+cluster with EC2 managed nodes for Order, Ledger, and Matching. It also creates
+an ECS Fargate cluster for Outbox Relay and its one-off database migration.
+Reporting and Notification are not implemented. No Order ALB or public ingress
+is provisioned; the Kubernetes Order Service is private.
 
-This stack is self-contained. It does not read or reuse an external VPC,
-subnet, route, or security-group resources.
+## Provision
 
-It creates:
-
-- A dedicated CEX VPC spanning three Availability Zones
-- Public and private subnets, an internet gateway, NAT gateways, and routes
-- Dedicated CEX application-client and MSK security groups
-- A three-broker MSK cluster in the new CEX private subnets
-- A PostgreSQL Multi-AZ DB cluster with one writer and two readable standbys
-- Immutable, scan-on-push ECR repositories for each current service
-- An ECS cluster with Fargate and opt-in Fargate Spot capacity
-- A shared task execution role and per-service CloudWatch log groups
-- A distinct IAM task role for each current application service
-- An optional HTTPS-only Order ALB foundation, disabled by default
-- A private Cloud Map namespace with Ledger and Matching gRPC service records
-- An opt-in, private, single-replica Matching Engine ECS service
-- An opt-in, private, single-replica Ledger ECS service
-- An opt-in, private, single-replica Outbox Relay ECS service
-- One-off Ledger and Outbox schema migration task definitions
-- An opt-in, private Order ECS service with CPU target tracking (1–3 tasks)
-- RDS-managed database credentials stored in Secrets Manager
-- IAM authentication and TLS-only client connections
-- Separate KMS encryption keys for MSK and PostgreSQL
-- CloudWatch broker logs and Prometheus broker exporters
-- A broker security group allowing port `9098` from approved client security groups
-- `matching.events.v1`, `ledger.commands.v1`, `ledger.events.v1`, and `ledger.events.dlq.v1`
-
-## Deploy
-
-Terraform and its AWS credentials need permission to manage MSK, topic API,
-RDS, Secrets Manager, EC2 networking and security groups, KMS, and CloudWatch
-Logs resources.
+Terraform needs AWS permissions for EKS, EC2/VPC, MSK, RDS, IAM, KMS, ECR,
+Secrets Manager, CloudWatch, and ECS. Copy `terraform.tfvars.example` to
+`terraform.tfvars`, set a dedicated `eks_admin_principal_arn`, and review the
+selected Region, EKS version, instance sizes, storage, and cost. The EKS API
+is private unless narrow `eks_public_access_cidrs` are configured.
 
 ```bash
-cp terraform.tfvars.example terraform.tfvars
 terraform init
 terraform plan
 terraform apply
 ```
 
-The default network uses three Availability Zones and one NAT gateway per AZ.
-Set `nat_gateway_per_az = false` for a cheaper non-production environment; that
-reduces cost but makes outbound private-subnet traffic depend on one AZ. The
-broker count must be a multiple of the Availability Zone count. Topic
-replication factor `3` requires at least three brokers.
-
-## Network structure
-
-```mermaid
-flowchart TB
-    Internet((Internet))
-    IGW[Internet gateway]
-
-    subgraph VPC[Independent CEX VPC — 10.80.0.0/16]
-        ClientSG[CEX client security group]
-        MSKSG[MSK security group\nIAM/TLS :9098]
-        PGSG[PostgreSQL security group\nTCP :5432]
-
-        subgraph AZA[Availability Zone A]
-            PubA[Public subnet A]
-            NATA[NAT gateway A]
-            PrivA[Private subnet A]
-            AppA[Ledger / relay tasks]
-            MSKA[MSK broker 1]
-            PGWriter[(PostgreSQL writer)]
-            PubA --> NATA
-            PrivA --> NATA
-            AppA --- PrivA
-            MSKA --- PrivA
-            PGWriter --- PrivA
-        end
-
-        subgraph AZB[Availability Zone B]
-            PubB[Public subnet B]
-            NATB[NAT gateway B]
-            PrivB[Private subnet B]
-            AppB[Ledger / relay tasks]
-            MSKB[MSK broker 2]
-            PGReaderB[(PostgreSQL reader / standby)]
-            PubB --> NATB
-            PrivB --> NATB
-            AppB --- PrivB
-            MSKB --- PrivB
-            PGReaderB --- PrivB
-        end
-
-        subgraph AZC[Availability Zone C]
-            PubC[Public subnet C]
-            NATC[NAT gateway C]
-            PrivC[Private subnet C]
-            AppC[Ledger / relay tasks]
-            MSKC[MSK broker 3]
-            PGReaderC[(PostgreSQL reader / standby)]
-            PubC --> NATC
-            PrivC --> NATC
-            AppC --- PrivC
-            MSKC --- PrivC
-            PGReaderC --- PrivC
-        end
-
-        ClientSG -->|Kafka :9098| MSKSG
-        ClientSG -->|PostgreSQL :5432| PGSG
-        MSKSG --- MSKA
-        MSKSG --- MSKB
-        MSKSG --- MSKC
-        PGSG --- PGWriter
-        PGSG --- PGReaderB
-        PGSG --- PGReaderC
-        PGWriter -. semisynchronous replication .-> PGReaderB
-        PGWriter -. semisynchronous replication .-> PGReaderC
-    end
-
-    Internet --- IGW
-    IGW --- PubA
-    IGW --- PubB
-    IGW --- PubC
-```
-
-Normal Kafka and PostgreSQL traffic remains inside the VPC. NAT gateways are
-only for outbound connections initiated by workloads in private subnets.
-
-## PostgreSQL connections
-
-RDS exposes logical cluster endpoints rather than requiring applications to
-track individual database instances:
-
-```text
-ledger_writer_endpoint ──► current writer
-ledger_reader_endpoint ──► reader B or reader C, selected per connection
-```
-
-Use the writer endpoint for ledger posting, balance reservation, migrations,
-and the outbox relay. Use the reader endpoint only for replica-lag-tolerant
-reporting and historical queries. Credentials are generated by RDS; retrieve
-them using the `ledger_master_secret_arn` output rather than putting a password
-in `terraform.tfvars` or Terraform state.
-
-Automatic Kafka topic creation is disabled. Add or change topics through the
-`topics` variable so partition counts, replication, retention, and durability
-settings remain version controlled.
-
-The applications should use the `bootstrap_brokers_sasl_iam` output. ECS
-services should run in the `private_subnet_ids` output and attach the
-`cex_client_security_group_id` output. Their IAM roles must separately receive
-the required `kafka-cluster:Connect`, read, write, and consumer-group
-permissions.
-
-## Container repositories
-
-Terraform creates separate repositories for Order, Ledger, Matching, and the
-Outbox Relay. Repository names include the application and environment, image
-tags are immutable, and every push is scanned. Lifecycle policies delete
-untagged images after seven days and retain the newest 50 tagged images by
-default; both limits are configurable.
-
-After applying the stack, retrieve image destinations with:
-
-```bash
-terraform output -json ecr_repository_urls
-```
-
-Build pipelines should publish a unique tag such as the Git commit SHA. ECS
-task definitions should deploy the resolved image digest rather than a mutable
-tag so a rollback always selects the same artifact.
-
-## ECS cluster foundation
-
-The ECS cluster enables enhanced Container Insights and registers both
-`FARGATE` and `FARGATE_SPOT`. Its default strategy uses only `FARGATE`, so a
-service cannot land on Spot accidentally. A later service definition may opt
-an interruption-safe consumer into `FARGATE_SPOT` explicitly.
-
-The shared task execution role has AWS's managed execution policy for ECR image
-pulls and CloudWatch log delivery. Ledger uses a dedicated execution role so
-its database secret permission is not shared. Execution roles are deliberately
-separate from application task roles: Ledger, Matching, Order, and relays
-receive narrowly scoped roles for their own Kafka, database-authentication,
-secret, and other runtime
-permissions. Terraform also creates a retained CloudWatch application log group
-for every current service.
-
-## Private gRPC discovery
-
-Cloud Map provides private `A` records for Ledger and Matching inside the CEX
-VPC. Retrieve the intended Order Service targets with:
-
-```bash
-terraform output -json grpc_service_addresses
-```
-
-The targets use the existing Ledger port `9091` and Matching port `9092`.
-The records have a 10-second TTL and ECS-managed custom health status. Creating
-the namespace and services alone does **not** register task IPs: the later ECS
-service definitions must attach the corresponding
-`grpc_service_discovery_arns` as service registries. Their task security groups
-must also allow Order-to-Ledger and Order-to-Matching gRPC traffic.
-
-## First ECS service: mock Matching Engine
-
-Matching is the first ECS workload because it does not need a database secret.
-It is **not** a production matching engine: partition sequence and request
-deduplication live only in memory. The ECS service is absent by default. After
-building and pushing an image to the Matching ECR repository, set
-`matching_image_digest` to its `sha256:...` digest to create the task definition
-and one private Fargate task. The task runs without a public IP, exports JSON
-logs to its CloudWatch log group, authenticates to MSK with IAM/TLS, and
-registers its private IP in Cloud Map.
-
-The task's health command calls its local `/readyz` endpoint without requiring
-a shell or `curl` in the non-root distroless image. ECS uses a stop-before-start
-deployment (`minimum_healthy_percent = 0`, `maximum_percent = 100`) so a
-replacement cannot overlap this mock's in-memory partition ownership; expect
-brief unavailability during deployments. Do not scale it above one task until
-partition leasing, fencing, and recovery are implemented. Order tasks must
-later attach `order_grpc_client_security_group_id` to call its private gRPC
-port `9092`; the Matching task group permits that source only. The existing
-CEX client group supplies the task's outbound MSK access.
-
-## Ledger ECS service
-
-Ledger is also disabled by default. Build and push the Ledger image, run its
-one-off migration task as described below, then set `ledger_image_digest` to
-the same `sha256:...` digest to create one private Fargate task. It registers
-its gRPC port `9091` in Cloud Map, consumes
-`ledger.commands.v1` through MSK IAM/TLS, and uses `/readyz` for container
-health checks. Only tasks with `order_grpc_client_security_group_id` can call
-its gRPC port; there is no public Ledger listener.
-
-The task reads a dedicated Ledger runtime secret's `password` JSON key through
-its own execution role; that role cannot read the RDS admin secret. Its
-database host, name, and username come from Terraform;
-the password itself is not put in Terraform state. ECS injects the password at
-task startup, so a secret rotation requires a new deployment. Provision the
-restricted role as described below before enabling the service. Its
-stop-before-start deployment can briefly interrupt Ledger requests.
-
-## Outbox Relay ECS service
-
-Run the Outbox migration task after Ledger's, then set `outbox_image_digest`
-to its pushed image digest to create one private Fargate relay task. The task
-has no public endpoint or inbound security-group
-rule. It connects to the Ledger writer database and MSK with IAM/TLS, maps
-stored `ledger-events` to `ledger.events.v1`, and reports health through its
-local `/readyz` endpoint. Its hostname supplies a distinct lease owner ID.
-
-The relay has its own execution role for its runtime password secret and its
-own task role restricted to the Ledger event topic. It cannot read the RDS
-admin secret or change the schema. The service starts at one task and uses
-Fargate rather than Spot. A secret rotation requires a new deployment to
-refresh the injected password.
-
-## One-off database migration tasks
-
-Set `ledger_migration_image_digest` or `outbox_migration_image_digest` to
-register a Fargate migration task definition without starting its service.
-Use the exact image digest that will later be assigned to the corresponding
-service. The migration definition uses that image's `migrate` command.
-The task receives only database connection settings and the RDS-managed
-password; it does not receive the application's MSK task role, open a service
-port, or run continuously. Retrieve its ARN with
-`ledger_migration_task_definition_arn` or
-`outbox_migration_task_definition_arn`. Run it as a standalone ECS task in a
-private subnet with `cex_client_security_group_id` attached and public IP
-assignment disabled. Wait for the task to stop and verify its container exit
-code is zero before proceeding; `tasks-stopped` alone does not mean success.
-
-Terraform **registers but does not execute** these tasks. Apply with migration
-digest(s) first, then run `./run-migrations.sh all` from this directory (requires
-AWS CLI, Terraform, and jq). The script uses Terraform outputs for the cluster,
-private subnets, and security group; it runs Ledger before Outbox and checks
-each task's container exit code. You can also pass `ledger` or `outbox` to run
-one migration. Both migration runners serialize concurrent executions using
-the same PostgreSQL advisory lock because they share an outbox table. After
-the migrations succeed, connect to
-the writer database from inside the VPC as the RDS admin and run
-`psql -f bootstrap-runtime-roles.sql`; it prompts for separate Ledger and
-Outbox runtime passwords and grants DML access without schema ownership.
-Create two separate Secrets Manager secrets containing JSON
-`{"password":"<matching password>"}`. Keep their ARNs in
-`ledger_runtime_secret_arn` and `outbox_runtime_secret_arn`. The fixed
-database usernames are `ledger_runtime` and `outbox_runtime`. Use the
-AWS-managed Secrets Manager encryption key unless you
-also grant the corresponding ECS execution role `kms:Decrypt` on a custom key.
-Keep these passwords out of Terraform state and shell history. Only then set
-the matching
-`ledger_image_digest` and `outbox_image_digest` and apply again. On upgrades,
-keep the old service digest until the new migration task succeeds. ECS services
-set `LEDGER_MIGRATE_ON_STARTUP=false` and `OUTBOX_MIGRATE_ON_STARTUP=false`;
-they verify embedded migration checksums and fail startup if a required
-migration was skipped. Local Compose still runs migrations on startup.
-Database-backed migration tests require `LEDGER_TEST_DATABASE_URL` and
-`OUTBOX_TEST_DATABASE_URL`; they are skipped when those variables are unset.
-
-## Private Order ECS service
-
-Set `order_image_digest` to a pushed image digest only after Ledger and
-Matching are configured. Terraform then creates one private Fargate Order task
-that calls both gRPC services through Cloud Map and uses its local `/readyz`
-endpoint for health checks. The task has no public IP. Its security group
-allows outbound gRPC only to Ledger and Matching, plus HTTPS to AWS APIs
-through NAT for image pulls and logs.
-
-When `order_alb_enabled` is true, ECS registers Order tasks with the ALB target
-group so ALB health checks can run. A separate HTTP listener associates the
-target group but has **no security-group ingress rule** on its port 8080; do
-not open that port. The public HTTPS listener still returns 503. Edge
-authentication and HTTPS forwarding must be implemented before admitting
-public orders. The current Order service still embeds mock Risk logic and the
-Matching Engine remains an in-memory mock; this is not a production rollout.
-
-Order uses ECS CPU target tracking at 60% with a 1–3 task range. Scaling out
-waits 60 seconds and scaling in waits 120 seconds. Terraform ignores changes
-to the service's `desired_count` after creation so autoscaling can own it.
-This does not expose Order publicly; the HTTPS listener still returns 503.
-Ledger, Matching, and Outbox are not autoscaled by this policy.
-
-## Production ECS tracing
-
-Local Compose uses an unauthenticated Collector and local Tempo; do not expose
-those endpoints on a production network. ECS tracing is disabled until
-`trace_collector_image` is set to a reviewed, digest-pinned ADOT image
-(`public.ecr.aws/aws-observability/aws-otel-collector@sha256:...`). Use a
-release at least v0.34.0 so the X-Ray exporter accepts W3C trace IDs. Terraform
-then deploys an essential ADOT sidecar in each enabled Order, Ledger, Matching,
-and Outbox task. It also raises the Fargate task size to 1 vCPU and 2 GiB to
-give the collector headroom.
-
-Application OTLP/gRPC export goes only to `127.0.0.1:4317` inside the same ECS
-task; the receiver binds to loopback and has no port mapping or inbound
-security-group rule. The collector uses the task role to authenticate to AWS
-X-Ray, with only trace-write IAM actions. Tracing uses parent-based sampling
-with `trace_sample_ratio` (default 0.1 for root spans) and tags the resource
-with the deployment environment and service namespace. The collector adds ECS
-task metadata. X-Ray is the managed trace backend and retains traces for 30
-days; this retention cannot be changed. Application and collector CloudWatch
-log groups use `ecs_log_retention_days` (default 30 days). The local Tempo
-dashboard is not the AWS trace viewer; use the X-Ray console for ECS traces.
-
-The existing no-running-tasks alarm covers an essential sidecar that exits.
-A separate CloudWatch alarm counts collector `Exporting failed` log messages.
-These alarms have no notification actions. Verify that a test trace appears in
-X-Ray after deploying. This setup handles traces and ECS infrastructure
-metrics. Enable managed application metric ingestion separately as described
-below.
-
-## Managed application metrics
-
-Set `managed_metrics_enabled=true` alongside a pinned `trace_collector_image`
-to create an Amazon Managed Service for Prometheus (AMP) workspace. The ADOT
-sidecar in each enabled ECS service then scrapes only its own task-local
-`/metrics` endpoint every 15 seconds and signs remote-write requests to AMP
-with SigV4. Its task role has `aps:RemoteWrite` only on this workspace; no
-metric endpoint is exposed to the VPC. `managed_metrics_retention_days` defaults
-to 30 days. The workspace ID and query endpoint are Terraform outputs.
-
-Metrics carry service and environment labels plus ECS task metadata, so
-multiple running tasks do not write indistinguishable series. The existing
-collector export-failure alarm also covers failed AMP writes. After deployment,
-query `up{service="order"}` and the relevant `*_total` counters through an
-AWS-authenticated Prometheus-compatible client. AMP query access is separate
-from the collector's write-only permission.
-
-Terraform installs AMP rules for sustained Order, Ledger, and Matching error
-rates, Order p95 latency, and Outbox publish failures. No Alertmanager receiver
-or notification channel is configured. The rules remain visible in AMP for
-inspection until an alert delivery mechanism is selected later.
-
-The repository's
-`observability/grafana/dashboards/cex-service-red.json` dashboard shows rates,
-error ratios, p95 histograms, and Outbox outcomes. Import it into a Grafana
-workspace configured to query this AMP workspace; Terraform does not create a
-Grafana workspace or its identity provider.
-
-## Opt-in Order on EC2
-
-After measuring Order on Fargate, set `order_ec2_enabled = true` with a pinned
-`order_image_digest`. This adds an ECS-optimized Amazon Linux 2023 host Auto
-Scaling group in private subnets, a managed-scaling EC2 capacity provider with
-instance draining and termination protection, and a **separate** Order ECS
-service. The existing Order service and Matching stay on Fargate. The EC2 host
-group starts at zero and ECS scales it when the new service needs capacity;
-instances and NAT traffic incur AWS charges. Review instance type, task memory,
-ENI density, subnet IP capacity, and `order_ec2_max_instances` before enabling.
-
-When the ALB is enabled, the new service registers in its own IP target group.
-The registration listener on port 8082 has **no public security-group ingress**;
-it is not a traffic cutover. The HTTPS listener still returns 503 by design
-until edge authentication is implemented. Verify healthy EC2 targets, traces,
-metrics, task replacement, instance draining, and database invariants against
-the Fargate baseline before planning an authenticated ALB cutover. Rollback is
-to keep the Fargate service running and restore its target group in the
-authenticated listener configuration. Do not disable the EC2 path while it
-serves traffic. This infrastructure alone does not prove an EC2 performance
-improvement or execute a production cutover.
-
-AWS does not support changing an existing ECS service between Fargate and an
-Auto Scaling group capacity provider; this is why Order uses two services.
-The EC2 instance role is separate from Order's task role, and host instances
-have no inbound security-group rules or public IPs.
-
-## Opt-in Ledger on EC2
-
-After the Order EC2 move has been measured and its rollback tested, set
-`ledger_ec2_enabled = true` with the existing pinned `ledger_image_digest` and
-restricted Ledger runtime secret. This provisions a separate private EC2 Auto
-Scaling group, managed-scaling capacity provider, task definition, ECS service,
-and `ledger-service-ec2` Cloud Map name. It reuses the Ledger task role,
-execution role, database, and command consumer group. The original Fargate
-Ledger service remains available. No public listener is added.
-
-The new service starts at `ledger_ec2_desired_count = 0`. Increasing it to one
-starts **real** Ledger processing: its Kafka consumer joins the existing
-consumer group, partitions rebalance, and it can write to the same database.
-Do not use this against production data as a side-effect-free shadow test. Run
-the existing Ledger migration task before deploying a new Ledger image; do
-not run migrations independently in each EC2 task.
-
-For a controlled move, first verify the EC2 task, Cloud Map endpoint, command
-lag, database pool, traces, metrics, and Ledger invariants. Then set
-`order_ledger_target = "ec2"` to redeploy Order with the EC2 Ledger DNS name.
-Only after Order is healthy on that endpoint, set
-`ledger_fargate_desired_count = 0`. This preserves the Fargate service and
-task definition for rollback while stopping its Kafka consumer. To roll back,
-restore the Fargate count to one and verify readiness **before** setting
-`order_ledger_target = "fargate"`; then reduce the EC2 count to zero. Apply
-these stages separately, not in one Terraform apply. The EC2 service has a
-no-running-tasks alarm only while its desired count is positive; the existing
-MSK lag alarm continues to watch the shared Ledger consumer group. Alarms have
-no notification actions.
-
-## Opt-in Matching on EC2
-
-Set `matching_ec2_enabled = true` only after the Order and Ledger moves have
-been tested. This provisions a separate private EC2 Auto Scaling group,
-capacity provider, ECS service, and `matching-engine-ec2` Cloud Map name. The
-EC2 service starts with `matching_ec2_desired_count = 0`; Order continues to
-use the Fargate Matching endpoint by default. No public listener is added.
-
-The current Matching Engine is an in-memory admission test double. It has no
-durable order book, partition lease, fencing token, or recovery checkpoint.
-Running Fargate and EC2 instances at the same time could create competing
-sequence owners and duplicate or inconsistent events; Terraform rejects a
-configuration requesting both tasks. This is **not** a safe live production
-migration of a real matching engine, and the mock cannot establish real
-matching throughput.
-
-For a controlled test, first provision EC2 at zero tasks and pause new Order
-admissions. In separate applies, set `matching_fargate_desired_count = 0` and
-confirm the old task stopped; then set `matching_ec2_desired_count = 1` and
-verify health and event output. Set `order_matching_target = "ec2"` to point
-Order at the new private DNS name, then resume test admissions. The handoff
-has intentional downtime and loses the mock's in-memory state. To roll back,
-pause admissions again, stop EC2, restart Fargate, verify it, point Order back
-to `fargate`, and resume. Do not run these stages in one Terraform apply. An
-availability alarm is created only when the EC2 desired count is positive;
-it has no notification action.
-
-## Opt-in Kubernetes workloads
-
-`eks_enabled = true` provisions a separate EKS control plane and EC2 managed
-node group for Order, Ledger, and Matching. It does not move any ECS task or
-route public requests. Outbox Relay stays on ECS Fargate. Reporting and
-Notification remain unimplemented. The Kubernetes deployment and handoff
-procedure is in [`../k8s/README.md`](../k8s/README.md).
-
-## ECS availability alarms
-
-Each enabled ECS service gets a CloudWatch alarm when its Container Insights
-`RunningTaskCount` stays below one for three one-minute periods. Missing metric
-data also counts as breaching, so stopped services do not silently disappear
-from the signal. These alarms are created only for services with an image
-digest. They have no notification actions and do not page anyone.
-
-When Ledger is enabled, Terraform also creates an `AWS/Kafka` `MaxOffsetLag`
-alarm for its configured consumer group on `ledger.commands.v1`. It enters
-ALARM when lag exceeds `ledger_consumer_max_offset_lag` (default 1,000 records)
-for three of five one-minute periods. The metric appears only after the group
-has committed an offset, requires an ASCII-only group name, and can be absent
-while a group is unstable. Treat the threshold as a starting point and tune it
-against the command rate and recovery objective. This alarm also has no
-notification action.
-
-## Application task roles
-
-Terraform creates a separate task role for Order, Ledger, Matching, and Outbox
-Relay. Use the `service_task_role_arns` output as the corresponding ECS task
-definition's `task_role_arn`; do not substitute the shared execution role. Each
-trust policy permits ECS tasks from this account and Region to assume the role.
-AWS does not support narrowing the trust policy to one ECS cluster ARN.
-
-The Ledger, Matching, and Outbox Relay roles receive separate MSK policies.
-Ledger can read only `ledger.commands.v1` as the configured consumer group;
-Matching can write only `matching.events.v1`; the relay can write only
-`ledger.events.v1`. Order receives no MSK grant. These roles still need other
-runtime permissions, including database access, before ECS deployment.
-
-## Kafka client authentication
-
-Ledger, Matching, and Outbox Relay default to `KAFKA_AUTH_MODE=plaintext` for
-local Compose. For the IAM-authenticated MSK bootstrap brokers, set
-`KAFKA_AUTH_MODE=msk_iam`, `AWS_REGION` to the cluster Region, and each
-service's `*_KAFKA_BROKERS` variable to `bootstrap_brokers_sasl_iam`. The IAM
-mode uses TLS certificate verification and obtains a fresh SASL/OAUTHBEARER
-token from the ECS task role for each new broker connection. It fails startup
-configuration validation if `AWS_REGION` is missing. Do not use the plaintext
-mode against the IAM-only MSK cluster.
-
-For the current Ledger schema, set
-`OUTBOX_KAFKA_TOPIC_MAP=ledger-events=ledger.events.v1` on its dedicated relay.
-This changes the Kafka destination during publication without rewriting
-committed outbox rows, preserving local Compose behavior and retry semantics.
-Set `LEDGER_COMMANDS_TOPIC=ledger.commands.v1` on Ledger; its local default is
-still `ledger-commands`. Set `LEDGER_CONSUMER_GROUP` to the Terraform
-`ledger_consumer_group` value (default `cex-ledger-service`). The relay must
-only read the owning Ledger database; do not reuse its credential or topic map
-for another service's outbox.
-
-## Order ALB foundation
-
-The public Order ALB is off by default. To create it, set
-`order_alb_enabled = true` and provide an ACM certificate ARN in the same AWS
-Region through `order_alb_certificate_arn`. There is no public HTTP listener.
-The HTTPS listener deliberately returns `503` rather than forwarding requests:
-the current Order API does not yet authenticate clients at the edge.
-
-Terraform also creates an `ip` target group on port `8083` with `/readyz`
-health checks, plus security groups that permit only ALB-to-Order HTTP traffic.
-The future Order ECS service must attach `order_target_group_arn` and
-`order_task_security_group_id`. Before changing the listener to forward traffic,
-implement edge authentication, configure the Order service, and verify the
-health checks and load-test behavior. The task group has no outbound rules of
-its own; attach only the additional narrowly scoped groups needed for its
-private dependencies.
+The default network has three Availability Zones and one NAT gateway per AZ.
+`nat_gateway_per_az = false` reduces cost but makes outbound private-subnet
+traffic depend on one AZ. Kafka topic creation is disabled in applications;
+manage topics through the Terraform `topics` variable. Use the
+`bootstrap_brokers_sasl_iam` output for IAM/TLS Kafka clients.
+
+Terraform creates immutable, scan-on-push ECR repositories for all four
+services. Publish images with unique tags, resolve their digests, and set
+`order_image_digest`, `ledger_image_digest`, `matching_image_digest`, and
+`outbox_image_digest` as appropriate. The three hot-path digests are consumed
+by the Kubernetes deployment script, not ECS task definitions.
+
+## Database migrations and credentials
+
+Ledger migration runs as a one-off EKS Job on EC2 nodes. Set
+`ledger_migration_image_digest` and apply Terraform, then run
+`./run-migrations.sh ledger` from this directory. The Job reads the RDS admin
+password directly from Secrets Manager through its dedicated Pod Identity
+role. The script waits for the Job, prints its logs, and deletes the Job. The
+operator needs access to the private EKS API but not to the admin password.
+The password never enters Terraform state or a Kubernetes Secret.
+
+Outbox migration remains a one-off ECS Fargate task. Set
+`outbox_migration_image_digest`, apply Terraform, and run
+`./run-migrations.sh outbox`. Running `./run-migrations.sh all` executes Ledger
+first, then Outbox, and checks their exit status. Use the exact migration image
+digest that will be deployed as the service. Both migration runners serialize
+through the same PostgreSQL advisory lock.
+
+Then connect to the writer database inside the VPC as the RDS admin and run
+`psql -f bootstrap-runtime-roles.sql`. It prompts for distinct Ledger and
+Outbox runtime passwords and creates restricted `ledger_runtime` and
+`outbox_runtime` roles. Store those passwords in separate Secrets Manager
+secrets with JSON shape `{"password":"..."}` and set
+`ledger_runtime_secret_arn` and `outbox_runtime_secret_arn`. Keep passwords out
+of Terraform state and shell history. Ledger reads its password directly from
+Secrets Manager using Pod Identity; the Outbox password is injected into its
+ECS task from Secrets Manager. Use the RDS writer endpoint for both
+services and reserve the reader endpoint for replica-lag-tolerant queries.
+
+## Kubernetes hot path
+
+EKS is always provisioned. Terraform creates the private control plane, EC2
+node group, core add-ons, Pod Identity roles for Ledger and Matching, and
+security-group paths to MSK and RDS. It does not apply Kubernetes manifests.
+Follow [`../k8s/README.md`](../k8s/README.md) to deploy Order, Ledger, and
+Matching. Order has no AWS role; Ledger can consume its command topic and
+Matching can publish its event topic through separate scoped Pod Identity
+roles. The mock Matching Engine must remain single-replica until it has
+durable state and fenced ownership.
+
+## ECS Outbox Relay
+
+Set `outbox_image_digest` after its migration and runtime credential are
+ready. Terraform starts one private Fargate task with no public endpoint. It
+reads Ledger's outbox from the writer database, maps stored `ledger-events`
+to `ledger.events.v1`, and publishes to MSK with IAM/TLS. Its ECS task role is
+scoped to that event topic. It is not deployed to Kubernetes.
+
+The ECS cluster also supplies the migration tasks. Its default capacity
+provider is Fargate; Fargate Spot is registered but not used by the relay.
+Only the relay receives ECS tracing and task-local metric scraping when the
+optional ADOT collector is configured. `managed_metrics_enabled` creates an
+AMP workspace; the relay collector signs remote writes to it. Terraform also
+defines AMP rules for the hot-path metrics, but these will have data only after
+a separate Kubernetes metrics pipeline is configured. No Alertmanager
+receiver or notification action is configured.
+
+CloudWatch alarms cover Outbox task availability, collector export failures,
+and Ledger Kafka consumer lag. Application and collector log retention is
+controlled by `ecs_log_retention_days`. The EKS control-plane log group uses
+the same retention setting. No live deployment or rollback drill is implied
+by this Terraform configuration.

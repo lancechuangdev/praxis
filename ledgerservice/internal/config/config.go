@@ -59,13 +59,16 @@ func databaseURL() (string, error) {
 	}
 	host := strings.TrimSpace(os.Getenv("LEDGER_DB_HOST"))
 	user := strings.TrimSpace(os.Getenv("LEDGER_DB_USER"))
-	password := os.Getenv("LEDGER_DB_PASSWORD")
 	name := strings.TrimSpace(os.Getenv("LEDGER_DB_NAME"))
-	if host == "" || user == "" || password == "" || name == "" {
-		return "", fmt.Errorf("set LEDGER_DATABASE_URL or all of LEDGER_DB_HOST, LEDGER_DB_USER, LEDGER_DB_PASSWORD, and LEDGER_DB_NAME")
+	if host == "" || user == "" || name == "" {
+		return "", fmt.Errorf("set LEDGER_DATABASE_URL or LEDGER_DB_HOST, LEDGER_DB_USER, and LEDGER_DB_NAME with a password source")
 	}
 	if strings.ContainsAny(host, ":/") {
 		return "", fmt.Errorf("LEDGER_DB_HOST must be a hostname without a port")
+	}
+	password, err := databasePassword()
+	if err != nil {
+		return "", err
 	}
 	u := url.URL{Scheme: "postgres", User: url.UserPassword(user, password), Host: net.JoinHostPort(host, "5432"), Path: "/" + name}
 	u.RawQuery = "sslmode=require"

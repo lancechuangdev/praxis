@@ -27,7 +27,7 @@ data "aws_iam_policy_document" "service_task_assume_role" {
 }
 
 resource "aws_iam_role" "service_task" {
-  for_each = var.ecr_repositories
+  for_each = { outbox_relay = var.ecr_repositories.outbox_relay }
 
   name               = "${local.resource_name}-${each.value}-task"
   description        = "Application task identity for ${each.value}; permissions are granted per service"

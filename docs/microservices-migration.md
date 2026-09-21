@@ -4,10 +4,11 @@
 
 Move Praxis to independently deployable services without weakening Ledger
 invariants or putting asynchronous messaging in calls that need an immediate
-answer. The first production shape uses ECS Fargate. Later, Order Admission,
-Ledger, and Matching move to ECS EC2 capacity one at a time, then to Kubernetes
-on EC2 nodes. Outbox Relay, Reconciliation, Reporting, and Notification remain
-on ECS Fargate.
+answer. The current target runs Order Admission, Ledger, and Matching on EKS
+with EC2 nodes. Outbox Relay remains on ECS Fargate; Reconciliation, Reporting,
+and Notification are planned for ECS Fargate when implemented. The earlier
+all-Fargate and ECS EC2 stages below are historical planning context, not the
+current Terraform deployment path.
 
 This is an implementation plan, not a claim that every component exists. The
 repository currently contains Order, Ledger, a mock Matching Engine, and an
@@ -33,7 +34,8 @@ Phase 1 is being delivered incrementally:
       retention, resource metadata, alarms, and a managed or durable backend).
   - [x] Add opt-in ECS tracing to managed X-Ray using a loopback-only ADOT
         sidecar, task-role authentication, sampling, ECS resource metadata,
-        retained logs, and export-failure alarms for current services.
+        retained logs, and export-failure alarms for the Outbox Relay.
+  - [ ] Add equivalent tracing and metric export for the EKS workloads.
   - [ ] Deploy a pinned collector image and verify real trace delivery in AWS.
   - [x] Add opt-in task-local `/metrics` scraping and SigV4 remote write to
         a retained Amazon Managed Service for Prometheus workspace.
@@ -41,16 +43,17 @@ Phase 1 is being delivered incrementally:
         alert rules for current services.
   - [ ] Deploy and verify metric ingestion, import the dashboard into a
         production Grafana workspace, and choose an alert delivery mechanism.
-- [x] Provision ECR, ECS, Cloud Map, ALB, IAM, secrets, and autoscaling for
-      every planned service.
+- [ ] Provision compute, ingress, IAM, secrets, and autoscaling for every
+      planned service.
   - [x] Provision immutable, scan-on-push ECR repositories with retention
         policies for the current service images.
   - [x] Provision the ECS cluster, Fargate capacity providers, shared task
         execution role, enhanced Container Insights, and service log groups.
-  - [x] Add private Cloud Map service discovery, per-service task roles, an
-        opt-in ALB, and Order autoscaling. Service Connect is not used.
-- [x] Add one-off Ledger and Outbox ECS migration tasks, runtime schema
-      verification, serialized migration execution, and separate runtime
+  - [x] Provision EKS on EC2 with Pod Identity for Ledger and Matching and
+        private Kubernetes Services for the current hot-path workloads.
+  - [ ] Add authenticated Order ingress and validated Kubernetes scaling.
+- [x] Add a one-off Ledger EKS migration Job and Outbox ECS migration task,
+      runtime schema verification, serialized migration execution, and separate runtime
       database credentials. AWS deployment and production verification remain
       operator steps.
 - [ ] Implement Risk and Notification (Implement this later).
@@ -286,35 +289,26 @@ broker interruption, DB failover, slow consumers, and provider failure.
 Move Order, Ledger, and Matching in that order; rerun load, failure,
 rolling-deployment, cost, and rollback tests after each move.
 
-An opt-in parallel Order EC2 capacity provider and service are defined; the
-original Fargate service stays in place. No AWS baseline, traffic cutover, or
-rollback drill has been completed. Matching stays on Fargate.
-
-An opt-in parallel Ledger EC2 capacity provider and service are also defined,
-but default to zero tasks. Starting an EC2 Ledger task joins the live command
-consumer group; Order switches to its separate discovery name only through an
-explicit setting. The Fargate Ledger service can be scaled to zero after that
-cutover and retained for rollback. None of these AWS handoff steps have been
-executed or validated in an environment yet.
-
-An opt-in Matching EC2 capacity provider and service are defined at zero tasks.
-Because Matching remains an in-memory mock without partition fencing or
-recovery, the Fargate and EC2 tasks may not overlap. Its switch requires an
-admission pause and loses mock state; it is not a production-safe matching
-migration. Order changes Matching endpoints only through an explicit setting.
+This earlier ECS EC2 path was superseded by the EKS-on-EC2 deployment. The
+legacy Order, Ledger, and Matching ECS service definitions have been removed.
+No AWS baseline, traffic cutover, or rollback drill has been completed. The
+mock Matching Engine still has no partition fencing or durable recovery.
 
 **Gate:** the move improves a named target and rollback to Fargate works.
 
 ### 6. Adopt Kubernetes
 
-Move Order, Ledger, and Matching to Kubernetes on EC2 nodes one at a time after
-their ECS EC2 deployments have passed rollback tests. Keep Outbox Relay and
-other asynchronous services on ECS Fargate. Any shadow consumers use separate
-consumer groups and must suppress side effects.
+Run Order, Ledger, and Matching on Kubernetes EC2 nodes. Validate and hand off
+each service deliberately; the earlier ECS EC2 experiments are not a
+prerequisite. Keep Outbox Relay and other asynchronous services on ECS
+Fargate. Any shadow consumers use separate consumer groups and must suppress
+side effects.
 
-An opt-in EKS control plane, EC2 node group, Pod Identity roles, and private
-Kubernetes workloads for the three services are defined. No cluster has been
-applied or verified in AWS. Order has no public Kubernetes ingress; the mock
+The default Terraform path provisions an EKS control plane, EC2 node group,
+and Pod Identity roles; Order, Ledger, and Matching have no ECS services.
+Their private Kubernetes workloads are deployed separately with
+`infra/k8s/deploy.sh`. No cluster has been applied or verified in AWS. Order
+has no public Kubernetes ingress; the mock
 Matching Engine still cannot overlap an ECS instance or recover its order
 book. The deployment runbook is in `infra/k8s/README.md`.
 

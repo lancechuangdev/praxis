@@ -20,13 +20,18 @@ done
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-cluster=$(terraform output -raw ecs_cluster_arn)
-subnets=$(terraform output -json private_subnet_ids)
-security_group=$(terraform output -raw cex_client_security_group_id)
-network=$(jq -cn --argjson subnets "$subnets" --arg sg "$security_group" \
-  '{awsvpcConfiguration:{subnets:$subnets,securityGroups:[$sg],assignPublicIp:"DISABLED"}}')
-
 for service in "${services[@]}"; do
+  if [[ "$service" == "ledger" ]]; then
+    "../k8s/run-ledger-migration.sh"
+    continue
+  fi
+
+  cluster=$(terraform output -raw ecs_cluster_arn)
+  subnets=$(terraform output -json private_subnet_ids)
+  security_group=$(terraform output -raw cex_client_security_group_id)
+  network=$(jq -cn --argjson subnets "$subnets" --arg sg "$security_group" \
+    '{awsvpcConfiguration:{subnets:$subnets,securityGroups:[$sg],assignPublicIp:"DISABLED"}}')
+
   task_definition=$(terraform output -raw "${service}_migration_task_definition_arn")
   if [[ -z "$task_definition" || "$task_definition" == "null" ]]; then
     echo "No $service migration task definition. Set ${service}_migration_image_digest and apply Terraform first." >&2
