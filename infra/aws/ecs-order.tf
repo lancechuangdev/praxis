@@ -116,7 +116,7 @@ resource "aws_ecs_service" "order" {
     }
   }
 
-  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_ecs_service.ledger, aws_ecs_service.matching, aws_lb_listener.order_target_registration, aws_iam_role_policy.xray_export]
+  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_ecs_service.ledger, aws_ecs_service.matching, aws_lb_listener.order_target_registration, aws_iam_role_policy.xray_export, aws_iam_role_policy.managed_metrics_write]
 
   lifecycle {
     ignore_changes = [desired_count]

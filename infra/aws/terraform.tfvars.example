@@ -59,3 +59,8 @@ ecs_alarm_sns_topic_arn = null
 # sends sampled traces to managed AWS X-Ray; no collector port is exposed.
 trace_collector_image = null
 trace_sample_ratio    = 0.1
+
+# Optional durable storage for each enabled service's /metrics endpoint.
+# Requires trace_collector_image; the same sidecar also signs writes to AMP.
+managed_metrics_enabled        = false
+managed_metrics_retention_days = 30

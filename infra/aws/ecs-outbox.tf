@@ -120,5 +120,5 @@ resource "aws_ecs_service" "outbox" {
     assign_public_ip = false
   }
 
-  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_iam_role_policy.msk_client["outbox_relay"], aws_iam_role_policy.outbox_secret_execution, aws_iam_role_policy_attachment.outbox_task_execution, aws_iam_role_policy.xray_export]
+  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_iam_role_policy.msk_client["outbox_relay"], aws_iam_role_policy.outbox_secret_execution, aws_iam_role_policy_attachment.outbox_task_execution, aws_iam_role_policy.xray_export, aws_iam_role_policy.managed_metrics_write]
 }

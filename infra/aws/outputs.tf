@@ -108,6 +108,16 @@ output "trace_export_alarm_names" {
   value       = { for key, alarm in aws_cloudwatch_metric_alarm.trace_export_failure : key => alarm.alarm_name }
 }
 
+output "managed_metrics_workspace_id" {
+  description = "Managed Prometheus workspace ID when application metric ingestion is enabled."
+  value       = var.managed_metrics_enabled ? aws_prometheus_workspace.application[0].id : null
+}
+
+output "managed_metrics_query_endpoint" {
+  description = "Prometheus-compatible workspace endpoint; requests require AWS SigV4 authentication."
+  value       = var.managed_metrics_enabled ? aws_prometheus_workspace.application[0].prometheus_endpoint : null
+}
+
 output "service_discovery_namespace" {
   description = "Private DNS namespace for ECS services in the CEX VPC."
   value       = aws_service_discovery_private_dns_namespace.services.name

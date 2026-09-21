@@ -304,7 +304,7 @@ variable "ecs_alarm_sns_topic_arn" {
 }
 
 variable "trace_collector_image" {
-  description = "Digest-pinned AWS Distro for OpenTelemetry Collector image. Null disables ECS tracing; set an SNS alarm topic before enabling."
+  description = "Digest-pinned AWS Distro for OpenTelemetry Collector image. Null disables ECS tracing and managed metrics; set an SNS alarm topic before enabling."
   type        = string
   default     = null
 
@@ -322,6 +322,23 @@ variable "trace_sample_ratio" {
   validation {
     condition     = var.trace_sample_ratio >= 0 && var.trace_sample_ratio <= 1
     error_message = "trace_sample_ratio must be between zero and one."
+  }
+}
+
+variable "managed_metrics_enabled" {
+  description = "Create an Amazon Managed Service for Prometheus workspace and remote-write service metrics from ADOT sidecars. Requires trace_collector_image."
+  type        = bool
+  default     = false
+}
+
+variable "managed_metrics_retention_days" {
+  description = "Retention period for the managed Prometheus workspace."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.managed_metrics_retention_days >= 1 && var.managed_metrics_retention_days <= 1095
+    error_message = "managed_metrics_retention_days must be between 1 and 1095."
   }
 }
 

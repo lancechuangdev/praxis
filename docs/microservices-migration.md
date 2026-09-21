@@ -36,8 +36,10 @@ Phase 1 is being delivered incrementally:
         retained logs, and export-failure alarms for current services.
   - [ ] Deploy a pinned collector image, connect an alarm SNS topic, and
         verify real trace delivery and alert routing in AWS.
-  - [ ] Ingest application RED metrics into a durable backend and add
-        per-service dashboards and alerts.
+  - [x] Add opt-in task-local `/metrics` scraping and SigV4 remote write to
+        a retained Amazon Managed Service for Prometheus workspace.
+  - [ ] Deploy and verify metric ingestion; add RED latency histograms,
+        per-service dashboards, and application alert thresholds.
 - [x] Provision ECR, ECS, Cloud Map, ALB, IAM, secrets, and autoscaling for
       every planned service.
   - [x] Provision immutable, scan-on-push ECR repositories with retention
@@ -51,7 +53,7 @@ Phase 1 is being delivered incrementally:
       database credentials. AWS deployment and production verification remain
       operator steps.
 - [ ] Implement Risk and Notification.
-- [ ] Implement Reporting and Reconciliation.
+- [ ] Implement Reporting and Reconciliation (Implement this later).
 ## Design rules
 
 1. One service owns each write model; services never write each other's tables.

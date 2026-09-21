@@ -113,5 +113,5 @@ resource "aws_ecs_service" "matching" {
     registry_arn = aws_service_discovery_service.grpc["matching_engine"].arn
   }
 
-  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_iam_role_policy.msk_client["matching_engine"], aws_iam_role_policy.xray_export]
+  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_iam_role_policy.msk_client["matching_engine"], aws_iam_role_policy.xray_export, aws_iam_role_policy.managed_metrics_write]
 }

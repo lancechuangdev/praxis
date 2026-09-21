@@ -148,5 +148,5 @@ resource "aws_ecs_service" "ledger" {
     registry_arn = aws_service_discovery_service.grpc["ledger_service"].arn
   }
 
-  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_iam_role_policy.msk_client["ledger_service"], aws_iam_role_policy.ledger_secret_execution, aws_iam_role_policy_attachment.ledger_task_execution, aws_iam_role_policy.xray_export]
+  depends_on = [aws_ecs_cluster_capacity_providers.this, aws_iam_role_policy.msk_client["ledger_service"], aws_iam_role_policy.ledger_secret_execution, aws_iam_role_policy_attachment.ledger_task_execution, aws_iam_role_policy.xray_export, aws_iam_role_policy.managed_metrics_write]
 }

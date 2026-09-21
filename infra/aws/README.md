@@ -348,8 +348,26 @@ A separate alarm counts collector `Exporting failed` log messages and sends
 ALARM transitions to the configured SNS topic. Verify that a test trace
 appears in X-Ray and that the alarm topic reaches an operator after deploying;
 Terraform cannot verify either external delivery path. This setup handles
-traces and ECS infrastructure metrics, not application RED metric ingestion or
-per-service dashboards.
+traces and ECS infrastructure metrics. Enable managed application metric
+ingestion separately as described below.
+
+## Managed application metrics
+
+Set `managed_metrics_enabled=true` alongside a pinned `trace_collector_image`
+to create an Amazon Managed Service for Prometheus (AMP) workspace. The ADOT
+sidecar in each enabled ECS service then scrapes only its own task-local
+`/metrics` endpoint every 15 seconds and signs remote-write requests to AMP
+with SigV4. Its task role has `aps:RemoteWrite` only on this workspace; no
+metric endpoint is exposed to the VPC. `managed_metrics_retention_days` defaults
+to 30 days. The workspace ID and query endpoint are Terraform outputs.
+
+Metrics carry service and environment labels plus ECS task metadata, so
+multiple running tasks do not write indistinguishable series. The existing
+collector export-failure alarm also covers failed AMP writes. After deployment,
+query `up{service="order"}` and the relevant `*_total` counters through an
+AWS-authenticated Prometheus-compatible client. AMP query access is separate
+from the collector's write-only permission. Dashboards, RED latency histograms,
+and application alert thresholds are still to be implemented.
 
 ## ECS availability alarms
 
