@@ -461,6 +461,14 @@ to `fargate`, and resume. Do not run these stages in one Terraform apply. An
 availability alarm is created only when the EC2 desired count is positive;
 it has no notification action.
 
+## Opt-in Kubernetes workloads
+
+`eks_enabled = true` provisions a separate EKS control plane and EC2 managed
+node group for Order, Ledger, and Matching. It does not move any ECS task or
+route public requests. Outbox Relay stays on ECS Fargate. Reporting and
+Notification remain unimplemented. The Kubernetes deployment and handoff
+procedure is in [`../k8s/README.md`](../k8s/README.md).
+
 ## ECS availability alarms
 
 Each enabled ECS service gets a CloudWatch alarm when its Container Insights

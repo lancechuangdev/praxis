@@ -1,6 +1,6 @@
 locals {
   ecs_service_alarm_names = {
-    order    = { enabled = var.order_image_digest != null, name = "${local.resource_name}-order-service" }
+    order    = { enabled = var.order_image_digest != null && var.order_fargate_desired_count > 0, name = "${local.resource_name}-order-service" }
     ledger   = { enabled = var.ledger_image_digest != null && var.ledger_fargate_desired_count > 0, name = "${local.resource_name}-ledger-service" }
     matching = { enabled = var.matching_image_digest != null && var.matching_fargate_desired_count > 0, name = "${local.resource_name}-matching-engine" }
     outbox   = { enabled = var.outbox_image_digest != null, name = "${local.resource_name}-outbox-relay" }
@@ -51,7 +51,7 @@ resource "aws_cloudwatch_metric_alarm" "ledger_consumer_lag" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "order_ec2_unavailable" {
-  count = var.order_ec2_enabled ? 1 : 0
+  count = var.order_ec2_enabled && var.order_ec2_desired_count > 0 ? 1 : 0
 
   alarm_name          = "${local.resource_name}-order-ec2-no-running-tasks"
   alarm_description   = "Parallel Order EC2 service has had no running tasks for three minutes."

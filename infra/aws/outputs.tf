@@ -250,3 +250,46 @@ output "order_ec2_target_group_arn" {
   description = "Parallel Order EC2 target group when ALB is enabled; not publicly routed."
   value       = var.order_ec2_enabled && var.order_alb_enabled ? aws_lb_target_group.order_ec2[0].arn : null
 }
+
+output "eks_cluster_name" {
+  description = "Opt-in EKS cluster for Order, Ledger, and Matching; null when disabled."
+  value       = var.eks_enabled ? aws_eks_cluster.this[0].name : null
+}
+
+output "eks_cluster_endpoint" {
+  description = "EKS API endpoint; private by default."
+  value       = var.eks_enabled ? aws_eks_cluster.this[0].endpoint : null
+}
+
+output "eks_cluster_security_group_id" {
+  description = "EKS cluster security group used by managed nodes for VPC access to MSK and RDS."
+  value       = var.eks_enabled ? aws_eks_cluster.this[0].vpc_config[0].cluster_security_group_id : null
+}
+
+output "eks_pod_role_arns" {
+  description = "Pod Identity roles for Ledger and Matching MSK clients. Order has no AWS task role."
+  value       = { for key, role in aws_iam_role.eks_pod : key => role.arn }
+}
+
+output "eks_image_refs" {
+  description = "Digest-pinned ECR images for Kubernetes workloads. All three digests must be set before deployment."
+  value = {
+    order    = var.order_image_digest == null ? null : "${aws_ecr_repository.service["order_service"].repository_url}@${var.order_image_digest}"
+    ledger   = var.ledger_image_digest == null ? null : "${aws_ecr_repository.service["ledger_service"].repository_url}@${var.ledger_image_digest}"
+    matching = var.matching_image_digest == null ? null : "${aws_ecr_repository.service["matching_engine"].repository_url}@${var.matching_image_digest}"
+  }
+}
+
+output "eks_runtime_config" {
+  description = "Non-secret application settings for the Kubernetes deployment script."
+  value = {
+    aws_region                = var.aws_region
+    ledger_db_host            = aws_rds_cluster.ledger.endpoint
+    ledger_db_name            = var.postgres_database_name
+    ledger_consumer_group     = var.ledger_consumer_group
+    ledger_commands_topic     = aws_msk_topic.this["ledger_commands"].name
+    matching_events_topic     = aws_msk_topic.this["matching_events"].name
+    bootstrap_brokers_iam     = aws_msk_cluster.this.bootstrap_brokers_sasl_iam
+    ledger_runtime_secret_arn = var.ledger_runtime_secret_arn
+  }
+}

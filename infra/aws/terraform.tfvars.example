@@ -3,6 +3,16 @@ environment = "development"
 aws_region  = "us-west-2"
 vpc_cidr    = "10.80.0.0/16"
 
+# EKS is opt-in. Supply a dedicated operator IAM role ARN; the Kubernetes API
+# is private unless narrow operator CIDRs are explicitly listed.
+eks_enabled             = false
+eks_version             = "1.35"
+eks_admin_principal_arn = null
+eks_public_access_cidrs = []
+eks_node_instance_types = ["m6i.xlarge"]
+eks_node_min_size       = 3
+eks_node_max_size       = 6
+
 availability_zone_count = 3
 nat_gateway_per_az      = true
 
@@ -65,6 +75,8 @@ outbox_runtime_secret_arn     = ""
 # Set only after Ledger and Matching images are configured and healthy.
 # Order remains private and the public ALB still returns 503.
 order_image_digest = null
+order_fargate_desired_count = 1
+order_ec2_desired_count = 1
 order_ledger_target = "fargate"
 order_matching_target = "fargate"
 

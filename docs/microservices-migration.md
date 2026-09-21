@@ -312,6 +312,12 @@ their ECS EC2 deployments have passed rollback tests. Keep Outbox Relay and
 other asynchronous services on ECS Fargate. Any shadow consumers use separate
 consumer groups and must suppress side effects.
 
+An opt-in EKS control plane, EC2 node group, Pod Identity roles, and private
+Kubernetes workloads for the three services are defined. No cluster has been
+applied or verified in AWS. Order has no public Kubernetes ingress; the mock
+Matching Engine still cannot overlap an ECS instance or recover its order
+book. The deployment runbook is in `infra/k8s/README.md`.
+
 **Gate:** behavior, load, failure, security, cost, and rollback criteria pass.
 
 ## Production checklist

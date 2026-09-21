@@ -59,8 +59,8 @@ resource "aws_ecs_task_definition" "ledger" {
     }
 
     precondition {
-      condition     = var.ledger_fargate_desired_count > 0 || (var.ledger_ec2_enabled && var.ledger_ec2_desired_count > 0)
-      error_message = "Keep at least one Ledger Fargate or EC2 task configured."
+      condition     = var.ledger_fargate_desired_count > 0 || (var.ledger_ec2_enabled && var.ledger_ec2_desired_count > 0) || var.eks_enabled
+      error_message = "Keep at least one Ledger ECS task configured unless EKS is enabled for the handoff."
     }
   }
 

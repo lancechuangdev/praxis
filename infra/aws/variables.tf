@@ -16,6 +16,74 @@ variable "aws_region" {
   default     = "us-west-2"
 }
 
+variable "eks_enabled" {
+  description = "Provision an opt-in EKS cluster and EC2 managed node group for Order, Ledger, and Matching. ECS Outbox Relay remains on Fargate."
+  type        = bool
+  default     = false
+}
+
+variable "eks_version" {
+  description = "Pinned EKS Kubernetes minor version; verify availability and standard-support dates in the selected Region before enabling."
+  type        = string
+  default     = "1.35"
+
+  validation {
+    condition     = can(regex("^1\\.[0-9]+$", var.eks_version))
+    error_message = "eks_version must be a Kubernetes minor version such as 1.35."
+  }
+}
+
+variable "eks_admin_principal_arn" {
+  description = "IAM role ARN granted EKS cluster-admin access. Required when eks_enabled is true; use a dedicated operator role."
+  type        = string
+  default     = null
+  nullable    = true
+}
+
+variable "eks_public_access_cidrs" {
+  description = "Optional operator CIDRs allowed to reach the EKS API publicly. Empty disables public API access; private access remains enabled."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for cidr in var.eks_public_access_cidrs : can(cidrnetmask(cidr)) && cidr != "0.0.0.0/0"])
+    error_message = "eks_public_access_cidrs must contain valid, narrower-than-global IPv4 CIDRs."
+  }
+}
+
+variable "eks_node_instance_types" {
+  description = "EC2 instance types for the EKS managed node group; keep one architecture per group."
+  type        = list(string)
+  default     = ["m6i.xlarge"]
+
+  validation {
+    condition     = length(var.eks_node_instance_types) >= 1 && length(var.eks_node_instance_types) <= 3
+    error_message = "eks_node_instance_types must contain one to three compatible instance types."
+  }
+}
+
+variable "eks_node_min_size" {
+  description = "Minimum EKS EC2 node count across three Availability Zones."
+  type        = number
+  default     = 3
+
+  validation {
+    condition     = var.eks_node_min_size >= 1 && var.eks_node_min_size <= 20 && floor(var.eks_node_min_size) == var.eks_node_min_size
+    error_message = "eks_node_min_size must be an integer from one to 20."
+  }
+}
+
+variable "eks_node_max_size" {
+  description = "Maximum EKS EC2 node count; no Kubernetes autoscaler is installed by this stack."
+  type        = number
+  default     = 6
+
+  validation {
+    condition     = var.eks_node_max_size >= 1 && var.eks_node_max_size <= 100 && floor(var.eks_node_max_size) == var.eks_node_max_size
+    error_message = "eks_node_max_size must be an integer from one to 100."
+  }
+}
+
 variable "vpc_cidr" {
   description = "CIDR for the independent CEX VPC."
   type        = string
@@ -347,6 +415,17 @@ variable "order_image_digest" {
   }
 }
 
+variable "order_fargate_desired_count" {
+  description = "Minimum and desired Order Fargate task count. Set zero only after traffic has moved away; the ECS service remains for rollback."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = contains([0, 1], var.order_fargate_desired_count)
+    error_message = "order_fargate_desired_count must be zero or one."
+  }
+}
+
 variable "order_ledger_target" {
   description = "Ledger endpoint used by Order services: the original Fargate Cloud Map name or the parallel EC2 Cloud Map name."
   type        = string
@@ -373,6 +452,17 @@ variable "order_ec2_enabled" {
   description = "Create a parallel Order ECS service on EC2; leave the Fargate service intact. Requires order_image_digest. Does not expose Order publicly."
   type        = bool
   default     = false
+}
+
+variable "order_ec2_desired_count" {
+  description = "Minimum and desired Order ECS EC2 task count when enabled. Set zero after Kubernetes cutover."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = contains([0, 1], var.order_ec2_desired_count)
+    error_message = "order_ec2_desired_count must be zero or one."
+  }
 }
 
 variable "order_ec2_instance_type" {

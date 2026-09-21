@@ -34,6 +34,7 @@ The repository contains:
 - [Matching Engine](matchingengine/README.md)
 - [Outbox Relay](outboxrelay/README.md)
 - [AWS infrastructure](infra/aws/README.md)
+- [EKS workloads and handoff](infra/k8s/README.md)
 - [Microservices migration architecture](docs/microservices-migration.md)
 - [ADR 0001: synchronous calls and Kafka](docs/adr/0001-synchronous-calls-and-kafka.md)
 - [Kubernetes one-hour crash course](docs/kubernetes-one-hour-crash-course.md)

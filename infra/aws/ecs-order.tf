@@ -69,22 +69,22 @@ resource "aws_ecs_task_definition" "order" {
 
   lifecycle {
     precondition {
-      condition     = var.ledger_image_digest != null && var.matching_image_digest != null
+      condition     = (var.order_fargate_desired_count == 0 && (!var.order_ec2_enabled || var.order_ec2_desired_count == 0)) || (var.ledger_image_digest != null && var.matching_image_digest != null)
       error_message = "Order requires ledger_image_digest and matching_image_digest so its gRPC readiness dependencies can run."
     }
 
     precondition {
-      condition     = var.order_ledger_target != "ec2" || (var.ledger_ec2_enabled && var.ledger_ec2_desired_count > 0)
+      condition     = (var.order_fargate_desired_count == 0 && (!var.order_ec2_enabled || var.order_ec2_desired_count == 0)) || var.order_ledger_target != "ec2" || (var.ledger_ec2_enabled && var.ledger_ec2_desired_count > 0)
       error_message = "Set ledger_ec2_enabled and ledger_ec2_desired_count > 0 before routing Order to Ledger EC2."
     }
 
     precondition {
-      condition     = var.order_ledger_target != "fargate" || var.ledger_fargate_desired_count > 0
+      condition     = (var.order_fargate_desired_count == 0 && (!var.order_ec2_enabled || var.order_ec2_desired_count == 0)) || var.order_ledger_target != "fargate" || var.ledger_fargate_desired_count > 0
       error_message = "Keep Ledger Fargate running while Order targets its Cloud Map name."
     }
 
     precondition {
-      condition     = var.order_matching_target != "ec2" || (var.matching_ec2_enabled && var.matching_ec2_desired_count == 1)
+      condition     = (var.order_fargate_desired_count == 0 && (!var.order_ec2_enabled || var.order_ec2_desired_count == 0)) || var.order_matching_target != "ec2" || (var.matching_ec2_enabled && var.matching_ec2_desired_count == 1)
       error_message = "Start the Matching EC2 task before routing Order to its Cloud Map name."
     }
   }
@@ -96,7 +96,7 @@ resource "aws_ecs_service" "order" {
   name            = "${local.resource_name}-order-service"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.order[0].arn
-  desired_count   = 1
+  desired_count   = var.order_fargate_desired_count
 
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 100
@@ -129,7 +129,4 @@ resource "aws_ecs_service" "order" {
 
   depends_on = [aws_ecs_cluster_capacity_providers.this, aws_ecs_service.ledger, aws_ecs_service.matching, aws_lb_listener.order_target_registration, aws_iam_role_policy.xray_export, aws_iam_role_policy.managed_metrics_write]
 
-  lifecycle {
-    ignore_changes = [desired_count]
-  }
 }

@@ -1,0 +1,297 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: praxis
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: order
+  namespace: praxis
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ledger
+  namespace: praxis
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: matching
+  namespace: praxis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger
+  namespace: praxis
+spec:
+  type: ClusterIP
+  selector:
+    app: ledger
+  ports:
+    - name: grpc
+      port: 9091
+      targetPort: grpc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matching
+  namespace: praxis
+spec:
+  type: ClusterIP
+  selector:
+    app: matching
+  ports:
+    - name: grpc
+      port: 9092
+      targetPort: grpc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order
+  namespace: praxis
+spec:
+  type: ClusterIP
+  selector:
+    app: order
+  ports:
+    - name: http
+      port: 8083
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger
+  namespace: praxis
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: ledger
+  template:
+    metadata:
+      labels:
+        app: ledger
+    spec:
+      serviceAccountName: ledger
+      nodeSelector:
+        praxis.io/workload: hot-path
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ledger
+          image: ${LEDGER_IMAGE}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: grpc
+              containerPort: 9091
+            - name: http
+              containerPort: 8081
+          env:
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: AWS_REGION}
+            - name: KAFKA_AUTH_MODE
+              value: msk_iam
+            - name: LEDGER_HTTP_ADDRESS
+              value: ":8081"
+            - name: LEDGER_GRPC_ADDRESS
+              value: ":9091"
+            - name: LEDGER_DB_HOST
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: LEDGER_DB_HOST}
+            - name: LEDGER_DB_USER
+              value: ledger_runtime
+            - name: LEDGER_DB_NAME
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: LEDGER_DB_NAME}
+            - name: LEDGER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: ledger-runtime, key: LEDGER_DB_PASSWORD}
+            - name: LEDGER_MIGRATE_ON_STARTUP
+              value: "false"
+            - name: LEDGER_KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MSK_BROKERS}
+            - name: LEDGER_COMMANDS_TOPIC
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: LEDGER_COMMANDS_TOPIC}
+            - name: LEDGER_CONSUMER_GROUP
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: LEDGER_CONSUMER_GROUP}
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {cpu: "1", memory: 2Gi}
+          startupProbe:
+            httpGet: {path: /readyz, port: http}
+            failureThreshold: 24
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matching
+  namespace: praxis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: matching
+  template:
+    metadata:
+      labels:
+        app: matching
+    spec:
+      serviceAccountName: matching
+      nodeSelector:
+        praxis.io/workload: hot-path
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: matching
+          image: ${MATCHING_IMAGE}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: grpc
+              containerPort: 9092
+            - name: http
+              containerPort: 8084
+          env:
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: AWS_REGION}
+            - name: KAFKA_AUTH_MODE
+              value: msk_iam
+            - name: MATCHING_GRPC_ADDRESS
+              value: ":9092"
+            - name: MATCHING_HTTP_ADDRESS
+              value: ":8084"
+            - name: MATCHING_KAFKA_ENABLED
+              value: "true"
+            - name: MATCHING_KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MSK_BROKERS}
+            - name: MATCHING_KAFKA_TOPIC
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MATCHING_EVENTS_TOPIC}
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {cpu: "1", memory: 2Gi}
+          startupProbe:
+            httpGet: {path: /readyz, port: http}
+            failureThreshold: 12
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order
+  namespace: praxis
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: order
+  template:
+    metadata:
+      labels:
+        app: order
+    spec:
+      serviceAccountName: order
+      automountServiceAccountToken: false
+      nodeSelector:
+        praxis.io/workload: hot-path
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: order
+          image: ${ORDER_IMAGE}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: http
+              containerPort: 8083
+          env:
+            - name: ORDER_HTTP_ADDRESS
+              value: ":8083"
+            - name: ORDER_LEDGER_MODE
+              value: grpc
+            - name: ORDER_LEDGER_GRPC_ADDRESS
+              value: "ledger.praxis.svc.cluster.local:9091"
+            - name: ORDER_MATCHING_MODE
+              value: grpc
+            - name: ORDER_MATCHING_GRPC_ADDRESS
+              value: "matching.praxis.svc.cluster.local:9092"
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {cpu: "1", memory: 2Gi}
+          startupProbe:
+            httpGet: {path: /readyz, port: http}
+            failureThreshold: 24
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20

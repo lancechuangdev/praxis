@@ -145,7 +145,7 @@ resource "aws_ecs_service" "order_ec2" {
   name            = "${local.resource_name}-order-service-ec2"
   cluster         = aws_ecs_cluster.this.id
   task_definition = aws_ecs_task_definition.order_ec2[0].arn
-  desired_count   = 1
+  desired_count   = var.order_ec2_desired_count
 
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
@@ -173,10 +173,6 @@ resource "aws_ecs_service" "order_ec2" {
       container_name   = "order-service"
       container_port   = 8083
     }
-  }
-
-  lifecycle {
-    ignore_changes = [desired_count]
   }
 
   depends_on = [aws_ecs_cluster_capacity_providers.this, aws_lb_listener.order_ec2_target_registration, aws_iam_role_policy_attachment.ecs_task_execution]

@@ -4,7 +4,7 @@ resource "aws_appautoscaling_target" "order" {
   service_namespace  = "ecs"
   scalable_dimension = "ecs:service:DesiredCount"
   resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.order[0].name}"
-  min_capacity       = 1
+  min_capacity       = var.order_fargate_desired_count
   max_capacity       = 3
 }
 
@@ -33,7 +33,7 @@ resource "aws_appautoscaling_target" "order_ec2" {
   service_namespace  = "ecs"
   scalable_dimension = "ecs:service:DesiredCount"
   resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.order_ec2[0].name}"
-  min_capacity       = 1
+  min_capacity       = var.order_ec2_desired_count
   max_capacity       = var.order_ec2_max_instances
 }
 
