@@ -167,13 +167,13 @@ output "outbox_ecs_service_arn" {
 }
 
 output "ledger_migration_task_definition_arn" {
-  description = "One-off Ledger migration task definition ARN when ledger_image_digest is set. Terraform does not run the task."
-  value       = var.ledger_image_digest == null ? null : aws_ecs_task_definition.ledger_migration[0].arn
+  description = "One-off Ledger migration task definition ARN when ledger_migration_image_digest is set. Terraform does not run the task."
+  value       = var.ledger_migration_image_digest == null ? null : aws_ecs_task_definition.ledger_migration[0].arn
 }
 
 output "outbox_migration_task_definition_arn" {
-  description = "One-off Outbox migration task definition ARN when outbox_image_digest is set. Terraform does not run the task."
-  value       = var.outbox_image_digest == null ? null : aws_ecs_task_definition.outbox_migration[0].arn
+  description = "One-off Outbox migration task definition ARN when outbox_migration_image_digest is set. Terraform does not run the task."
+  value       = var.outbox_migration_image_digest == null ? null : aws_ecs_task_definition.outbox_migration[0].arn
 }
 
 output "order_ecs_service_arn" {

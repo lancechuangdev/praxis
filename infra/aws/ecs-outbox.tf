@@ -1,5 +1,5 @@
 resource "aws_iam_role" "outbox_task_execution" {
-  count = var.outbox_image_digest == null ? 0 : 1
+  count = var.outbox_image_digest == null && var.outbox_migration_image_digest == null ? 0 : 1
 
   name               = "${local.resource_name}-outbox-execution"
   description        = "Outbox ECS image, logs, and database secret retrieval"
@@ -7,14 +7,14 @@ resource "aws_iam_role" "outbox_task_execution" {
 }
 
 resource "aws_iam_role_policy_attachment" "outbox_task_execution" {
-  count = var.outbox_image_digest == null ? 0 : 1
+  count = var.outbox_image_digest == null && var.outbox_migration_image_digest == null ? 0 : 1
 
   role       = aws_iam_role.outbox_task_execution[0].name
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 resource "aws_iam_role_policy" "outbox_secret_execution" {
-  count = var.outbox_image_digest == null ? 0 : 1
+  count = var.outbox_image_digest == null && var.outbox_migration_image_digest == null ? 0 : 1
 
   name   = "outbox-database-secret"
   role   = aws_iam_role.outbox_task_execution[0].id
@@ -53,6 +53,7 @@ resource "aws_ecs_task_definition" "outbox" {
       { name = "OUTBOX_DB_HOST", value = aws_rds_cluster.ledger.endpoint },
       { name = "OUTBOX_DB_USER", value = var.postgres_master_username },
       { name = "OUTBOX_DB_NAME", value = var.postgres_database_name },
+      { name = "OUTBOX_MIGRATE_ON_STARTUP", value = "false" },
       { name = "OUTBOX_KAFKA_BROKERS", value = aws_msk_cluster.this.bootstrap_brokers_sasl_iam },
       { name = "OUTBOX_KAFKA_TOPIC_MAP", value = "ledger-events=${aws_msk_topic.this["ledger_events"].name}" }
     ]

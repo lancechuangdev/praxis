@@ -1,5 +1,5 @@
 resource "aws_ecs_task_definition" "ledger_migration" {
-  count = var.ledger_image_digest == null ? 0 : 1
+  count = var.ledger_migration_image_digest == null ? 0 : 1
 
   family                   = "${local.resource_name}-ledger-migration"
   requires_compatibilities = ["FARGATE"]
@@ -10,7 +10,7 @@ resource "aws_ecs_task_definition" "ledger_migration" {
 
   container_definitions = jsonencode([{
     name                   = "ledger-migration"
-    image                  = "${aws_ecr_repository.service["ledger_service"].repository_url}@${var.ledger_image_digest}"
+    image                  = "${aws_ecr_repository.service["ledger_service"].repository_url}@${var.ledger_migration_image_digest}"
     command                = ["migrate"]
     essential              = true
     readonlyRootFilesystem = true
@@ -38,7 +38,7 @@ resource "aws_ecs_task_definition" "ledger_migration" {
 }
 
 resource "aws_ecs_task_definition" "outbox_migration" {
-  count = var.outbox_image_digest == null ? 0 : 1
+  count = var.outbox_migration_image_digest == null ? 0 : 1
 
   family                   = "${local.resource_name}-outbox-migration"
   requires_compatibilities = ["FARGATE"]
@@ -49,7 +49,7 @@ resource "aws_ecs_task_definition" "outbox_migration" {
 
   container_definitions = jsonencode([{
     name                   = "outbox-migration"
-    image                  = "${aws_ecr_repository.service["outbox_relay"].repository_url}@${var.outbox_image_digest}"
+    image                  = "${aws_ecr_repository.service["outbox_relay"].repository_url}@${var.outbox_migration_image_digest}"
     command                = ["migrate"]
     essential              = true
     readonlyRootFilesystem = true

@@ -18,7 +18,7 @@ resource "aws_vpc_security_group_ingress_rule" "ledger_from_order" {
 }
 
 resource "aws_iam_role" "ledger_task_execution" {
-  count = var.ledger_image_digest == null ? 0 : 1
+  count = var.ledger_image_digest == null && var.ledger_migration_image_digest == null ? 0 : 1
 
   name               = "${local.resource_name}-ledger-execution"
   description        = "Ledger ECS image, logs, and database secret retrieval"
@@ -26,7 +26,7 @@ resource "aws_iam_role" "ledger_task_execution" {
 }
 
 resource "aws_iam_role_policy_attachment" "ledger_task_execution" {
-  count = var.ledger_image_digest == null ? 0 : 1
+  count = var.ledger_image_digest == null && var.ledger_migration_image_digest == null ? 0 : 1
 
   role       = aws_iam_role.ledger_task_execution[0].name
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
@@ -54,7 +54,7 @@ data "aws_iam_policy_document" "database_secret_execution" {
 }
 
 resource "aws_iam_role_policy" "ledger_secret_execution" {
-  count = var.ledger_image_digest == null ? 0 : 1
+  count = var.ledger_image_digest == null && var.ledger_migration_image_digest == null ? 0 : 1
 
   name   = "ledger-database-secret"
   role   = aws_iam_role.ledger_task_execution[0].id
@@ -97,6 +97,7 @@ resource "aws_ecs_task_definition" "ledger" {
       { name = "LEDGER_DB_HOST", value = aws_rds_cluster.ledger.endpoint },
       { name = "LEDGER_DB_USER", value = var.postgres_master_username },
       { name = "LEDGER_DB_NAME", value = var.postgres_database_name },
+      { name = "LEDGER_MIGRATE_ON_STARTUP", value = "false" },
       { name = "LEDGER_KAFKA_BROKERS", value = aws_msk_cluster.this.bootstrap_brokers_sasl_iam },
       { name = "LEDGER_COMMANDS_TOPIC", value = aws_msk_topic.this["ledger_commands"].name },
       { name = "LEDGER_CONSUMER_GROUP", value = var.ledger_consumer_group }

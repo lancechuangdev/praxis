@@ -15,18 +15,19 @@ import (
 )
 
 type Config struct {
-	DatabaseURL   string
-	Brokers       []string
-	KafkaAuth     kafkaauth.Config
-	TopicMap      map[string]string
-	InstanceID    string
-	HTTPAddress   string
-	ClaimSize     int
-	LeaseDuration time.Duration
-	PollInterval  time.Duration
-	BatchSize     int
-	BatchBytes    int64
-	BatchTimeout  time.Duration
+	DatabaseURL      string
+	MigrateOnStartup bool
+	Brokers          []string
+	KafkaAuth        kafkaauth.Config
+	TopicMap         map[string]string
+	InstanceID       string
+	HTTPAddress      string
+	ClaimSize        int
+	LeaseDuration    time.Duration
+	PollInterval     time.Duration
+	BatchSize        int
+	BatchBytes       int64
+	BatchTimeout     time.Duration
 }
 
 func Load() (Config, error) {
@@ -43,7 +44,11 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	c := Config{DatabaseURL: databaseURL, Brokers: strings.Split(value("OUTBOX_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: kafkaAuth, TopicMap: topicMap, InstanceID: value("OUTBOX_INSTANCE_ID", host), HTTPAddress: value("OUTBOX_HTTP_ADDRESS", ":8082"), ClaimSize: integer("OUTBOX_CLAIM_SIZE", 500), LeaseDuration: duration("OUTBOX_LEASE_DURATION", 30*time.Second), PollInterval: duration("OUTBOX_POLL_INTERVAL", 100*time.Millisecond), BatchSize: integer("OUTBOX_KAFKA_BATCH_SIZE", 500), BatchBytes: int64(integer("OUTBOX_KAFKA_BATCH_BYTES", 512*1024)), BatchTimeout: duration("OUTBOX_KAFKA_BATCH_TIMEOUT", 5*time.Millisecond)}
+	migrateOnStartup, err := strconv.ParseBool(value("OUTBOX_MIGRATE_ON_STARTUP", "true"))
+	if err != nil {
+		return Config{}, fmt.Errorf("OUTBOX_MIGRATE_ON_STARTUP must be true or false: %w", err)
+	}
+	c := Config{DatabaseURL: databaseURL, MigrateOnStartup: migrateOnStartup, Brokers: strings.Split(value("OUTBOX_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: kafkaAuth, TopicMap: topicMap, InstanceID: value("OUTBOX_INSTANCE_ID", host), HTTPAddress: value("OUTBOX_HTTP_ADDRESS", ":8082"), ClaimSize: integer("OUTBOX_CLAIM_SIZE", 500), LeaseDuration: duration("OUTBOX_LEASE_DURATION", 30*time.Second), PollInterval: duration("OUTBOX_POLL_INTERVAL", 100*time.Millisecond), BatchSize: integer("OUTBOX_KAFKA_BATCH_SIZE", 500), BatchBytes: int64(integer("OUTBOX_KAFKA_BATCH_BYTES", 512*1024)), BatchTimeout: duration("OUTBOX_KAFKA_BATCH_TIMEOUT", 5*time.Millisecond)}
 	if c.InstanceID == "" {
 		return c, errors.New("OUTBOX_INSTANCE_ID is required")
 	}

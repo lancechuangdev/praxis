@@ -48,6 +48,24 @@ func TestSeparateDatabaseEnvironmentRequiresAllFields(t *testing.T) {
 	}
 }
 
+func TestMigrateOnStartup(t *testing.T) {
+	t.Setenv("OUTBOX_DATABASE_URL", "postgres://test")
+	t.Setenv("OUTBOX_MIGRATE_ON_STARTUP", "")
+	c, err := Load()
+	if err != nil || !c.MigrateOnStartup {
+		t.Fatalf("default migration setting = %t, %v", c.MigrateOnStartup, err)
+	}
+	t.Setenv("OUTBOX_MIGRATE_ON_STARTUP", "false")
+	c, err = Load()
+	if err != nil || c.MigrateOnStartup {
+		t.Fatalf("disabled migration setting = %t, %v", c.MigrateOnStartup, err)
+	}
+	t.Setenv("OUTBOX_MIGRATE_ON_STARTUP", "invalid")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected invalid migration setting to fail")
+	}
+}
+
 func TestParseTopicMap(t *testing.T) {
 	cases := []struct {
 		input   string

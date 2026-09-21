@@ -60,3 +60,30 @@ func Apply(ctx context.Context, db *pgxpool.Pool) error {
 	}
 	return nil
 }
+
+// Verify ensures the database has every migration embedded in this image.
+func Verify(ctx context.Context, db *pgxpool.Pool) error {
+	names, err := fs.Glob(files, "*.sql")
+	if err != nil {
+		return err
+	}
+	for _, version := range names {
+		body, err := files.ReadFile(version)
+		if err != nil {
+			return err
+		}
+		want := sha256.Sum256(body)
+		var got string
+		err = db.QueryRow(ctx, `SELECT checksum FROM outbox_relay_schema_migrations WHERE version=$1`, version).Scan(&got)
+		if err == pgx.ErrNoRows {
+			return fmt.Errorf("outbox migration %s is not applied", version)
+		}
+		if err != nil {
+			return fmt.Errorf("verify outbox migration %s: %w", version, err)
+		}
+		if got != hex.EncodeToString(want[:]) {
+			return fmt.Errorf("outbox migration %s checksum changed", version)
+		}
+	}
+	return nil
+}

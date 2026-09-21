@@ -65,8 +65,13 @@ func main() {
 		log.Error("database ping", "error", err)
 		os.Exit(1)
 	}
-	if err = migrations.Apply(ctx, db); err != nil {
-		log.Error("migrations", "error", err)
+	if mode == "migrate" || cfg.MigrateOnStartup {
+		err = migrations.Apply(ctx, db)
+	} else {
+		err = migrations.Verify(ctx, db)
+	}
+	if err != nil {
+		log.Error("schema migrations", "error", err)
 		os.Exit(1)
 	}
 	if mode == "migrate" {

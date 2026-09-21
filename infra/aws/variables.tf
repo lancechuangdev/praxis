@@ -231,6 +231,18 @@ variable "ledger_image_digest" {
   }
 }
 
+variable "ledger_migration_image_digest" {
+  description = "Ledger image digest for the one-off migration task, independently deployable before the Ledger service image."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.ledger_migration_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.ledger_migration_image_digest))
+    error_message = "ledger_migration_image_digest must be null or a lowercase sha256 digest with 64 hexadecimal characters."
+  }
+}
+
 variable "outbox_image_digest" {
   description = "Opt-in Outbox Relay image digest (sha256:...) already pushed to its ECR repository. Null creates no Outbox task definition or ECS service."
   type        = string
@@ -240,6 +252,18 @@ variable "outbox_image_digest" {
   validation {
     condition     = var.outbox_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.outbox_image_digest))
     error_message = "outbox_image_digest must be null or a lowercase sha256 digest with 64 hexadecimal characters."
+  }
+}
+
+variable "outbox_migration_image_digest" {
+  description = "Outbox image digest for the one-off migration task, independently deployable before the Outbox service image."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.outbox_migration_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.outbox_migration_image_digest))
+    error_message = "outbox_migration_image_digest must be null or a lowercase sha256 digest with 64 hexadecimal characters."
   }
 }
 

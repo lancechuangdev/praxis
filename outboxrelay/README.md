@@ -57,5 +57,8 @@ connectivity, and exits nonzero when the relay is not ready.
 
 Run `/outbox-relay migrate` as a one-off task to apply relay schema migrations
 and exit without starting the publisher or HTTP server. Normal service startup
-still runs migrations until ECS deployment is switched to a separate migration
-step and a least-privilege runtime database role.
+runs migrations by default for local Compose. Set
+`OUTBOX_MIGRATE_ON_STARTUP=false` after running the one-off task: the relay
+then verifies every migration embedded in its image against the database's
+recorded checksums and fails startup if any is missing or changed. ECS sets
+this to `false`; the runtime still needs a least-privilege database role.

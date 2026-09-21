@@ -224,9 +224,10 @@ CEX client group supplies the task's outbound MSK access.
 
 ## Ledger ECS service
 
-Ledger is also disabled by default. Build and push the Ledger image, then set
-`ledger_image_digest` to its `sha256:...` digest to create one private Fargate
-task. It registers its gRPC port `9091` in Cloud Map, consumes
+Ledger is also disabled by default. Build and push the Ledger image, run its
+one-off migration task as described below, then set `ledger_image_digest` to
+the same `sha256:...` digest to create one private Fargate task. It registers
+its gRPC port `9091` in Cloud Map, consumes
 `ledger.commands.v1` through MSK IAM/TLS, and uses `/readyz` for container
 health checks. Only tasks with `order_grpc_client_security_group_id` can call
 its gRPC port; there is no public Ledger listener.
@@ -243,8 +244,9 @@ stop-before-start deployment can briefly interrupt Ledger requests.
 
 ## Outbox Relay ECS service
 
-Set `outbox_image_digest` to a pushed image digest to create one private
-Fargate relay task. The task has no public endpoint or inbound security-group
+Run the Outbox migration task after Ledger's, then set `outbox_image_digest`
+to its pushed image digest to create one private Fargate relay task. The task
+has no public endpoint or inbound security-group
 rule. It connects to the Ledger writer database and MSK with IAM/TLS, maps
 stored `ledger-events` to `ledger.events.v1`, and reports health through its
 local `/readyz` endpoint. Its hostname supplies a distinct lease owner ID.
@@ -259,8 +261,10 @@ password.
 
 ## One-off database migration tasks
 
-When the Ledger or Outbox image digest is set, Terraform also registers a
-separate Fargate task definition with the same image and `migrate` command.
+Set `ledger_migration_image_digest` or `outbox_migration_image_digest` to
+register a Fargate migration task definition without starting its service.
+Use the exact image digest that will later be assigned to the corresponding
+service. The migration definition uses that image's `migrate` command.
 The task receives only database connection settings and the RDS-managed
 password; it does not receive the application's MSK task role, open a service
 port, or run continuously. Retrieve its ARN with
@@ -270,11 +274,19 @@ private subnet with `cex_client_security_group_id` attached and public IP
 assignment disabled. Wait for the task to stop and verify its container exit
 code is zero before proceeding; `tasks-stopped` alone does not mean success.
 
-Terraform **registers but does not execute** these tasks. Normal Ledger and
-Outbox service startup still runs migrations, so deployment ordering and a
-separate least-privilege runtime database user are not yet in place. The
-one-off definitions are a prerequisite for that later split, not a claim that
-it has already happened.
+Terraform **registers but does not execute** these tasks. Apply with migration
+digest(s) first, then run `./run-migrations.sh all` from this directory (requires
+AWS CLI, Terraform, and jq). The script uses Terraform outputs for the cluster,
+private subnets, and security group; it runs Ledger before Outbox and checks
+each task's container exit code. You can also pass `ledger` or `outbox` to run
+one migration. Only afterward set the matching
+`ledger_image_digest` and `outbox_image_digest` and apply again. On upgrades,
+keep the old service digest until the new migration task succeeds. ECS services
+set `LEDGER_MIGRATE_ON_STARTUP=false` and `OUTBOX_MIGRATE_ON_STARTUP=false`;
+they verify embedded migration checksums and fail startup if a required
+migration was skipped. Local Compose still runs migrations on startup. Runtime
+tasks still use the RDS admin credential, so least-privilege database roles
+are not yet in place.
 
 ## Private Order ECS service
 

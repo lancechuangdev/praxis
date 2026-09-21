@@ -66,6 +66,24 @@ func TestSeparateDatabaseEnvironmentRequiresAllFields(t *testing.T) {
 	}
 }
 
+func TestMigrateOnStartup(t *testing.T) {
+	t.Setenv("LEDGER_DATABASE_URL", "postgres://test")
+	t.Setenv("LEDGER_MIGRATE_ON_STARTUP", "")
+	c, err := Load()
+	if err != nil || !c.MigrateOnStartup {
+		t.Fatalf("default migration setting = %t, %v", c.MigrateOnStartup, err)
+	}
+	t.Setenv("LEDGER_MIGRATE_ON_STARTUP", "false")
+	c, err = Load()
+	if err != nil || c.MigrateOnStartup {
+		t.Fatalf("disabled migration setting = %t, %v", c.MigrateOnStartup, err)
+	}
+	t.Setenv("LEDGER_MIGRATE_ON_STARTUP", "invalid")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected invalid migration setting to fail")
+	}
+}
+
 func TestDatabaseQueryExecModes(t *testing.T) {
 	for raw, want := range map[string]pgx.QueryExecMode{
 		"cache_statement": pgx.QueryExecModeCacheStatement,
