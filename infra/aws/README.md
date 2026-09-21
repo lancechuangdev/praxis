@@ -232,14 +232,12 @@ its gRPC port `9091` in Cloud Map, consumes
 health checks. Only tasks with `order_grpc_client_security_group_id` can call
 its gRPC port; there is no public Ledger listener.
 
-The task reads the RDS-managed secret's `password` JSON key through a dedicated
-Ledger execution role; the shared execution role cannot read that secret. Its
+The task reads a dedicated Ledger runtime secret's `password` JSON key through
+its own execution role; that role cannot read the RDS admin secret. Its
 database host, name, and username come from Terraform;
 the password itself is not put in Terraform state. ECS injects the password at
-task startup, so a secret rotation requires a new deployment. This first
-single-task rollout uses the RDS *admin* account because the stack does not
-yet provision a dedicated Ledger database role. Give Ledger a least-privilege
-database user and separate migration ownership before production use. Its
+task startup, so a secret rotation requires a new deployment. Provision the
+restricted role as described below before enabling the service. Its
 stop-before-start deployment can briefly interrupt Ledger requests.
 
 ## Outbox Relay ECS service
@@ -251,13 +249,11 @@ rule. It connects to the Ledger writer database and MSK with IAM/TLS, maps
 stored `ledger-events` to `ledger.events.v1`, and reports health through its
 local `/readyz` endpoint. Its hostname supplies a distinct lease owner ID.
 
-The relay has its own execution role for the RDS-managed password and its own
-task role restricted to the Ledger event topic. This initial rollout uses the
-RDS admin account and runs migrations at startup; provision a dedicated
-least-privilege database user and separate migration ownership before
-production use. The service starts at one task and uses Fargate rather than
-Spot. A secret rotation requires a new deployment to refresh the injected
-password.
+The relay has its own execution role for its runtime password secret and its
+own task role restricted to the Ledger event topic. It cannot read the RDS
+admin secret or change the schema. The service starts at one task and uses
+Fargate rather than Spot. A secret rotation requires a new deployment to
+refresh the injected password.
 
 ## One-off database migration tasks
 
@@ -279,14 +275,27 @@ digest(s) first, then run `./run-migrations.sh all` from this directory (require
 AWS CLI, Terraform, and jq). The script uses Terraform outputs for the cluster,
 private subnets, and security group; it runs Ledger before Outbox and checks
 each task's container exit code. You can also pass `ledger` or `outbox` to run
-one migration. Only afterward set the matching
+one migration. Both migration runners serialize concurrent executions using
+the same PostgreSQL advisory lock because they share an outbox table. After
+the migrations succeed, connect to
+the writer database from inside the VPC as the RDS admin and run
+`psql -f bootstrap-runtime-roles.sql`; it prompts for separate Ledger and
+Outbox runtime passwords and grants DML access without schema ownership.
+Create two separate Secrets Manager secrets containing JSON
+`{"password":"<matching password>"}`. Keep their ARNs in
+`ledger_runtime_secret_arn` and `outbox_runtime_secret_arn`. The fixed
+database usernames are `ledger_runtime` and `outbox_runtime`. Use the
+AWS-managed Secrets Manager encryption key unless you
+also grant the corresponding ECS execution role `kms:Decrypt` on a custom key.
+Keep these passwords out of Terraform state and shell history. Only then set
+the matching
 `ledger_image_digest` and `outbox_image_digest` and apply again. On upgrades,
 keep the old service digest until the new migration task succeeds. ECS services
 set `LEDGER_MIGRATE_ON_STARTUP=false` and `OUTBOX_MIGRATE_ON_STARTUP=false`;
 they verify embedded migration checksums and fail startup if a required
-migration was skipped. Local Compose still runs migrations on startup. Runtime
-tasks still use the RDS admin credential, so least-privilege database roles
-are not yet in place.
+migration was skipped. Local Compose still runs migrations on startup.
+Database-backed migration tests require `LEDGER_TEST_DATABASE_URL` and
+`OUTBOX_TEST_DATABASE_URL`; they are skipped when those variables are unset.
 
 ## Private Order ECS service
 

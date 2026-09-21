@@ -36,13 +36,15 @@ order_alb_deletion_protection = false
 matching_image_digest = null
 
 # First register and run the one-off migration task, then set the same digest
-# for the long-running service. Both tasks currently use the RDS admin password.
+# for the long-running service. Only migration tasks use the RDS admin password.
 ledger_migration_image_digest = null
 ledger_image_digest           = null
+ledger_runtime_secret_arn     = ""
 
 # Run Ledger migrations before Outbox migrations, then deploy the relay.
 outbox_migration_image_digest = null
 outbox_image_digest           = null
+outbox_runtime_secret_arn     = ""
 
 # Set only after Ledger and Matching images are configured and healthy.
 # Order remains private and the public ALB still returns 503.

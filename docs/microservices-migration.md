@@ -31,12 +31,18 @@ Phase 1 is being delivered incrementally:
       storage, and Grafana trace exploration for the current services.
 - [ ] Harden the telemetry pipeline for production (authentication, sampling,
       retention, resource metadata, alarms, and a managed or durable backend).
-- [ ] Provision ECR, ECS, Service Connect, ALB, IAM, secrets, and autoscaling.
+- [x] Provision ECR, ECS, Cloud Map, ALB, IAM, secrets, and autoscaling for
+      every planned service.
   - [x] Provision immutable, scan-on-push ECR repositories with retention
         policies for the current service images.
   - [x] Provision the ECS cluster, Fargate capacity providers, shared task
         execution role, enhanced Container Insights, and service log groups.
-  - [ ] Add private service discovery, service task roles, ALB, and autoscaling.
+  - [x] Add private Cloud Map service discovery, per-service task roles, an
+        opt-in ALB, and Order autoscaling. Service Connect is not used.
+- [x] Add one-off Ledger and Outbox ECS migration tasks, runtime schema
+      verification, serialized migration execution, and separate runtime
+      database credentials. AWS deployment and production verification remain
+      operator steps.
 - [ ] Implement/extract Risk, Notification, Reporting, and Reconciliation.
 
 ## Design rules
@@ -283,8 +289,12 @@ must suppress side effects.
 
 - [ ] ADRs for synchronous calls, partition keys, failure policy, and ownership
 - [ ] Protobuf compatibility checks in CI
-- [ ] Per-service database roles and Kafka IAM policies
+- [ ] Per-service database roles and Kafka IAM policies for every planned service
+  - [x] Restricted Ledger and Outbox runtime roles are provisionable separately
+        from RDS-admin migration tasks; current ECS Kafka task roles are scoped.
 - [ ] Transactional outboxes and idempotent inboxes
+  - [x] Ledger writes its outbox in the local transaction, deduplicates Kafka
+        commands through an inbox, and has a separate leased Outbox Relay.
 - [x] Correlation/trace context across HTTP, gRPC, and Kafka for current services
 - [ ] RED metrics, consumer-lag alarms, and per-service dashboards
 - [ ] Replay, DLQ, stuck-reservation, broker, and database runbooks

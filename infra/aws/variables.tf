@@ -109,6 +109,18 @@ variable "postgres_master_username" {
   default     = "ledger_admin"
 }
 
+variable "ledger_runtime_secret_arn" {
+  description = "Secrets Manager ARN of the Ledger runtime password. Required when ledger_image_digest is set; create the matching restricted PostgreSQL role first."
+  type        = string
+  default     = ""
+}
+
+variable "outbox_runtime_secret_arn" {
+  description = "Secrets Manager ARN of the Outbox runtime password. Required when outbox_image_digest is set; create the matching restricted PostgreSQL role first."
+  type        = string
+  default     = ""
+}
+
 variable "postgres_allocated_storage_gib" {
   description = "Provisioned io2 storage allocated to each DB instance."
   type        = number

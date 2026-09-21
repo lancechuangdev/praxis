@@ -1,5 +1,5 @@
 resource "aws_iam_role" "outbox_task_execution" {
-  count = var.outbox_image_digest == null && var.outbox_migration_image_digest == null ? 0 : 1
+  count = var.outbox_image_digest == null ? 0 : 1
 
   name               = "${local.resource_name}-outbox-execution"
   description        = "Outbox ECS image, logs, and database secret retrieval"
@@ -7,22 +7,38 @@ resource "aws_iam_role" "outbox_task_execution" {
 }
 
 resource "aws_iam_role_policy_attachment" "outbox_task_execution" {
-  count = var.outbox_image_digest == null && var.outbox_migration_image_digest == null ? 0 : 1
+  count = var.outbox_image_digest == null ? 0 : 1
 
   role       = aws_iam_role.outbox_task_execution[0].name
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
 resource "aws_iam_role_policy" "outbox_secret_execution" {
-  count = var.outbox_image_digest == null && var.outbox_migration_image_digest == null ? 0 : 1
+  count = var.outbox_image_digest == null ? 0 : 1
 
   name   = "outbox-database-secret"
   role   = aws_iam_role.outbox_task_execution[0].id
-  policy = data.aws_iam_policy_document.database_secret_execution.json
+  policy = data.aws_iam_policy_document.outbox_runtime_secret_execution[0].json
+}
+
+data "aws_iam_policy_document" "outbox_runtime_secret_execution" {
+  count = var.outbox_image_digest == null ? 0 : 1
+  statement {
+    sid       = "ReadOutboxRuntimeSecret"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [var.outbox_runtime_secret_arn]
+  }
 }
 
 resource "aws_ecs_task_definition" "outbox" {
   count = var.outbox_image_digest == null ? 0 : 1
+
+  lifecycle {
+    precondition {
+      condition     = var.outbox_runtime_secret_arn != ""
+      error_message = "Set outbox_runtime_secret_arn and provision the restricted PostgreSQL role before deploying Outbox."
+    }
+  }
 
   family                   = "${local.resource_name}-outbox-relay"
   requires_compatibilities = ["FARGATE"]
@@ -51,7 +67,7 @@ resource "aws_ecs_task_definition" "outbox" {
       { name = "KAFKA_AUTH_MODE", value = "msk_iam" },
       { name = "OUTBOX_HTTP_ADDRESS", value = ":8082" },
       { name = "OUTBOX_DB_HOST", value = aws_rds_cluster.ledger.endpoint },
-      { name = "OUTBOX_DB_USER", value = var.postgres_master_username },
+      { name = "OUTBOX_DB_USER", value = "outbox_runtime" },
       { name = "OUTBOX_DB_NAME", value = var.postgres_database_name },
       { name = "OUTBOX_MIGRATE_ON_STARTUP", value = "false" },
       { name = "OUTBOX_KAFKA_BROKERS", value = aws_msk_cluster.this.bootstrap_brokers_sasl_iam },
@@ -59,7 +75,7 @@ resource "aws_ecs_task_definition" "outbox" {
     ]
     secrets = [{
       name      = "OUTBOX_DB_PASSWORD"
-      valueFrom = "${aws_rds_cluster.ledger.master_user_secret[0].secret_arn}:password::"
+      valueFrom = "${var.outbox_runtime_secret_arn}:password::"
     }]
     logConfiguration = {
       logDriver = "awslogs"

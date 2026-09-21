@@ -62,7 +62,8 @@ runs migrations by default for local Compose. Set
 `LEDGER_MIGRATE_ON_STARTUP=false` after running the one-off task: Ledger then
 verifies that every migration embedded in its image is recorded with the
 expected checksum and fails startup if any is missing or changed. ECS sets this
-to `false`; the runtime still needs a least-privilege database role.
+to `false`. The AWS runtime uses a restricted database role and a separate
+secret from the one-off migration task.
 
 ## Reserve funds
 

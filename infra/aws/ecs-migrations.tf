@@ -6,7 +6,7 @@ resource "aws_ecs_task_definition" "ledger_migration" {
   network_mode             = "awsvpc"
   cpu                      = "256"
   memory                   = "512"
-  execution_role_arn       = aws_iam_role.ledger_task_execution[0].arn
+  execution_role_arn       = aws_iam_role.ledger_migration_execution[0].arn
 
   container_definitions = jsonencode([{
     name                   = "ledger-migration"
@@ -34,7 +34,7 @@ resource "aws_ecs_task_definition" "ledger_migration" {
     }
   }])
 
-  depends_on = [aws_iam_role_policy.ledger_secret_execution, aws_iam_role_policy_attachment.ledger_task_execution]
+  depends_on = [aws_iam_role_policy.ledger_migration_secret, aws_iam_role_policy_attachment.ledger_migration_execution]
 }
 
 resource "aws_ecs_task_definition" "outbox_migration" {
@@ -45,7 +45,7 @@ resource "aws_ecs_task_definition" "outbox_migration" {
   network_mode             = "awsvpc"
   cpu                      = "256"
   memory                   = "512"
-  execution_role_arn       = aws_iam_role.outbox_task_execution[0].arn
+  execution_role_arn       = aws_iam_role.outbox_migration_execution[0].arn
 
   container_definitions = jsonencode([{
     name                   = "outbox-migration"
@@ -73,5 +73,5 @@ resource "aws_ecs_task_definition" "outbox_migration" {
     }
   }])
 
-  depends_on = [aws_iam_role_policy.outbox_secret_execution, aws_iam_role_policy_attachment.outbox_task_execution]
+  depends_on = [aws_iam_role_policy.outbox_migration_secret, aws_iam_role_policy_attachment.outbox_migration_execution]
 }
