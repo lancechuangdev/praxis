@@ -119,6 +119,16 @@ variable "nat_gateway_per_az" {
   default     = true
 }
 
+variable "order_alb_certificate_arn" {
+  description = "ACM certificate ARN for the public Order HTTPS ALB."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:[^:]+:acm:[^:]+:[0-9]{12}:certificate/[0-9a-fA-F-]+$", var.order_alb_certificate_arn))
+    error_message = "order_alb_certificate_arn must be an ACM certificate ARN."
+  }
+}
+
 variable "kafka_version" {
   description = "Amazon MSK Kafka version available in the selected region."
   type        = string

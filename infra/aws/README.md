@@ -24,8 +24,13 @@ topics, PostgreSQL Multi-AZ Ledger database, ECR repositories, and an EKS
 cluster with EC2 managed nodes for Order, Ledger, and Matching. It also creates
 an ECS Fargate cluster for Outbox Relay and its one-off database migration,
 plus an Amazon Managed Grafana workspace for AMP dashboards and alerts.
-Reporting and Notification are not implemented. No Order ALB or public ingress
-is provisioned; the Kubernetes Order Service is private.
+Reporting and Notification are not implemented. The public Order ALB requires
+`order_alb_certificate_arn` to reference an issued ACM certificate in the
+deployment region.
+The ALB listens on HTTPS 443, redirects HTTP 80 to HTTPS, and forwards to the
+Order Service's NodePort 30083 on the private EKS nodes. Its target group uses
+`/readyz` for health checks.
+The Kubernetes Order Service has no public IP or Kubernetes LoadBalancer.
 
 ## Provision
 

@@ -16,6 +16,8 @@ eks_node_max_size       = 6
 
 availability_zone_count = 3
 nat_gateway_per_az      = true
+# Supply an issued ACM certificate in this region for the public Order ALB.
+order_alb_certificate_arn = "arn:aws:acm:us-west-2:123456789012:certificate/replace-me"
 
 # Verify the desired engine version and instance-class availability in the
 # selected region. Leave the version null to let AWS choose its current default.

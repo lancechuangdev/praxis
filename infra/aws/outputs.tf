@@ -28,6 +28,11 @@ output "public_subnet_ids" {
   value       = aws_subnet.public[*].id
 }
 
+output "order_alb_dns_name" {
+  description = "Public Order ALB DNS name."
+  value       = aws_lb.order.dns_name
+}
+
 output "private_subnet_ids" {
   description = "Private subnet IDs for MSK, ECS services, databases, and internal resources."
   value       = aws_subnet.private[*].id
@@ -182,7 +187,7 @@ output "eks_cluster_ca_data" {
 
 output "eks_cluster_security_group_id" {
   description = "EKS cluster security group used by managed nodes for VPC access to MSK and RDS."
-  value       = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
+  value       = local.eks_cluster_security_group_id
 }
 
 output "eks_pod_role_arns" {

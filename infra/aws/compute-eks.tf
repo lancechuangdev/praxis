@@ -164,7 +164,7 @@ resource "aws_eks_addon" "pod_identity_agent" {
 # Managed nodes use the EKS cluster security group for pod VPC traffic.
 resource "aws_vpc_security_group_ingress_rule" "msk_from_eks" {
   security_group_id            = aws_security_group.msk.id
-  referenced_security_group_id = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
+  referenced_security_group_id = local.eks_cluster_security_group_id
   description                  = "Kafka IAM/TLS from EKS workloads"
   ip_protocol                  = "tcp"
   from_port                    = 9098
@@ -173,7 +173,7 @@ resource "aws_vpc_security_group_ingress_rule" "msk_from_eks" {
 
 resource "aws_vpc_security_group_ingress_rule" "postgres_from_eks" {
   security_group_id            = aws_security_group.postgres.id
-  referenced_security_group_id = aws_eks_cluster.this.vpc_config[0].cluster_security_group_id
+  referenced_security_group_id = local.eks_cluster_security_group_id
   description                  = "PostgreSQL from EKS Ledger workloads"
   ip_protocol                  = "tcp"
   from_port                    = 5432

@@ -66,11 +66,11 @@ its Kubernetes Role can watch only pods in `praxis`. No per-application sidecar
 is needed. Check `up{job="praxis-eks-hot-path"}` in AMP and generate a sampled
 request to verify a trace in X-Ray. Container-log shipping is still separate.
 
-The manifest keeps Order private (`ClusterIP`), routes its gRPC calls through
-Kubernetes Services, uses restricted non-root Pods, and keeps Matching at one
-replica with `Recreate` updates. The mock Matching Engine has no durable
-order book or fenced ownership; do not scale it above one. This Terraform
-stack adds no public ingress or edge authentication.
+The manifest exposes Order on NodePort 30083 for the public ALB in
+`infra/aws`, routes its gRPC calls through Kubernetes Services, uses restricted
+non-root Pods, and keeps Matching at one replica with `Recreate` updates. The
+mock Matching Engine has no durable order book or fenced ownership; do not
+scale it above one. This stack adds no edge authentication.
 
 ## Verify and operate
 
