@@ -96,6 +96,9 @@ same collector receives their OTLP traces on an internal Service and exports
 them to X-Ray. It uses its own EKS Pod Identity role; application pods do not
 receive AMP or X-Ray permissions. Terraform also defines AMP rules for the
 hot-path metrics. No Alertmanager receiver or notification action is configured.
+The separate [`infra/grafana`](../grafana/README.md) stack defines an AMP data
+source, dashboard import, and Grafana-managed email alerts; it has not been
+applied to a production workspace.
 
 Set `eks_collector_image` to a reviewed, digest-pinned ADOT image before the
 final Kubernetes workload apply. After deploying the pods, query

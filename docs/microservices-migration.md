@@ -45,6 +45,9 @@ Phase 1 is being delivered incrementally:
         alert rules for current services.
   - [ ] Deploy and verify metric ingestion, import the dashboard into a
         production Grafana workspace, and choose an alert delivery mechanism.
+        The `infra/grafana` stack now defines the AMP data source, dashboard,
+        equivalent Grafana-managed rules, and email delivery; its read-only
+        ingestion check and live dashboard/email verification remain to be run.
 - [ ] Provision compute, ingress, IAM, secrets, and autoscaling for every
       planned service.
   - [x] Provision immutable, scan-on-push ECR repositories with retention
