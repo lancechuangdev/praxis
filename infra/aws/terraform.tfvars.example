@@ -1,7 +1,8 @@
-name        = "stablerail-cex"
-environment = "development"
-aws_region  = "us-west-2"
-vpc_cidr    = "10.80.0.0/16"
+name                   = "stablerail-cex"
+environment            = "development"
+aws_region             = "us-west-2"
+grafana_admin_user_ids = ["replace-with-identity-center-user-id"]
+vpc_cidr               = "10.80.0.0/16"
 
 # EKS is the home for Order, Ledger, and Matching. Supply a dedicated
 # operator IAM role ARN before applying; the Kubernetes API is private unless

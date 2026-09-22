@@ -1,19 +1,55 @@
 # Praxis AWS infrastructure
 
+See the [infrastructure map](../README.md) for how the three Terraform stacks
+fit together. Within this AWS root module, filenames are grouped by concern:
+
+| Prefix | What to read there |
+|---|---|
+| `network-*` | VPC, subnets, routes, and MSK network access |
+| `messaging-*` | MSK cluster and Kafka topics |
+| `data-*` | PostgreSQL database and access network |
+| `images-*` | ECR repositories |
+| `compute-*` | EKS/EC2 and ECS/Fargate services and migrations |
+| `identity-*` | IAM roles and policies for pods, tasks, and clients |
+| `observability-*` | AMP, Managed Grafana workspace, alert rules, collector, and alarms |
+| `versions.tf`, `locals.tf`, `variables.tf`, `outputs.tf` | Shared provider setup, names, inputs, and outputs |
+
+All `.tf` files in this directory are **one Terraform root module and one
+state**. The prefixes are navigation aids, not separate deployment stages;
+Terraform follows resource references rather than filename order. Keep
+`terraform.tfvars` here because it supplies this root module's variables.
+
 This Terraform stack creates a three-AZ VPC, provisioned MSK cluster and
 topics, PostgreSQL Multi-AZ Ledger database, ECR repositories, and an EKS
 cluster with EC2 managed nodes for Order, Ledger, and Matching. It also creates
-an ECS Fargate cluster for Outbox Relay and its one-off database migration.
+an ECS Fargate cluster for Outbox Relay and its one-off database migration,
+plus an Amazon Managed Grafana workspace for AMP dashboards and alerts.
 Reporting and Notification are not implemented. No Order ALB or public ingress
 is provisioned; the Kubernetes Order Service is private.
 
 ## Provision
 
 Terraform needs AWS permissions for EKS, EC2/VPC, MSK, RDS, IAM, KMS, ECR,
-Secrets Manager, CloudWatch, and ECS. Copy `terraform.tfvars.example` to
-`terraform.tfvars`, set a dedicated `eks_admin_principal_arn`, and review the
+Secrets Manager, CloudWatch, ECS, and Managed Grafana. AWS IAM Identity Center
+must already be enabled in the selected Region. Copy `terraform.tfvars.example` to
+`terraform.tfvars`, set a dedicated `eks_admin_principal_arn` and one or more
+real Identity Center `grafana_admin_user_ids`, and review the
 selected Region, EKS version, instance sizes, storage, and cost. The EKS API
 is private unless narrow `eks_public_access_cidrs` are configured.
+
+To find the Identity Center ID for an existing admin user, get the
+`IdentityStoreId` from `aws sso-admin list-instances --region <region>`, then
+run `aws identitystore list-users --identity-store-id <id> --region <region>`.
+Use each user's `UserId` in `grafana_admin_user_ids`, not an IAM user ARN or
+email address.
+
+The Grafana workspace uses IAM Identity Center for human sign-in and a
+customer-managed IAM role that can only query this stack's AMP workspace.
+Terraform assigns the nominated users `ADMIN` and creates a
+`praxis-terraform` service account. Obtain its short-lived API token after
+apply; do not create the token with Terraform because the token would be
+stored in state. The workspace URL, ID, and service-account ID are outputs.
+The workspace is billable even before dashboards are imported.
 
 ```bash
 terraform init
@@ -96,9 +132,10 @@ same collector receives their OTLP traces on an internal Service and exports
 them to X-Ray. It uses its own EKS Pod Identity role; application pods do not
 receive AMP or X-Ray permissions. Terraform also defines AMP rules for the
 hot-path metrics. No Alertmanager receiver or notification action is configured.
-The separate [`infra/grafana`](../grafana/README.md) stack defines an AMP data
-source, dashboard import, and Grafana-managed email alerts; it has not been
-applied to a production workspace.
+The separate [`infra/grafana`](../grafana/README.md) stack configures this
+workspace's AMP data source, dashboard, and Grafana-managed email alerts.
+Creating the workspace alone does not import the dashboard or activate those
+alerts. Neither stack has been applied to AWS here.
 
 Set `eks_collector_image` to a reviewed, digest-pinned ADOT image before the
 final Kubernetes workload apply. After deploying the pods, query

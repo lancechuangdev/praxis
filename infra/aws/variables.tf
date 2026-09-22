@@ -16,6 +16,16 @@ variable "aws_region" {
   default     = "us-west-2"
 }
 
+variable "grafana_admin_user_ids" {
+  description = "IAM Identity Center user IDs to assign as administrators of the managed Grafana workspace. Identity Center must already be enabled in this Region."
+  type        = list(string)
+
+  validation {
+    condition     = length(var.grafana_admin_user_ids) > 0 && alltrue([for id in var.grafana_admin_user_ids : length(trimspace(id)) > 0])
+    error_message = "Provide at least one IAM Identity Center admin user ID for Grafana."
+  }
+}
+
 variable "eks_version" {
   description = "Pinned EKS Kubernetes minor version; verify availability and standard-support dates in the selected Region."
   type        = string

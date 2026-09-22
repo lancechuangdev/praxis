@@ -48,6 +48,8 @@ Phase 1 is being delivered incrementally:
         The `infra/grafana` stack now defines the AMP data source, dashboard,
         equivalent Grafana-managed rules, and email delivery; its read-only
         ingestion check and live dashboard/email verification remain to be run.
+        The `infra/aws` stack also defines the Managed Grafana workspace and
+        its AMP query role; neither stack has been applied to AWS.
 - [ ] Provision compute, ingress, IAM, secrets, and autoscaling for every
       planned service.
   - [x] Provision immutable, scan-on-push ECR repositories with retention
@@ -189,19 +191,10 @@ Add to the existing VPC/MSK/RDS Terraform:
 - Deployment circuit breakers, multi-AZ placement, graceful stop timeouts, and
   health-aware rolling deployments.
 
-Suggested Terraform split:
-
-```text
-infra/aws/
-  network, kafka, database           # existing
-  ecr.tf
-  ecs-cluster.tf
-  service-discovery.tf
-  load-balancing.tf
-  iam-<service>.tf
-  ecs-<service>.tf
-  observability.tf
-```
+The current Terraform stacks and file groups are mapped in
+[`infra/README.md`](../infra/README.md). This phase's earlier proposed
+`service-discovery.tf`, `load-balancing.tf`, and service-specific ECS files
+were not adopted for the EKS hot path; `infra/aws` remains one root module.
 
 Each process must first have a non-root image, `/healthz`, dependency-aware
 `/readyz`, graceful `SIGTERM`, explicit resource/connection/time limits,

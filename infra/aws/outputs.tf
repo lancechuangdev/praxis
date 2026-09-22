@@ -123,6 +123,21 @@ output "managed_metrics_query_endpoint" {
   value       = aws_prometheus_workspace.application.prometheus_endpoint
 }
 
+output "grafana_workspace_id" {
+  description = "Amazon Managed Grafana workspace ID."
+  value       = aws_grafana_workspace.praxis.id
+}
+
+output "grafana_workspace_url" {
+  description = "URL of the Amazon Managed Grafana workspace."
+  value       = "https://${aws_grafana_workspace.praxis.endpoint}"
+}
+
+output "grafana_terraform_service_account_id" {
+  description = "Managed Grafana service account ID; create its short-lived API token outside Terraform."
+  value       = aws_grafana_workspace_service_account.terraform.service_account_id
+}
+
 output "service_task_role_arns" {
   description = "Outbox Relay ECS task-role ARN, distinct from the shared task execution role."
   value       = { for key, role in aws_iam_role.service_task : key => role.arn }

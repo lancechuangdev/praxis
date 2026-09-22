@@ -2,19 +2,19 @@
 
 This independent Terraform stack imports the existing RED dashboard, configures
 an Amazon Managed Service for Prometheus (AMP) data source, and creates
-Grafana-managed alert rules delivered to an email contact point. It does not
-create a Grafana workspace or deploy AWS resources. Nothing is imported or
-verified until an operator applies it against a reachable workspace.
+Grafana-managed alert rules delivered to an email contact point. The
+[`infra/aws`](../aws/README.md) stack creates the Amazon Managed Grafana
+workspace, its AMP query role, Identity Center admin assignment, and a
+`praxis-terraform` service account. This stack configures that workspace via
+its Grafana API. Nothing is imported or verified until an operator applies it.
 
-Use an existing Amazon Managed Grafana v12 workspace with the Amazon Prometheus
-data source plugin, or a compatible self-managed Grafana with that plugin and
-SigV4 authentication. The workspace's AWS role needs `aps:QueryMetrics`,
-`aps:GetMetricMetadata`, `aps:GetSeries`, and `aps:GetLabels` on the AMP
-workspace ARN. Configure the workspace's outbound email capability before
-relying on alerts. The workspace must have Grafana 10.4+ simplified alert
-routing support for rule-level contact points. The Grafana service-account
-token must have permission to manage data sources, folders, dashboards,
-contact points, and alert rules.
+The AWS stack pins Grafana 12.4, uses IAM Identity Center for sign-in, and
+grants its role `aps:QueryMetrics`, `aps:GetMetricMetadata`, `aps:GetSeries`,
+and `aps:GetLabels` on the AMP workspace. The Amazon Prometheus data source
+plugin and Grafana's email delivery must be available in the workspace.
+After AWS apply, sign in as an assigned admin and create a short-lived token
+for the `praxis-terraform` service account. Keep the token outside Terraform
+state; it has workspace-admin privileges. Rotate or revoke it after use.
 
 First provision the AWS and Kubernetes stacks and deploy real workloads. Then
 run the read-only ingestion check from the repository root:
@@ -37,8 +37,8 @@ Grafana API. Use a monitored mailbox; do not put the Grafana token in a tfvars
 file or a shell command recorded in history:
 
 ```bash
-export GRAFANA_URL='https://your-grafana-workspace.example'
-export GRAFANA_AUTH='your-service-account-token'
+export GRAFANA_URL="$(terraform -chdir=infra/aws output -raw grafana_workspace_url)"
+export GRAFANA_AUTH='your-short-lived-service-account-token'
 terraform -chdir=infra/grafana init
 terraform -chdir=infra/grafana plan \
   -var="amp_endpoint=$AMP_ENDPOINT" -var="aws_region=$AWS_REGION" \
@@ -48,7 +48,7 @@ terraform -chdir=infra/grafana apply \
   -var='alert_email_addresses=["alerts@example.com"]'
 ```
 
-Replace the example URL, token, and email. Protect this stack's Terraform
+Replace the example token and email. Protect this stack's Terraform
 state: it contains workspace configuration and recipient addresses. The
 service-account token is read from the environment and is not stored in state.
 
