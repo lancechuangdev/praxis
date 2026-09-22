@@ -368,7 +368,7 @@ variable "order_image_digest" {
 }
 
 variable "trace_collector_image" {
-  description = "Digest-pinned AWS Distro for OpenTelemetry Collector image. Null disables ECS tracing and managed metrics."
+  description = "Digest-pinned AWS Distro for OpenTelemetry Collector image. Null disables ECS Outbox tracing and metrics export."
   type        = string
   default     = null
 
@@ -378,8 +378,20 @@ variable "trace_collector_image" {
   }
 }
 
+variable "eks_collector_image" {
+  description = "Digest-pinned ADOT Collector image for shared EKS metrics scraping and OTLP trace export. Set before deploying Kubernetes workloads."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.eks_collector_image == null || can(regex("^.+@sha256:[0-9a-f]{64}$", var.eks_collector_image))
+    error_message = "eks_collector_image must be null or an image URI pinned by sha256 digest."
+  }
+}
+
 variable "trace_sample_ratio" {
-  description = "Parent-based root sampling ratio for ECS service traces sent to X-Ray."
+  description = "Parent-based root sampling ratio for ECS and EKS service traces sent to X-Ray."
   type        = number
   default     = 0.1
 

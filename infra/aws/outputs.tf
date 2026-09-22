@@ -123,11 +123,6 @@ output "managed_metrics_query_endpoint" {
   value       = aws_prometheus_workspace.application.prometheus_endpoint
 }
 
-output "managed_metrics_eks_scraper_id" {
-  description = "AMP managed scraper ID for the Order, Ledger, and Matching EKS pod metrics endpoints."
-  value       = aws_prometheus_scraper.eks_hot_path.id
-}
-
 output "service_task_role_arns" {
   description = "Outbox Relay ECS task-role ARN, distinct from the shared task execution role."
   value       = { for key, role in aws_iam_role.service_task : key => role.arn }
@@ -176,8 +171,8 @@ output "eks_cluster_security_group_id" {
 }
 
 output "eks_pod_role_arns" {
-  description = "Pod Identity roles for Ledger, Matching, and the one-off Ledger migration Job. Order has no AWS role."
-  value       = merge({ for key, role in aws_iam_role.eks_pod : key => role.arn }, { ledger_migration = aws_iam_role.eks_ledger_migration.arn })
+  description = "Pod Identity roles for Ledger, Matching, the EKS collector, and the one-off Ledger migration Job. Order has no AWS role."
+  value       = merge({ for key, role in aws_iam_role.eks_pod : key => role.arn }, { ledger_migration = aws_iam_role.eks_ledger_migration.arn, collector = aws_iam_role.eks_collector.arn })
 }
 
 output "eks_image_refs" {
@@ -193,6 +188,11 @@ output "eks_runtime_config" {
   description = "Non-secret application settings for the Kubernetes Terraform stack."
   value = {
     aws_region                = var.aws_region
+    environment               = var.environment
+    eks_cluster_name          = aws_eks_cluster.this.name
+    eks_collector_image       = var.eks_collector_image
+    trace_sample_ratio        = var.trace_sample_ratio
+    amp_remote_write_endpoint = "${trimsuffix(aws_prometheus_workspace.application.prometheus_endpoint, "/")}/api/v1/remote_write"
     ledger_db_host            = aws_rds_cluster.ledger.endpoint
     ledger_db_name            = var.postgres_database_name
     ledger_consumer_group     = var.ledger_consumer_group

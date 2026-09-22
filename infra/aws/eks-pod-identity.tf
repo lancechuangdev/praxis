@@ -78,3 +78,30 @@ resource "aws_eks_pod_identity_association" "msk_clients" {
 
   depends_on = [aws_eks_addon.pod_identity_agent, aws_iam_role_policy.eks_pod_msk]
 }
+
+resource "aws_iam_role" "eks_collector" {
+  name               = "${local.resource_name}-eks-collector-pod"
+  description        = "Shared EKS collector identity for AMP metrics and X-Ray traces"
+  assume_role_policy = data.aws_iam_policy_document.eks_pod_assume.json
+}
+
+resource "aws_iam_role_policy" "eks_collector_metrics" {
+  name   = "amp-remote-write"
+  role   = aws_iam_role.eks_collector.id
+  policy = data.aws_iam_policy_document.managed_metrics_write.json
+}
+
+resource "aws_iam_role_policy" "eks_collector_traces" {
+  name   = "xray-trace-export"
+  role   = aws_iam_role.eks_collector.id
+  policy = data.aws_iam_policy_document.xray_export.json
+}
+
+resource "aws_eks_pod_identity_association" "collector" {
+  cluster_name    = aws_eks_cluster.this.name
+  namespace       = "observability"
+  service_account = "otel-collector"
+  role_arn        = aws_iam_role.eks_collector.arn
+
+  depends_on = [aws_eks_addon.pod_identity_agent, aws_iam_role_policy.eks_collector_metrics, aws_iam_role_policy.eks_collector_traces]
+}

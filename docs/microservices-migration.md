@@ -35,12 +35,12 @@ Phase 1 is being delivered incrementally:
   - [x] Add opt-in ECS tracing to managed X-Ray using a loopback-only ADOT
         sidecar, task-role authentication, sampling, ECS resource metadata,
         retained logs, and export-failure alarms for the Outbox Relay.
-  - [ ] Add equivalent tracing and metric export for the EKS workloads.
-    - [x] Configure an AMP managed scraper for Order, Ledger, and Matching
-          `/metrics` pods; live ingestion has not been verified in AWS.
+  - [x] Configure a shared EKS ADOT Collector to scrape Order, Ledger, and
+        Matching `/metrics` pods into AMP and export their OTLP traces to X-Ray.
+        Live ingestion has not been verified in AWS.
   - [ ] Deploy a pinned collector image and verify real trace delivery in AWS.
-  - [x] Add opt-in task-local `/metrics` scraping and SigV4 remote write to
-        a retained Amazon Managed Service for Prometheus workspace.
+  - [x] Add optional ECS Outbox task-local `/metrics` scraping and SigV4
+        remote write to the shared, retained AMP workspace.
   - [x] Add RED latency histograms, a service dashboard artifact, and AMP
         alert rules for current services.
   - [ ] Deploy and verify metric ingestion, import the dashboard into a

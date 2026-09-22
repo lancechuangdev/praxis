@@ -67,7 +67,8 @@ endpoint for replica-lag-tolerant queries.
 
 EKS is always provisioned. This AWS Terraform stack creates the private
 control plane, EC2 node group, core add-ons, Pod Identity roles for Ledger and
-Matching, and security-group paths to MSK and RDS. The separate Kubernetes
+Matching, a dedicated Collector Pod Identity role, and security-group paths
+to MSK and RDS. The separate Kubernetes
 Terraform stack applies the workload resources. Follow
 [`../k8s/README.md`](../k8s/README.md) to deploy Order, Ledger, and
 Matching. Order has no AWS role; Ledger can consume its command topic and
@@ -87,23 +88,25 @@ The ECS cluster also supplies the migration tasks. Its default capacity
 provider is Fargate; Fargate Spot is registered but not used by the relay.
 Only the relay receives ECS tracing and task-local metric scraping when the
 optional ADOT collector is configured. Terraform always creates an AMP
-workspace. When present, the relay collector signs remote writes to it. An AMP
-managed scraper discovers the `praxis` namespace's Order, Ledger, and Matching
-pods and scrapes their named `http` ports (`8083`, `8081`, and `8084`) every
-30 seconds. The scraper uses private subnets, EKS API access entries, and a
-dedicated security group limited to the API and those metrics ports. No
-collector sidecars are needed in the EKS application pods. Terraform also
-defines AMP rules for the hot-path metrics. No Alertmanager receiver or
-notification action is configured.
+workspace. When present, the relay collector signs remote writes to it. The
+Kubernetes stack deploys a shared ADOT Collector that scrapes the `praxis`
+namespace's Order, Ledger, and Matching pods on their named `http` ports
+(`8083`, `8081`, and `8084`) every 30 seconds, then signs writes to AMP. The
+same collector receives their OTLP traces on an internal Service and exports
+them to X-Ray. It uses its own EKS Pod Identity role; application pods do not
+receive AMP or X-Ray permissions. Terraform also defines AMP rules for the
+hot-path metrics. No Alertmanager receiver or notification action is configured.
 
-After applying both Terraform stacks and deploying the pods, check the
-`managed_metrics_eks_scraper_id` output and the scraper's status in AMP. Query
-`up{job="praxis-eks-hot-path"}`: each running Order, Ledger, and Matching pod
+Set `eks_collector_image` to a reviewed, digest-pinned ADOT image before the
+final Kubernetes workload apply. After deploying the pods, query
+`up{job="praxis-eks-hot-path"}` in AMP: each running Order, Ledger, and Matching pod
 should appear with value `1`. Then query, for example,
 `rate(order_requests_total{service="order"}[5m])`. Missing `up` series mean the
 pod was not discovered; `up == 0` means it was found but scraping failed.
-The EKS metrics path is independent of the still-unfinished EKS traces and
-container-log pipelines.
+Generate a request and verify its sampled trace in X-Ray. EKS container-log
+shipping remains separate work. The collector has one replica to avoid
+duplicate Prometheus scrapes; highly available collection needs target
+allocation or deduplication before scaling it up.
 
 CloudWatch alarms cover Outbox task availability, collector export failures,
 and Ledger Kafka consumer lag. Application and collector log retention is

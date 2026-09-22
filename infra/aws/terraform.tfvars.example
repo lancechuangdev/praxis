@@ -58,13 +58,16 @@ outbox_runtime_secret_arn     = ""
 # Order remains private until an authenticated Kubernetes ingress is added.
 order_image_digest = null
 
-# Optional production tracing for enabled ECS services. Pin a reviewed ADOT
-# image by digest. The sidecar sends sampled traces to managed AWS X-Ray; no
-# collector port is exposed.
+# Pin a reviewed ADOT image for the shared EKS metrics/traces collector before
+# the final infra/k8s apply. The initial migration-only apply does not need it.
+eks_collector_image = null
+
+# Optional tracing for the ECS Outbox Relay. Its separate sidecar sends sampled
+# traces to X-Ray and metrics to the same AMP workspace. This sampling ratio
+# also applies to Order, Ledger, and Matching on EKS.
 trace_collector_image = null
 trace_sample_ratio    = 0.1
 
-# AMP workspace and managed EKS pod scraper are always provisioned. If
-# trace_collector_image is also set, the ECS Outbox sidecar remote-writes to
-# the same workspace.
+# AMP workspace is always provisioned. The EKS collector scrapes the hot-path
+# pods and remote-writes to it; the optional ECS sidecar writes there too.
 managed_metrics_retention_days = 30

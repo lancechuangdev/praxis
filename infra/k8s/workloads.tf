@@ -5,11 +5,26 @@ locals {
   migration       = local.aws_outputs.ledger_migration_config
   migration_image = coalesce(local.migration.image, "missing-ledger-migration-image")
 
+  runtime_config_data = {
+    AWS_REGION                  = local.runtime.aws_region
+    OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-collector.observability.svc.cluster.local:4317"
+    OTEL_TRACE_SAMPLE_RATIO     = tostring(local.runtime.trace_sample_ratio)
+    OTEL_RESOURCE_ATTRIBUTES    = "deployment.environment=${local.runtime.environment},service.namespace=praxis,k8s.cluster.name=${local.runtime.eks_cluster_name}"
+    LEDGER_DB_HOST              = local.runtime.ledger_db_host
+    LEDGER_DB_NAME              = local.runtime.ledger_db_name
+    LEDGER_DB_SECRET_ARN        = local.runtime.ledger_runtime_secret_arn
+    MSK_BROKERS                 = local.runtime.bootstrap_brokers_iam
+    LEDGER_COMMANDS_TOPIC       = local.runtime.ledger_commands_topic
+    LEDGER_CONSUMER_GROUP       = local.runtime.ledger_consumer_group
+    MATCHING_EVENTS_TOPIC       = local.runtime.matching_events_topic
+  }
+
   workload_documents = [
     for document in split("\n---\n", templatefile("${path.module}/workloads.yaml", {
-      ORDER_IMAGE    = coalesce(local.images.order, "missing-order-image")
-      LEDGER_IMAGE   = coalesce(local.images.ledger, "missing-ledger-image")
-      MATCHING_IMAGE = coalesce(local.images.matching, "missing-matching-image")
+      ORDER_IMAGE         = coalesce(local.images.order, "missing-order-image")
+      LEDGER_IMAGE        = coalesce(local.images.ledger, "missing-ledger-image")
+      MATCHING_IMAGE      = coalesce(local.images.matching, "missing-matching-image")
+      RUNTIME_CONFIG_HASH = sha256(jsonencode(local.runtime_config_data))
     })) : yamldecode(document)
   ]
   services    = { for document in local.workload_documents : document.metadata.name => document if document.kind == "Service" }
@@ -45,16 +60,7 @@ resource "kubernetes_config_map_v1" "runtime" {
     namespace = kubernetes_namespace_v1.praxis.metadata[0].name
   }
 
-  data = {
-    AWS_REGION            = local.runtime.aws_region
-    LEDGER_DB_HOST        = local.runtime.ledger_db_host
-    LEDGER_DB_NAME        = local.runtime.ledger_db_name
-    LEDGER_DB_SECRET_ARN  = local.runtime.ledger_runtime_secret_arn
-    MSK_BROKERS           = local.runtime.bootstrap_brokers_iam
-    LEDGER_COMMANDS_TOPIC = local.runtime.ledger_commands_topic
-    LEDGER_CONSUMER_GROUP = local.runtime.ledger_consumer_group
-    MATCHING_EVENTS_TOPIC = local.runtime.matching_events_topic
-  }
+  data = local.runtime_config_data
 
   lifecycle {
     precondition {
@@ -157,7 +163,8 @@ resource "kubernetes_manifest" "deployments" {
     kubernetes_config_map_v1.runtime,
     kubernetes_service_account_v1.workloads,
     kubernetes_manifest.services,
-    kubernetes_manifest.ledger_migration
+    kubernetes_manifest.ledger_migration,
+    kubernetes_manifest.collector_deployment
   ]
 
   lifecycle {
