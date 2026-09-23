@@ -11,13 +11,14 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"praxis/ledgerservice/internal/ledger"
+	"praxis/ledgerservice/internal/observability"
 )
 
 type HTTP struct {
 	Store    ledger.Store
 	WriterDB *pgxpool.Pool
 	ReaderDB *pgxpool.Pool
-	Metrics  *Metrics
+	Metrics  *observability.Metrics
 }
 
 func (h HTTP) Handler() http.Handler {

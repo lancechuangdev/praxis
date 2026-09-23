@@ -20,7 +20,7 @@ import (
 	matchingv1 "praxis/matchingengine/gen/matching/v1"
 	"praxis/matchingengine/internal/config"
 	"praxis/matchingengine/internal/engine"
-	"praxis/matchingengine/internal/telemetry"
+	"praxis/matchingengine/internal/observability"
 )
 
 func main() {
@@ -39,16 +39,16 @@ func main() {
 		log.Error("configuration", "error", err)
 		os.Exit(1)
 	}
-	telemetryShutdown, err := telemetry.Setup(ctx, "matching-engine")
+	tracingShutdown, err := observability.SetupTracing(ctx, "matching-engine")
 	if err != nil {
-		log.Error("telemetry", "error", err)
+		log.Error("tracing setup", "error", err)
 		os.Exit(1)
 	}
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if shutdownErr := telemetryShutdown(shutdownCtx); shutdownErr != nil {
-			log.Error("telemetry shutdown", "error", shutdownErr)
+		if shutdownErr := tracingShutdown(shutdownCtx); shutdownErr != nil {
+			log.Error("tracing shutdown", "error", shutdownErr)
 		}
 	}()
 	listener, err := net.Listen("tcp", cfg.GRPCAddress)

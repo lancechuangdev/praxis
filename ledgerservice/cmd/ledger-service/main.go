@@ -21,8 +21,8 @@ import (
 	ledgerv1 "praxis/ledgerservice/gen/ledger/v1"
 	"praxis/ledgerservice/internal/config"
 	"praxis/ledgerservice/internal/messaging"
+	"praxis/ledgerservice/internal/observability"
 	"praxis/ledgerservice/internal/store"
-	"praxis/ledgerservice/internal/telemetry"
 	"praxis/ledgerservice/internal/transport"
 	"praxis/ledgerservice/migrations"
 )
@@ -48,16 +48,16 @@ func main() {
 		log.Error("configuration", "error", err)
 		os.Exit(1)
 	}
-	telemetryShutdown, err := telemetry.Setup(ctx, "ledger-service")
+	tracingShutdown, err := observability.SetupTracing(ctx, "ledger-service")
 	if err != nil {
-		log.Error("telemetry", "error", err)
+		log.Error("tracing setup", "error", err)
 		os.Exit(1)
 	}
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if shutdownErr := telemetryShutdown(shutdownCtx); shutdownErr != nil {
-			log.Error("telemetry shutdown", "error", shutdownErr)
+		if shutdownErr := tracingShutdown(shutdownCtx); shutdownErr != nil {
+			log.Error("tracing shutdown", "error", shutdownErr)
 		}
 	}()
 	writerPoolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)
@@ -103,7 +103,7 @@ func main() {
 		return
 	}
 	repo := store.New(writerDB, readerDB)
-	metrics := &transport.Metrics{}
+	metrics := &observability.Metrics{}
 	listener, err := net.Listen("tcp", cfg.GRPCAddress)
 	if err != nil {
 		log.Error("grpc listen", "error", err)

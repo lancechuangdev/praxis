@@ -9,12 +9,13 @@ import (
 	"google.golang.org/grpc/status"
 	ledgerv1 "praxis/ledgerservice/gen/ledger/v1"
 	"praxis/ledgerservice/internal/ledger"
+	"praxis/ledgerservice/internal/observability"
 )
 
 type GRPC struct {
 	ledgerv1.UnimplementedLedgerServiceServer
 	Store   ledger.Store
-	Metrics *Metrics
+	Metrics *observability.Metrics
 }
 
 func eventTime(raw string) (time.Time, error) {

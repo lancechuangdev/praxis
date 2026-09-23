@@ -15,8 +15,8 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"praxis/orderservice/internal/adapters"
 	"praxis/orderservice/internal/config"
+	"praxis/orderservice/internal/observability"
 	"praxis/orderservice/internal/order"
-	"praxis/orderservice/internal/telemetry"
 	"praxis/orderservice/internal/transport"
 )
 
@@ -36,16 +36,16 @@ func main() {
 		log.Error("configuration", "error", err)
 		os.Exit(1)
 	}
-	telemetryShutdown, err := telemetry.Setup(ctx, "order-service")
+	tracingShutdown, err := observability.SetupTracing(ctx, "order-service")
 	if err != nil {
-		log.Error("telemetry", "error", err)
+		log.Error("tracing setup", "error", err)
 		os.Exit(1)
 	}
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if shutdownErr := telemetryShutdown(shutdownCtx); shutdownErr != nil {
-			log.Error("telemetry shutdown", "error", shutdownErr)
+		if shutdownErr := tracingShutdown(shutdownCtx); shutdownErr != nil {
+			log.Error("tracing shutdown", "error", shutdownErr)
 		}
 	}()
 

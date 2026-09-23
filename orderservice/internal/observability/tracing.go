@@ -1,4 +1,4 @@
-package telemetry
+package observability
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 
 type Shutdown func(context.Context) error
 
-func Setup(ctx context.Context, serviceName string) (Shutdown, error) {
+func SetupTracing(ctx context.Context, serviceName string) (Shutdown, error) {
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
 		propagation.Baggage{},

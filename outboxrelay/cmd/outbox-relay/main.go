@@ -16,9 +16,9 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"praxis/outboxrelay/internal/config"
 	"praxis/outboxrelay/internal/messaging"
+	"praxis/outboxrelay/internal/observability"
 	"praxis/outboxrelay/internal/relay"
 	"praxis/outboxrelay/internal/store"
-	"praxis/outboxrelay/internal/telemetry"
 	"praxis/outboxrelay/migrations"
 )
 
@@ -43,16 +43,16 @@ func main() {
 		log.Error("configuration", "error", err)
 		os.Exit(1)
 	}
-	telemetryShutdown, err := telemetry.Setup(ctx, "outbox-relay")
+	tracingShutdown, err := observability.SetupTracing(ctx, "outbox-relay")
 	if err != nil {
-		log.Error("telemetry", "error", err)
+		log.Error("tracing setup", "error", err)
 		os.Exit(1)
 	}
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if shutdownErr := telemetryShutdown(shutdownCtx); shutdownErr != nil {
-			log.Error("telemetry shutdown", "error", shutdownErr)
+		if shutdownErr := tracingShutdown(shutdownCtx); shutdownErr != nil {
+			log.Error("tracing shutdown", "error", shutdownErr)
 		}
 	}()
 	db, err := pgxpool.New(ctx, cfg.DatabaseURL)
