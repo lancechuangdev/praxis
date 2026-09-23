@@ -29,7 +29,7 @@ func TestDepositReservationTradeAndCancellation(t *testing.T) {
 	if err = migrations.Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	s := store.New(db)
+	s := store.New(db, db)
 	now := time.Now().UTC()
 	deposit := ledger.PostDeposit{CommandID: "it-deposit-alice", DepositID: "it-deposit-alice", UserID: "alice-it", AssetID: "asset_usdt", CustodyPositionID: "custody_position_alice_eth_usdt", AmountAtomic: "1000000000", TargetBucket: "available", SourceSystem: "deposit-service", OccurredAt: now}
 	if _, err = s.PostDeposit(ctx, deposit); err != nil {
@@ -97,7 +97,7 @@ func TestReserveForOrder(t *testing.T) {
 		return userID, accountID
 	}
 
-	s := store.New(db)
+	s := store.New(db, db)
 	missing := ledger.ReserveOrder{CommandID: prefix + "-missing-command", OrderID: prefix + "-missing-order", UserID: prefix + "-missing-user", AssetID: "asset_usdt", AmountAtomic: "1"}
 	if _, err = s.ReserveForOrder(ctx, missing); !errors.Is(err, ledger.ErrNotFound) {
 		t.Fatalf("missing account error = %v, want %v", err, ledger.ErrNotFound)

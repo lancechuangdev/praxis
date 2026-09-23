@@ -109,9 +109,16 @@ spec:
               value: ":8081"
             - name: LEDGER_GRPC_ADDRESS
               value: ":9091"
-            - name: LEDGER_DB_HOST
+            - name: LEDGER_DB_WRITER_HOST
               valueFrom:
-                configMapKeyRef: {name: praxis-runtime, key: LEDGER_DB_HOST}
+                configMapKeyRef: {name: praxis-runtime, key: LEDGER_DB_WRITER_HOST}
+            - name: LEDGER_DB_READER_HOST
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: LEDGER_DB_READER_HOST}
+            - name: LEDGER_DB_WRITER_MAX_CONNS
+              value: "32"
+            - name: LEDGER_DB_READER_MAX_CONNS
+              value: "16"
             - name: LEDGER_DB_USER
               value: ledger_runtime
             - name: LEDGER_DB_NAME

@@ -13,19 +13,23 @@ import (
 )
 
 type Config struct {
-	DatabaseURL                  string
-	DBMaxConns                   int32
-	DBStatementCacheCapacity     int
-	DBQueryExecMode              pgx.QueryExecMode
-	MigrateOnStartup             bool
-	HTTPAddress, GRPCAddress     string
-	KafkaBrokers                 []string
-	KafkaAuth                    kafkaauth.Config
-	CommandsTopic, ConsumerGroup string
+	DatabaseURL, ReaderDatabaseURL     string
+	DBWriterMaxConns, DBReaderMaxConns int32
+	DBStatementCacheCapacity           int
+	DBQueryExecMode                    pgx.QueryExecMode
+	MigrateOnStartup                   bool
+	HTTPAddress, GRPCAddress           string
+	KafkaBrokers                       []string
+	KafkaAuth                          kafkaauth.Config
+	CommandsTopic, ConsumerGroup       string
 }
 
 func Load() (Config, error) {
-	maxConns, err := positiveInt32("LEDGER_DB_MAX_CONNS", 32)
+	writerMaxConns, err := positiveInt32("LEDGER_DB_WRITER_MAX_CONNS", 32)
+	if err != nil {
+		return Config{}, err
+	}
+	readerMaxConns, err := positiveInt32("LEDGER_DB_READER_MAX_CONNS", 16)
 	if err != nil {
 		return Config{}, err
 	}
@@ -41,7 +45,11 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	databaseURL, err := databaseURL()
+	writerDatabaseURL, err := databaseURL("LEDGER_DATABASE_WRITER_URL", "LEDGER_DB_WRITER_HOST", "")
+	if err != nil {
+		return Config{}, err
+	}
+	readerDatabaseURL, err := databaseURL("LEDGER_DATABASE_READER_URL", "LEDGER_DB_READER_HOST", writerDatabaseURL)
 	if err != nil {
 		return Config{}, err
 	}
@@ -49,22 +57,25 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("LEDGER_MIGRATE_ON_STARTUP must be true or false: %w", err)
 	}
-	c := Config{DatabaseURL: databaseURL, DBMaxConns: maxConns, DBStatementCacheCapacity: statementCacheCapacity, DBQueryExecMode: queryExecMode, MigrateOnStartup: migrateOnStartup, HTTPAddress: value("LEDGER_HTTP_ADDRESS", ":8081"), GRPCAddress: value("LEDGER_GRPC_ADDRESS", ":9091"), KafkaBrokers: strings.Split(value("LEDGER_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: kafkaAuth, CommandsTopic: value("LEDGER_COMMANDS_TOPIC", "ledger-commands"), ConsumerGroup: value("LEDGER_CONSUMER_GROUP", "cex-ledger-service")}
+	c := Config{DatabaseURL: writerDatabaseURL, ReaderDatabaseURL: readerDatabaseURL, DBWriterMaxConns: writerMaxConns, DBReaderMaxConns: readerMaxConns, DBStatementCacheCapacity: statementCacheCapacity, DBQueryExecMode: queryExecMode, MigrateOnStartup: migrateOnStartup, HTTPAddress: value("LEDGER_HTTP_ADDRESS", ":8081"), GRPCAddress: value("LEDGER_GRPC_ADDRESS", ":9091"), KafkaBrokers: strings.Split(value("LEDGER_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: kafkaAuth, CommandsTopic: value("LEDGER_COMMANDS_TOPIC", "ledger-commands"), ConsumerGroup: value("LEDGER_CONSUMER_GROUP", "cex-ledger-service")}
 	return c, nil
 }
 
-func databaseURL() (string, error) {
-	if raw := os.Getenv("LEDGER_DATABASE_URL"); raw != "" {
+func databaseURL(urlEnv, hostEnv, fallback string) (string, error) {
+	if raw := os.Getenv(urlEnv); raw != "" {
 		return raw, nil
 	}
-	host := strings.TrimSpace(os.Getenv("LEDGER_DB_HOST"))
+	host := strings.TrimSpace(os.Getenv(hostEnv))
+	if host == "" && fallback != "" {
+		return fallback, nil
+	}
 	user := strings.TrimSpace(os.Getenv("LEDGER_DB_USER"))
 	name := strings.TrimSpace(os.Getenv("LEDGER_DB_NAME"))
 	if host == "" || user == "" || name == "" {
-		return "", fmt.Errorf("set LEDGER_DATABASE_URL or LEDGER_DB_HOST, LEDGER_DB_USER, and LEDGER_DB_NAME with a password source")
+		return "", fmt.Errorf("set %s or %s, LEDGER_DB_USER, and LEDGER_DB_NAME with a password source", urlEnv, hostEnv)
 	}
 	if strings.ContainsAny(host, ":/") {
-		return "", fmt.Errorf("LEDGER_DB_HOST must be a hostname without a port")
+		return "", fmt.Errorf("%s must be a hostname without a port", hostEnv)
 	}
 	password, err := databasePassword()
 	if err != nil {

@@ -60,24 +60,39 @@ func main() {
 			log.Error("telemetry shutdown", "error", shutdownErr)
 		}
 	}()
-	poolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	writerPoolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)
 	if err != nil {
 		log.Error("database configuration", "error", err)
 		os.Exit(1)
 	}
-	poolConfig.MaxConns = cfg.DBMaxConns
-	poolConfig.ConnConfig.StatementCacheCapacity = cfg.DBStatementCacheCapacity
-	poolConfig.ConnConfig.DefaultQueryExecMode = cfg.DBQueryExecMode
-	db, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	writerPoolConfig.MaxConns = cfg.DBWriterMaxConns
+	writerPoolConfig.ConnConfig.StatementCacheCapacity = cfg.DBStatementCacheCapacity
+	writerPoolConfig.ConnConfig.DefaultQueryExecMode = cfg.DBQueryExecMode
+	writerDB, err := pgxpool.NewWithConfig(ctx, writerPoolConfig)
 	if err != nil {
 		log.Error("database", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer writerDB.Close()
+	readerPoolConfig, err := pgxpool.ParseConfig(cfg.ReaderDatabaseURL)
+	if err != nil {
+		log.Error("reader database configuration", "error", err)
+		os.Exit(1)
+	}
+	readerPoolConfig.MaxConns = cfg.DBReaderMaxConns
+	readerPoolConfig.ConnConfig.StatementCacheCapacity = cfg.DBStatementCacheCapacity
+	readerPoolConfig.ConnConfig.DefaultQueryExecMode = cfg.DBQueryExecMode
+	readerPoolConfig.ConnConfig.RuntimeParams["default_transaction_read_only"] = "on"
+	readerDB, err := pgxpool.NewWithConfig(ctx, readerPoolConfig)
+	if err != nil {
+		log.Error("reader database", "error", err)
+		os.Exit(1)
+	}
+	defer readerDB.Close()
 	if mode == "migrate" || cfg.MigrateOnStartup {
-		err = migrations.Apply(ctx, db)
+		err = migrations.Apply(ctx, writerDB)
 	} else {
-		err = migrations.Verify(ctx, db)
+		err = migrations.Verify(ctx, writerDB)
 	}
 	if err != nil {
 		log.Error("schema migrations", "error", err)
@@ -87,7 +102,7 @@ func main() {
 		log.Info("ledger migrations applied")
 		return
 	}
-	repo := store.New(db)
+	repo := store.New(writerDB, readerDB)
 	metrics := &transport.Metrics{}
 	listener, err := net.Listen("tcp", cfg.GRPCAddress)
 	if err != nil {
@@ -99,13 +114,13 @@ func main() {
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Store: repo, DB: db, Metrics: metrics}.Handler(), "ledger.http"), ReadHeaderTimeout: 5 * time.Second}
-	consumer := messaging.NewConsumer(cfg.KafkaBrokers, cfg.CommandsTopic, cfg.ConsumerGroup, cfg.KafkaAuth, db, repo, log)
+	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Store: repo, WriterDB: writerDB, ReaderDB: readerDB, Metrics: metrics}.Handler(), "ledger.http"), ReadHeaderTimeout: 5 * time.Second}
+	consumer := messaging.NewConsumer(cfg.KafkaBrokers, cfg.CommandsTopic, cfg.ConsumerGroup, cfg.KafkaAuth, writerDB, repo, log)
 	errCh := make(chan error, 3)
 	go func() { errCh <- grpcServer.Serve(listener) }()
 	go func() { errCh <- httpServer.ListenAndServe() }()
 	go func() { errCh <- consumer.Run(ctx) }()
-	log.Info("ledger service started", "http", cfg.HTTPAddress, "grpc", cfg.GRPCAddress, "topic", cfg.CommandsTopic, "db_max_conns", cfg.DBMaxConns, "db_query_exec_mode", cfg.DBQueryExecMode.String(), "db_statement_cache_capacity", cfg.DBStatementCacheCapacity)
+	log.Info("ledger service started", "http", cfg.HTTPAddress, "grpc", cfg.GRPCAddress, "topic", cfg.CommandsTopic, "db_writer_max_conns", cfg.DBWriterMaxConns, "db_reader_max_conns", cfg.DBReaderMaxConns, "db_query_exec_mode", cfg.DBQueryExecMode.String(), "db_statement_cache_capacity", cfg.DBStatementCacheCapacity)
 	select {
 	case <-ctx.Done():
 	case err = <-errCh:

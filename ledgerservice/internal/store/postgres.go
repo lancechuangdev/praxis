@@ -16,7 +16,10 @@ import (
 	"praxis/ledgerservice/internal/ledger"
 )
 
-type Postgres struct{ DB *pgxpool.Pool }
+type Postgres struct {
+	Writer *pgxpool.Pool
+	Reader *pgxpool.Pool
+}
 
 const reserveForOrderSQL = `
 SELECT result_outcome,
@@ -41,7 +44,7 @@ FROM reserve_for_order(
     $12::jsonb
 )`
 
-func New(db *pgxpool.Pool) *Postgres { return &Postgres{DB: db} }
+func New(writer, reader *pgxpool.Pool) *Postgres { return &Postgres{Writer: writer, Reader: reader} }
 
 func stableID(prefix string, parts ...string) string {
 	h := sha256.New()
@@ -115,7 +118,7 @@ func (p *Postgres) PostDeposit(ctx context.Context, v ledger.PostDeposit) (ledge
 	if err := ledger.ValidateDeposit(v); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	tx, err := begin(ctx, p.DB)
+	tx, err := begin(ctx, p.Writer)
 	if err != nil {
 		return ledger.OperationResult{}, err
 	}
@@ -169,7 +172,7 @@ func (p *Postgres) ReleaseHold(ctx context.Context, v ledger.ReleaseHold) (ledge
 	if err := atomicPositive(v.AmountAtomic); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	tx, err := begin(ctx, p.DB)
+	tx, err := begin(ctx, p.Writer)
 	if err != nil {
 		return ledger.OperationResult{}, err
 	}
@@ -233,7 +236,7 @@ func (p *Postgres) ReserveForOrder(ctx context.Context, v ledger.ReserveOrder) (
 	}
 	var outcome string
 	var r ledger.Reservation
-	err = p.DB.QueryRow(ctx, reserveForOrderSQL, v.UserID, v.AssetID, v.AmountAtomic, v.OrderID, v.CommandID, v.CorrelationID, v.CausationID, v.OccurredAt, rid, jid, eid, outboxPayload).Scan(&outcome, &r.ID, &r.OrderID, &r.Status, &r.OriginalAtomic, &r.RemainingAtomic, &r.BalanceVersion)
+	err = p.Writer.QueryRow(ctx, reserveForOrderSQL, v.UserID, v.AssetID, v.AmountAtomic, v.OrderID, v.CommandID, v.CorrelationID, v.CausationID, v.OccurredAt, rid, jid, eid, outboxPayload).Scan(&outcome, &r.ID, &r.OrderID, &r.Status, &r.OriginalAtomic, &r.RemainingAtomic, &r.BalanceVersion)
 	if err != nil {
 		return ledger.Reservation{}, err
 	}
@@ -264,7 +267,7 @@ func reservationTx(ctx context.Context, tx pgx.Tx, order string) (ledger.Reserva
 }
 
 func (p *Postgres) GetReservation(ctx context.Context, order string) (ledger.Reservation, error) {
-	return reservationPool(ctx, p.DB, order)
+	return reservationPool(ctx, p.Reader, order)
 }
 func reservationPool(ctx context.Context, db *pgxpool.Pool, order string) (ledger.Reservation, error) {
 	var r ledger.Reservation
@@ -277,7 +280,7 @@ func reservationPool(ctx context.Context, db *pgxpool.Pool, order string) (ledge
 
 func (p *Postgres) GetBalance(ctx context.Context, user, asset string) (ledger.Balance, error) {
 	var b ledger.Balance
-	err := p.DB.QueryRow(ctx, `SELECT u.id,u.user_id,u.asset_id,b.available_atomic::text,b.reserved_atomic::text,b.withdrawal_pending_atomic::text,b.deposit_pending_atomic::text,b.hold_atomic::text,b.version FROM user_asset_accounts u JOIN user_asset_balances b ON b.user_asset_account_id=u.id WHERE u.user_id=$1 AND u.asset_id=$2`, user, asset).Scan(&b.UserAssetAccountID, &b.UserID, &b.AssetID, &b.AvailableAtomic, &b.ReservedAtomic, &b.WithdrawalPendingAtomic, &b.DepositPendingAtomic, &b.HoldAtomic, &b.Version)
+	err := p.Reader.QueryRow(ctx, `SELECT u.id,u.user_id,u.asset_id,b.available_atomic::text,b.reserved_atomic::text,b.withdrawal_pending_atomic::text,b.deposit_pending_atomic::text,b.hold_atomic::text,b.version FROM user_asset_accounts u JOIN user_asset_balances b ON b.user_asset_account_id=u.id WHERE u.user_id=$1 AND u.asset_id=$2`, user, asset).Scan(&b.UserAssetAccountID, &b.UserID, &b.AssetID, &b.AvailableAtomic, &b.ReservedAtomic, &b.WithdrawalPendingAtomic, &b.DepositPendingAtomic, &b.HoldAtomic, &b.Version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = ledger.ErrNotFound
 	}
@@ -362,7 +365,7 @@ func (p *Postgres) BookTrade(ctx context.Context, v ledger.TradeExecuted) (ledge
 	if err := ledger.ValidateTrade(v); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	tx, err := begin(ctx, p.DB)
+	tx, err := begin(ctx, p.Writer)
 	if err != nil {
 		return ledger.OperationResult{}, err
 	}
@@ -482,7 +485,7 @@ func (p *Postgres) CancelOrder(ctx context.Context, v ledger.CancelOrder) (ledge
 	if v.EventID == "" || v.OrderID == "" || v.EngineID == "" || v.SequenceNumber <= 0 {
 		return ledger.OperationResult{}, errors.New("event, order, engine, and sequence are required")
 	}
-	tx, err := begin(ctx, p.DB)
+	tx, err := begin(ctx, p.Writer)
 	if err != nil {
 		return ledger.OperationResult{}, err
 	}

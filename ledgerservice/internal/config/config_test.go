@@ -8,7 +8,7 @@ import (
 )
 
 func TestDatabaseStatementDefaults(t *testing.T) {
-	t.Setenv("LEDGER_DATABASE_URL", "postgres://test")
+	t.Setenv("LEDGER_DATABASE_WRITER_URL", "postgres://test")
 	t.Setenv("LEDGER_DB_QUERY_EXEC_MODE", "")
 	t.Setenv("LEDGER_DB_STATEMENT_CACHE_CAPACITY", "")
 	c, err := Load()
@@ -21,11 +21,15 @@ func TestDatabaseStatementDefaults(t *testing.T) {
 	if c.DBStatementCacheCapacity != 128 {
 		t.Fatalf("statement cache capacity = %d, want 128", c.DBStatementCacheCapacity)
 	}
+	if c.DBWriterMaxConns != 32 || c.DBReaderMaxConns != 16 {
+		t.Fatalf("pool limits = writer %d, reader %d; want 32 and 16", c.DBWriterMaxConns, c.DBReaderMaxConns)
+	}
 }
 
 func TestDatabaseConnectionFromSeparateEnvironment(t *testing.T) {
-	t.Setenv("LEDGER_DATABASE_URL", "")
-	t.Setenv("LEDGER_DB_HOST", "ledger.example.internal")
+	t.Setenv("LEDGER_DATABASE_WRITER_URL", "")
+	t.Setenv("LEDGER_DB_WRITER_HOST", "ledger.example.internal")
+	t.Setenv("LEDGER_DB_READER_HOST", "ledger-ro.example.internal")
 	t.Setenv("LEDGER_DB_USER", "ledger_user")
 	t.Setenv("LEDGER_DB_PASSWORD", "a@b:c/d")
 	t.Setenv("LEDGER_DB_NAME", "cex_ledger")
@@ -41,11 +45,18 @@ func TestDatabaseConnectionFromSeparateEnvironment(t *testing.T) {
 	if u.Host != "ledger.example.internal:5432" || u.User.Username() != "ledger_user" || password != "a@b:c/d" || u.Path != "/cex_ledger" || u.Query().Get("sslmode") != "require" {
 		t.Fatalf("unexpected database connection settings: host=%q user=%q password_matched=%t path=%q sslmode=%q", u.Host, u.User.Username(), password == "a@b:c/d", u.Path, u.Query().Get("sslmode"))
 	}
+	reader, err := url.Parse(c.ReaderDatabaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reader.Host != "ledger-ro.example.internal:5432" {
+		t.Fatalf("unexpected reader database host: %q", reader.Host)
+	}
 }
 
 func TestDatabaseURLTakesPrecedence(t *testing.T) {
-	t.Setenv("LEDGER_DATABASE_URL", "postgres://local/ledger?sslmode=disable")
-	t.Setenv("LEDGER_DB_HOST", "ledger.example.internal")
+	t.Setenv("LEDGER_DATABASE_WRITER_URL", "postgres://local/ledger?sslmode=disable")
+	t.Setenv("LEDGER_DB_WRITER_HOST", "ledger.example.internal")
 	c, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -53,11 +64,26 @@ func TestDatabaseURLTakesPrecedence(t *testing.T) {
 	if c.DatabaseURL != "postgres://local/ledger?sslmode=disable" {
 		t.Fatalf("unexpected database URL: %q", c.DatabaseURL)
 	}
+	if c.ReaderDatabaseURL != c.DatabaseURL {
+		t.Fatalf("reader URL = %q, want local writer fallback", c.ReaderDatabaseURL)
+	}
+}
+
+func TestReaderDatabaseURLTakesPrecedence(t *testing.T) {
+	t.Setenv("LEDGER_DATABASE_WRITER_URL", "postgres://writer/ledger")
+	t.Setenv("LEDGER_DATABASE_READER_URL", "postgres://reader/ledger")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.ReaderDatabaseURL != "postgres://reader/ledger" {
+		t.Fatalf("unexpected reader database URL: %q", c.ReaderDatabaseURL)
+	}
 }
 
 func TestSeparateDatabaseEnvironmentRequiresAllFields(t *testing.T) {
-	t.Setenv("LEDGER_DATABASE_URL", "")
-	t.Setenv("LEDGER_DB_HOST", "ledger.example.internal")
+	t.Setenv("LEDGER_DATABASE_WRITER_URL", "")
+	t.Setenv("LEDGER_DB_WRITER_HOST", "ledger.example.internal")
 	t.Setenv("LEDGER_DB_USER", "ledger_user")
 	t.Setenv("LEDGER_DB_PASSWORD", "")
 	t.Setenv("LEDGER_DB_NAME", "cex_ledger")
@@ -67,7 +93,7 @@ func TestSeparateDatabaseEnvironmentRequiresAllFields(t *testing.T) {
 }
 
 func TestMigrateOnStartup(t *testing.T) {
-	t.Setenv("LEDGER_DATABASE_URL", "postgres://test")
+	t.Setenv("LEDGER_DATABASE_WRITER_URL", "postgres://test")
 	t.Setenv("LEDGER_MIGRATE_ON_STARTUP", "")
 	c, err := Load()
 	if err != nil || !c.MigrateOnStartup {
@@ -93,7 +119,7 @@ func TestDatabaseQueryExecModes(t *testing.T) {
 		"simple_protocol": pgx.QueryExecModeSimpleProtocol,
 	} {
 		t.Run(raw, func(t *testing.T) {
-			t.Setenv("LEDGER_DATABASE_URL", "postgres://test")
+			t.Setenv("LEDGER_DATABASE_WRITER_URL", "postgres://test")
 			t.Setenv("LEDGER_DB_QUERY_EXEC_MODE", raw)
 			c, err := Load()
 			if err != nil {
@@ -110,9 +136,11 @@ func TestInvalidDatabaseStatementConfiguration(t *testing.T) {
 	for name, value := range map[string]string{
 		"LEDGER_DB_QUERY_EXEC_MODE":          "unknown",
 		"LEDGER_DB_STATEMENT_CACHE_CAPACITY": "0",
+		"LEDGER_DB_WRITER_MAX_CONNS":         "0",
+		"LEDGER_DB_READER_MAX_CONNS":         "invalid",
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Setenv("LEDGER_DATABASE_URL", "postgres://test")
+			t.Setenv("LEDGER_DATABASE_WRITER_URL", "postgres://test")
 			t.Setenv(name, value)
 			if _, err := Load(); err == nil {
 				t.Fatalf("Load() accepted %s=%q", name, value)

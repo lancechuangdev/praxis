@@ -1,6 +1,7 @@
 USER_COUNT ?= 10000
 AVAILABLE_ATOMIC ?= 1000000000
-LEDGER_DB_MAX_CONNS ?= 32
+LEDGER_DB_WRITER_MAX_CONNS ?= 32
+LEDGER_DB_READER_MAX_CONNS ?= 16
 PROFILE_RUNS ?= 3
 PROFILE_WARMUP_DURATION ?= 0s
 PROFILE_DURATION ?= 60s
@@ -34,7 +35,7 @@ observability-down:
 reset-load-data:
 	docker compose -f ledgerservice/compose.yaml stop order-service ledger-service matching-engine
 	docker compose -f ledgerservice/compose.yaml exec -T postgres psql -U ledger -d cex_ledger < orderservice/loadtest/reset-load-test.sql
-	LEDGER_DB_MAX_CONNS=$(LEDGER_DB_MAX_CONNS) docker compose -f ledgerservice/compose.yaml up -d --build --force-recreate ledger-service matching-engine order-service
+	LEDGER_DB_WRITER_MAX_CONNS=$(LEDGER_DB_WRITER_MAX_CONNS) LEDGER_DB_READER_MAX_CONNS=$(LEDGER_DB_READER_MAX_CONNS) docker compose -f ledgerservice/compose.yaml up -d --build --force-recreate ledger-service matching-engine order-service
 
 seed-distributed-users:
 	docker compose -f ledgerservice/compose.yaml exec -T postgres psql -v ON_ERROR_STOP=1 -U ledger -d cex_ledger -v user_count=$(USER_COUNT) -v available_atomic=$(AVAILABLE_ATOMIC) < orderservice/loadtest/seed-distributed-users.sql
@@ -43,7 +44,7 @@ monitor:
 	./scripts/monitor-load-test.sh
 
 profile-phase0:
-	LEDGER_DB_MAX_CONNS=48 RUNS=$(PROFILE_RUNS) WARMUP_DURATION=$(PROFILE_WARMUP_DURATION) DURATION=$(PROFILE_DURATION) COOLDOWN_SECONDS=$(PROFILE_COOLDOWN_SECONDS) ./scripts/profile-order-admission.sh
+	LEDGER_DB_WRITER_MAX_CONNS=48 RUNS=$(PROFILE_RUNS) WARMUP_DURATION=$(PROFILE_WARMUP_DURATION) DURATION=$(PROFILE_DURATION) COOLDOWN_SECONDS=$(PROFILE_COOLDOWN_SECONDS) ./scripts/profile-order-admission.sh
 
 terraform-fmt:
 	terraform -chdir=infra/aws fmt -recursive

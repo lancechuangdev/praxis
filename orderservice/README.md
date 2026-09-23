@@ -30,6 +30,28 @@ Every successful response contains stage timings and a `Server-Timing` header:
 }
 ```
 
+## Consistency contract
+
+A successful `POST /v1/orders` response contains the Ledger reservation that
+was committed on the PostgreSQL writer. Clients should update their local state
+from this response instead of immediately issuing a GET for the same state. The
+current mock Matching Engine returns only after Kafka acknowledges its
+`OrderAccepted` event; it does not yet persist an order state machine.
+
+Ledger balance and reservation GET endpoints are served from read replicas and
+are eventually consistent. They can temporarily return an older version than a
+mutation response. A client that has observed balance version `123` must not
+overwrite that cached balance with replica version `122`. Versions are monotonic
+per user-asset balance, not globally. Financial decisions and conditional
+mutations are evaluated by Ledger against writer state, never client-cached or
+replica state.
+
+A timeout or lost response does not prove that a mutation failed. Retry the
+exact same request with the same request/command ID. Callers must never reuse
+that ID for a different payload. This benchmark fixture does not consistently
+fingerprint idempotent requests and does not yet expose a complete production
+pending-outcome or reconciliation API.
+
 ## Request context
 
 Clients may send `X-Request-ID` and `X-Correlation-ID`. The service validates
@@ -244,7 +266,7 @@ same users before every run:
 
 ```bash
 cd /home/boris-alienware/projects/praxis
-make reset-load-data LEDGER_DB_MAX_CONNS=16
+make reset-load-data LEDGER_DB_WRITER_MAX_CONNS=16
 make seed-distributed-users
 curl -s http://localhost:8081/metrics | grep ledger_db_pool_max_connections
 ```

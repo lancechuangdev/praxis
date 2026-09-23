@@ -26,18 +26,45 @@ HTTP listens on `:8081`, gRPC on `:9091`, and commands are consumed from
 independent [`../outboxrelay`](../outboxrelay) service to batch-publish them to
 Kafka topic `ledger-events`.
 
-The PostgreSQL pool is explicitly capped at 32 connections by default. Override
-it with `LEDGER_DB_MAX_CONNS`; `/metrics` reports the configured maximum and
-connection-acquisition pressure.
+The PostgreSQL writer pool is capped at 32 connections and the reader pool at 16
+connections by default. Override them independently with
+`LEDGER_DB_WRITER_MAX_CONNS` and `LEDGER_DB_READER_MAX_CONNS`; `/metrics` reports
+writer acquisition pressure and writer/reader pool usage.
 
-On EKS, set `LEDGER_DB_HOST`, `LEDGER_DB_USER`, `LEDGER_DB_NAME`, and
-`LEDGER_DB_SECRET_ARN`. Ledger uses its Pod Identity role to read the JSON
+On EKS, set `LEDGER_DB_WRITER_HOST` to the RDS writer endpoint and
+`LEDGER_DB_READER_HOST` to the RDS reader endpoint, along with
+`LEDGER_DB_USER`, `LEDGER_DB_NAME`, and `LEDGER_DB_SECRET_ARN`. Ledger uses its Pod Identity role to read the JSON
 `password` field directly from Secrets Manager at startup, then builds a
 PostgreSQL URL on port 5432 with `sslmode=require`. A separate migration Pod
-Identity role can read the RDS admin secret. `LEDGER_DATABASE_URL` remains
-available for local Compose and takes precedence when set;
+Identity role can read the RDS admin secret. `LEDGER_DATABASE_WRITER_URL` and `LEDGER_DATABASE_READER_URL` remain available for
+local Compose and take precedence when set. When no reader URL or host is set,
+the reader pool falls back to the writer URL;
 `LEDGER_DB_PASSWORD` is a local fallback when no secret ARN is configured.
+`GET /v1/balances/{user}/{asset}` and `GET /v1/reservations/{order}` use the
+read-only reader pool and can observe replica lag; mutations, Kafka processing,
+migrations, and consistency-sensitive transactional reads use the writer pool.
 Restart Ledger after rotating the runtime secret so it reads the new value.
+
+## API consistency contract
+
+Mutation responses are produced from writer transactions and contain the
+committed result. Callers should use that returned state instead of immediately
+reading it back through a replica. Reads performed within mutation transactions
+also use the writer.
+
+`GET /v1/balances/{user}/{asset}` and `GET /v1/reservations/{order}` are
+eventually consistent because they use the reader pool. A replica can
+temporarily return an older projection. Balance versions are monotonic per
+user-asset account, not globally: after observing version `123`, a caller must
+not replace its cached value with version `122`. Equal versions are expected to
+represent the same balance state.
+
+Financial decisions and conditional mutations always use writer state. A
+timeout or lost response is an ambiguous outcome, not proof of rollback. Retry
+the exact same operation with the same command ID, and never reuse that ID for a
+different payload. The current handlers do not all persist and compare a full
+request fingerprint; production hardening must add that conflict check. Outbox
+publication is at least once, so consumers must deduplicate events by event ID.
 
 pgx uses its prepared-statement cache explicitly in `cache_statement` mode with
 128 entries per connection. Override these settings with

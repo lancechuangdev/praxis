@@ -6,7 +6,7 @@ project_dir=$(cd -- "${script_dir}/.." && pwd)
 compose_file=${COMPOSE_FILE:-${project_dir}/ledgerservice/compose.yaml}
 results_root=${RESULTS_ROOT:-${project_dir}/orderservice/loadtest/results}
 rate=${RATE:-10000}
-pool_size=${LEDGER_DB_MAX_CONNS:-48}
+pool_size=${LEDGER_DB_WRITER_MAX_CONNS:-48}
 runs=${RUNS:-3}
 warmup_duration=${WARMUP_DURATION:-0s}
 duration=${DURATION:-60s}
@@ -21,7 +21,7 @@ batch_id=${BATCH_ID:-phase0-pool-${pool_size}-rate-${rate}-${timestamp}}
 batch_dir=${results_root}/${batch_id}
 
 if [[ ${pool_size} != 48 ]]; then
-  printf 'Phase 0 profile requires LEDGER_DB_MAX_CONNS=48 (received %s).\n' "${pool_size}" >&2
+  printf 'Phase 0 profile requires LEDGER_DB_WRITER_MAX_CONNS=48 (received %s).\n' "${pool_size}" >&2
   exit 2
 fi
 if [[ ${rate} != 10000 ]]; then
@@ -143,7 +143,7 @@ for run_number in $(seq 1 "${runs}"); do
   mkdir -p "${run_dir}"
 
   printf 'Run %d/%d: reset and seed\n' "${run_number}" "${runs}"
-  make -C "${project_dir}" reset-load-data LEDGER_DB_MAX_CONNS="${pool_size}" > "${run_dir}/reset.log" 2>&1
+  make -C "${project_dir}" reset-load-data LEDGER_DB_WRITER_MAX_CONNS="${pool_size}" > "${run_dir}/reset.log" 2>&1
   make -C "${project_dir}" seed-distributed-users USER_COUNT="${user_count}" AVAILABLE_ATOMIC="${available_atomic}" > "${run_dir}/seed.log" 2>&1
   wait_for_service http://localhost:8081/readyz 'Ledger Service'
   wait_for_service http://localhost:8083/readyz 'Order Service'

@@ -10,7 +10,8 @@ locals {
     OTEL_EXPORTER_OTLP_ENDPOINT = "http://otel-collector.observability.svc.cluster.local:4317"
     OTEL_TRACE_SAMPLE_RATIO     = tostring(local.runtime.trace_sample_ratio)
     OTEL_RESOURCE_ATTRIBUTES    = "deployment.environment=${local.runtime.environment},service.namespace=praxis,k8s.cluster.name=${local.runtime.eks_cluster_name}"
-    LEDGER_DB_HOST              = local.runtime.ledger_db_host
+    LEDGER_DB_WRITER_HOST       = local.runtime.ledger_db_writer_host
+    LEDGER_DB_READER_HOST       = local.runtime.ledger_db_reader_host
     LEDGER_DB_NAME              = local.runtime.ledger_db_name
     LEDGER_DB_SECRET_ARN        = local.runtime.ledger_runtime_secret_arn
     MSK_BROKERS                 = local.runtime.bootstrap_brokers_iam
@@ -112,7 +113,7 @@ resource "kubernetes_manifest" "ledger_migration" {
             }
             env = [
               { name = "AWS_REGION", value = local.migration.aws_region },
-              { name = "LEDGER_DB_HOST", value = local.migration.db_host },
+              { name = "LEDGER_DB_WRITER_HOST", value = local.migration.db_writer_host },
               { name = "LEDGER_DB_USER", value = local.migration.db_user },
               { name = "LEDGER_DB_NAME", value = local.migration.db_name },
               { name = "LEDGER_DB_SECRET_ARN", value = local.migration.secret_arn }

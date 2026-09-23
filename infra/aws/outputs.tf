@@ -156,12 +156,12 @@ output "outbox_ecs_service_arn" {
 output "ledger_migration_config" {
   description = "Non-secret settings for the one-off EKS Ledger migration Job. Terraform does not run the Job."
   value = {
-    image      = var.ledger_migration_image_digest == null ? null : "${aws_ecr_repository.service["ledger_service"].repository_url}@${var.ledger_migration_image_digest}"
-    db_host    = aws_rds_cluster.ledger.endpoint
-    db_user    = var.postgres_master_username
-    db_name    = var.postgres_database_name
-    secret_arn = aws_rds_cluster.ledger.master_user_secret[0].secret_arn
-    aws_region = var.aws_region
+    image          = var.ledger_migration_image_digest == null ? null : "${aws_ecr_repository.service["ledger_service"].repository_url}@${var.ledger_migration_image_digest}"
+    db_writer_host = aws_rds_cluster.ledger.endpoint
+    db_user        = var.postgres_master_username
+    db_name        = var.postgres_database_name
+    secret_arn     = aws_rds_cluster.ledger.master_user_secret[0].secret_arn
+    aws_region     = var.aws_region
   }
 }
 
@@ -213,7 +213,8 @@ output "eks_runtime_config" {
     eks_collector_image       = var.eks_collector_image
     trace_sample_ratio        = var.trace_sample_ratio
     amp_remote_write_endpoint = "${trimsuffix(aws_prometheus_workspace.application.prometheus_endpoint, "/")}/api/v1/remote_write"
-    ledger_db_host            = aws_rds_cluster.ledger.endpoint
+    ledger_db_writer_host     = aws_rds_cluster.ledger.endpoint
+    ledger_db_reader_host     = aws_rds_cluster.ledger.reader_endpoint
     ledger_db_name            = var.postgres_database_name
     ledger_consumer_group     = var.ledger_consumer_group
     ledger_commands_topic     = aws_msk_topic.this["ledger_commands"].name

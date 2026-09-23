@@ -59,8 +59,9 @@ services:
       postgres: {condition: service_healthy}
       kafka-init: {condition: service_completed_successfully}
     environment:
-      LEDGER_DATABASE_URL: postgres://ledger:ledger@postgres:5432/cex_ledger?sslmode=disable
-      LEDGER_DB_MAX_CONNS: ${LEDGER_DB_MAX_CONNS:-32}
+      LEDGER_DATABASE_WRITER_URL: postgres://ledger:ledger@postgres:5432/cex_ledger?sslmode=disable
+      LEDGER_DB_WRITER_MAX_CONNS: ${LEDGER_DB_WRITER_MAX_CONNS:-32}
+      LEDGER_DB_READER_MAX_CONNS: ${LEDGER_DB_READER_MAX_CONNS:-16}
       LEDGER_DB_QUERY_EXEC_MODE: ${LEDGER_DB_QUERY_EXEC_MODE:-cache_statement}
       LEDGER_DB_STATEMENT_CACHE_CAPACITY: ${LEDGER_DB_STATEMENT_CACHE_CAPACITY:-128}
       LEDGER_KAFKA_BROKERS: kafka:9092

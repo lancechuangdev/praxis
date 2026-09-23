@@ -14,9 +14,10 @@ import (
 )
 
 type HTTP struct {
-	Store   ledger.Store
-	DB      *pgxpool.Pool
-	Metrics *Metrics
+	Store    ledger.Store
+	WriterDB *pgxpool.Pool
+	ReaderDB *pgxpool.Pool
+	Metrics  *Metrics
 }
 
 func (h HTTP) Handler() http.Handler {
@@ -33,7 +34,8 @@ func (h HTTP) Handler() http.Handler {
 }
 
 func (h HTTP) metrics(w http.ResponseWriter, _ *http.Request) {
-	pool := h.DB.Stat()
+	writerPool := h.WriterDB.Stat()
+	readerPool := h.ReaderDB.Stat()
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	_, _ = fmt.Fprintf(w, `ledger_reserve_requests_total %d
 ledger_reserve_failures_total %d
@@ -45,7 +47,11 @@ ledger_db_pool_acquire_total %d
 ledger_db_pool_empty_acquire_total %d
 ledger_db_pool_canceled_acquire_total %d
 ledger_db_pool_acquire_duration_seconds_total %.9f
-`, h.Metrics.ReserveRequests.Load(), h.Metrics.ReserveFailures.Load(), pool.AcquiredConns(), pool.IdleConns(), pool.TotalConns(), pool.MaxConns(), pool.AcquireCount(), pool.EmptyAcquireCount(), pool.CanceledAcquireCount(), pool.AcquireDuration().Seconds())
+ledger_db_reader_pool_acquired_connections %d
+ledger_db_reader_pool_idle_connections %d
+ledger_db_reader_pool_total_connections %d
+ledger_db_reader_pool_max_connections %d
+`, h.Metrics.ReserveRequests.Load(), h.Metrics.ReserveFailures.Load(), writerPool.AcquiredConns(), writerPool.IdleConns(), writerPool.TotalConns(), writerPool.MaxConns(), writerPool.AcquireCount(), writerPool.EmptyAcquireCount(), writerPool.CanceledAcquireCount(), writerPool.AcquireDuration().Seconds(), readerPool.AcquiredConns(), readerPool.IdleConns(), readerPool.TotalConns(), readerPool.MaxConns())
 	_, _ = fmt.Fprint(w, h.Metrics.ReserveDuration.Prometheus("ledger_reserve_duration_seconds"))
 }
 
@@ -77,7 +83,11 @@ func parseTime(v string) (time.Time, error) {
 	return time.Parse(time.RFC3339Nano, v)
 }
 func (h HTTP) ready(w http.ResponseWriter, r *http.Request) {
-	if err := h.DB.Ping(r.Context()); err != nil {
+	if err := h.WriterDB.Ping(r.Context()); err != nil {
+		write(w, 503, map[string]string{"status": "unavailable"})
+		return
+	}
+	if err := h.ReaderDB.Ping(r.Context()); err != nil {
 		write(w, 503, map[string]string{"status": "unavailable"})
 		return
 	}
