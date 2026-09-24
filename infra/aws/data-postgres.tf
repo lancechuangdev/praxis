@@ -76,3 +76,31 @@ resource "aws_rds_cluster" "ledger" {
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
   apply_immediately               = false
 }
+
+
+resource "aws_rds_cluster" "matching" {
+  cluster_identifier              = "${local.resource_name}-matching"
+  engine                          = "postgres"
+  engine_version                  = var.postgres_engine_version
+  port                            = 5432
+  database_name                   = var.matching_postgres_database_name
+  master_username                 = var.matching_postgres_master_username
+  manage_master_user_password     = true
+  master_user_secret_kms_key_id   = aws_kms_key.postgres.arn
+  availability_zones              = local.availability_zones
+  db_subnet_group_name            = aws_db_subnet_group.ledger.name
+  vpc_security_group_ids          = [aws_security_group.postgres.id]
+  db_cluster_instance_class       = var.postgres_instance_class
+  storage_type                    = "io2"
+  allocated_storage               = var.postgres_allocated_storage_gib
+  iops                            = var.postgres_iops
+  storage_encrypted               = true
+  kms_key_id                      = aws_kms_key.postgres.arn
+  backup_retention_period         = var.postgres_backup_retention_days
+  copy_tags_to_snapshot           = true
+  deletion_protection             = var.postgres_deletion_protection
+  skip_final_snapshot             = var.postgres_skip_final_snapshot
+  final_snapshot_identifier       = var.postgres_skip_final_snapshot ? null : "${local.resource_name}-matching-final"
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
+  apply_immediately               = false
+}

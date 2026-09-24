@@ -15,7 +15,6 @@ type Request struct {
 	Price               string `json:"price,omitempty"`
 	ReserveAssetID      string `json:"reserve_asset_id"`
 	ReserveAmountAtomic string `json:"reserve_amount_atomic"`
-	EnginePartition     int32  `json:"engine_partition"`
 }
 
 type Reservation struct {

@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        v3.12.4
-// source: api/matching/v1/matching.proto
+// source: matching/v1/matching.proto
 
 package matchingv1
 
@@ -22,28 +22,27 @@ const (
 )
 
 type SubmitOrderRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	RequestId       string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	OrderId         string                 `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	UserId          string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	Symbol          string                 `protobuf:"bytes,4,opt,name=symbol,proto3" json:"symbol,omitempty"`
-	Side            string                 `protobuf:"bytes,5,opt,name=side,proto3" json:"side,omitempty"`
-	OrderType       string                 `protobuf:"bytes,6,opt,name=order_type,json=orderType,proto3" json:"order_type,omitempty"`
-	Quantity        string                 `protobuf:"bytes,7,opt,name=quantity,proto3" json:"quantity,omitempty"`
-	Price           string                 `protobuf:"bytes,8,opt,name=price,proto3" json:"price,omitempty"`
-	ReservationId   string                 `protobuf:"bytes,9,opt,name=reservation_id,json=reservationId,proto3" json:"reservation_id,omitempty"`
-	EnginePartition int32                  `protobuf:"varint,10,opt,name=engine_partition,json=enginePartition,proto3" json:"engine_partition,omitempty"`
-	CorrelationId   string                 `protobuf:"bytes,11,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
-	CausationId     string                 `protobuf:"bytes,12,opt,name=causation_id,json=causationId,proto3" json:"causation_id,omitempty"`
-	TraceParent     string                 `protobuf:"bytes,13,opt,name=trace_parent,json=traceParent,proto3" json:"trace_parent,omitempty"`
-	TraceState      string                 `protobuf:"bytes,14,opt,name=trace_state,json=traceState,proto3" json:"trace_state,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	OrderId       string                 `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	UserId        string                 `protobuf:"bytes,3,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Symbol        string                 `protobuf:"bytes,4,opt,name=symbol,proto3" json:"symbol,omitempty"`
+	Side          string                 `protobuf:"bytes,5,opt,name=side,proto3" json:"side,omitempty"`
+	OrderType     string                 `protobuf:"bytes,6,opt,name=order_type,json=orderType,proto3" json:"order_type,omitempty"`
+	Quantity      string                 `protobuf:"bytes,7,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	Price         string                 `protobuf:"bytes,8,opt,name=price,proto3" json:"price,omitempty"`
+	ReservationId string                 `protobuf:"bytes,9,opt,name=reservation_id,json=reservationId,proto3" json:"reservation_id,omitempty"`
+	CorrelationId string                 `protobuf:"bytes,11,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	CausationId   string                 `protobuf:"bytes,12,opt,name=causation_id,json=causationId,proto3" json:"causation_id,omitempty"`
+	TraceParent   string                 `protobuf:"bytes,13,opt,name=trace_parent,json=traceParent,proto3" json:"trace_parent,omitempty"`
+	TraceState    string                 `protobuf:"bytes,14,opt,name=trace_state,json=traceState,proto3" json:"trace_state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SubmitOrderRequest) Reset() {
 	*x = SubmitOrderRequest{}
-	mi := &file_api_matching_v1_matching_proto_msgTypes[0]
+	mi := &file_matching_v1_matching_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -55,7 +54,7 @@ func (x *SubmitOrderRequest) String() string {
 func (*SubmitOrderRequest) ProtoMessage() {}
 
 func (x *SubmitOrderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_matching_v1_matching_proto_msgTypes[0]
+	mi := &file_matching_v1_matching_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -68,7 +67,7 @@ func (x *SubmitOrderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitOrderRequest.ProtoReflect.Descriptor instead.
 func (*SubmitOrderRequest) Descriptor() ([]byte, []int) {
-	return file_api_matching_v1_matching_proto_rawDescGZIP(), []int{0}
+	return file_matching_v1_matching_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *SubmitOrderRequest) GetRequestId() string {
@@ -134,13 +133,6 @@ func (x *SubmitOrderRequest) GetReservationId() string {
 	return ""
 }
 
-func (x *SubmitOrderRequest) GetEnginePartition() int32 {
-	if x != nil {
-		return x.EnginePartition
-	}
-	return 0
-}
-
 func (x *SubmitOrderRequest) GetCorrelationId() string {
 	if x != nil {
 		return x.CorrelationId
@@ -180,7 +172,7 @@ type SubmitOrderResponse struct {
 
 func (x *SubmitOrderResponse) Reset() {
 	*x = SubmitOrderResponse{}
-	mi := &file_api_matching_v1_matching_proto_msgTypes[1]
+	mi := &file_matching_v1_matching_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -192,7 +184,7 @@ func (x *SubmitOrderResponse) String() string {
 func (*SubmitOrderResponse) ProtoMessage() {}
 
 func (x *SubmitOrderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_matching_v1_matching_proto_msgTypes[1]
+	mi := &file_matching_v1_matching_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -205,7 +197,7 @@ func (x *SubmitOrderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitOrderResponse.ProtoReflect.Descriptor instead.
 func (*SubmitOrderResponse) Descriptor() ([]byte, []int) {
-	return file_api_matching_v1_matching_proto_rawDescGZIP(), []int{1}
+	return file_matching_v1_matching_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *SubmitOrderResponse) GetOrderId() string {
@@ -229,11 +221,11 @@ func (x *SubmitOrderResponse) GetEngineSequence() int64 {
 	return 0
 }
 
-var File_api_matching_v1_matching_proto protoreflect.FileDescriptor
+var File_matching_v1_matching_proto protoreflect.FileDescriptor
 
-const file_api_matching_v1_matching_proto_rawDesc = "" +
+const file_matching_v1_matching_proto_rawDesc = "" +
 	"\n" +
-	"\x1eapi/matching/v1/matching.proto\x12\vmatching.v1\"\xc4\x03\n" +
+	"\x1amatching/v1/matching.proto\x12\vmatching.v1\"\x9f\x03\n" +
 	"\x12SubmitOrderRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x19\n" +
@@ -245,14 +237,13 @@ const file_api_matching_v1_matching_proto_rawDesc = "" +
 	"order_type\x18\x06 \x01(\tR\torderType\x12\x1a\n" +
 	"\bquantity\x18\a \x01(\tR\bquantity\x12\x14\n" +
 	"\x05price\x18\b \x01(\tR\x05price\x12%\n" +
-	"\x0ereservation_id\x18\t \x01(\tR\rreservationId\x12)\n" +
-	"\x10engine_partition\x18\n" +
-	" \x01(\x05R\x0fenginePartition\x12%\n" +
+	"\x0ereservation_id\x18\t \x01(\tR\rreservationId\x12%\n" +
 	"\x0ecorrelation_id\x18\v \x01(\tR\rcorrelationId\x12!\n" +
 	"\fcausation_id\x18\f \x01(\tR\vcausationId\x12!\n" +
 	"\ftrace_parent\x18\r \x01(\tR\vtraceParent\x12\x1f\n" +
 	"\vtrace_state\x18\x0e \x01(\tR\n" +
-	"traceState\"q\n" +
+	"traceStateJ\x04\b\n" +
+	"\x10\v\"q\n" +
 	"\x13SubmitOrderResponse\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12'\n" +
@@ -261,23 +252,23 @@ const file_api_matching_v1_matching_proto_rawDesc = "" +
 	"\vSubmitOrder\x12\x1f.matching.v1.SubmitOrderRequest\x1a .matching.v1.SubmitOrderResponseB2Z0praxis/matchingengine/gen/matching/v1;matchingv1b\x06proto3"
 
 var (
-	file_api_matching_v1_matching_proto_rawDescOnce sync.Once
-	file_api_matching_v1_matching_proto_rawDescData []byte
+	file_matching_v1_matching_proto_rawDescOnce sync.Once
+	file_matching_v1_matching_proto_rawDescData []byte
 )
 
-func file_api_matching_v1_matching_proto_rawDescGZIP() []byte {
-	file_api_matching_v1_matching_proto_rawDescOnce.Do(func() {
-		file_api_matching_v1_matching_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_api_matching_v1_matching_proto_rawDesc), len(file_api_matching_v1_matching_proto_rawDesc)))
+func file_matching_v1_matching_proto_rawDescGZIP() []byte {
+	file_matching_v1_matching_proto_rawDescOnce.Do(func() {
+		file_matching_v1_matching_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_matching_v1_matching_proto_rawDesc), len(file_matching_v1_matching_proto_rawDesc)))
 	})
-	return file_api_matching_v1_matching_proto_rawDescData
+	return file_matching_v1_matching_proto_rawDescData
 }
 
-var file_api_matching_v1_matching_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_api_matching_v1_matching_proto_goTypes = []any{
+var file_matching_v1_matching_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_matching_v1_matching_proto_goTypes = []any{
 	(*SubmitOrderRequest)(nil),  // 0: matching.v1.SubmitOrderRequest
 	(*SubmitOrderResponse)(nil), // 1: matching.v1.SubmitOrderResponse
 }
-var file_api_matching_v1_matching_proto_depIdxs = []int32{
+var file_matching_v1_matching_proto_depIdxs = []int32{
 	0, // 0: matching.v1.MatchingEngine.SubmitOrder:input_type -> matching.v1.SubmitOrderRequest
 	1, // 1: matching.v1.MatchingEngine.SubmitOrder:output_type -> matching.v1.SubmitOrderResponse
 	1, // [1:2] is the sub-list for method output_type
@@ -287,26 +278,26 @@ var file_api_matching_v1_matching_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for field type_name
 }
 
-func init() { file_api_matching_v1_matching_proto_init() }
-func file_api_matching_v1_matching_proto_init() {
-	if File_api_matching_v1_matching_proto != nil {
+func init() { file_matching_v1_matching_proto_init() }
+func file_matching_v1_matching_proto_init() {
+	if File_matching_v1_matching_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_matching_v1_matching_proto_rawDesc), len(file_api_matching_v1_matching_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_matching_v1_matching_proto_rawDesc), len(file_matching_v1_matching_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   2,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
-		GoTypes:           file_api_matching_v1_matching_proto_goTypes,
-		DependencyIndexes: file_api_matching_v1_matching_proto_depIdxs,
-		MessageInfos:      file_api_matching_v1_matching_proto_msgTypes,
+		GoTypes:           file_matching_v1_matching_proto_goTypes,
+		DependencyIndexes: file_matching_v1_matching_proto_depIdxs,
+		MessageInfos:      file_matching_v1_matching_proto_msgTypes,
 	}.Build()
-	File_api_matching_v1_matching_proto = out.File
-	file_api_matching_v1_matching_proto_goTypes = nil
-	file_api_matching_v1_matching_proto_depIdxs = nil
+	File_matching_v1_matching_proto = out.File
+	file_matching_v1_matching_proto_goTypes = nil
+	file_matching_v1_matching_proto_depIdxs = nil
 }

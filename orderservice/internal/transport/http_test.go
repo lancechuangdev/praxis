@@ -62,8 +62,7 @@ func TestRequestContextPropagatesIntoOrder(t *testing.T) {
 		"order_type":"market",
 		"quantity":"1",
 		"reserve_asset_id":"asset_usdt",
-		"reserve_amount_atomic":"100",
-		"engine_partition":1
+		"reserve_amount_atomic":"100"
 	}`))
 	request.Header.Set(requestIDHeader, "request-1")
 	request.Header.Set(correlationIDHeader, "correlation-1")

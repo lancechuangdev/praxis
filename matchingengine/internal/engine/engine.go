@@ -2,54 +2,34 @@ package engine
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/segmentio/kafka-go"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/trace"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	matchingv1 "praxis/matchingengine/gen/matching/v1"
-	"praxis/matchingengine/internal/kafkaauth"
 )
 
-var tracer = otel.Tracer("praxis/matching-engine")
-
-type Publisher interface {
-	Publish(context.Context, Event) error
-	Close() error
-}
-type Event struct {
-	ID, Type, AggregateID, MessageKey string
-	CorrelationID, CausationID        string
-	TraceParent, TraceState           string
-	OccurredAt                        time.Time
-	Data                              any
-}
 type Metrics struct {
-	Submitted, Accepted, Failed   atomic.Uint64
-	EngineNS, KafkaNS             atomic.Uint64
-	EngineDuration, KafkaDuration DurationHistogram
+	Submitted, Accepted, Failed atomic.Uint64
+	EngineNS                    atomic.Uint64
+	EngineDuration              DurationHistogram
 }
-type partitionState struct {
-	sync.Mutex
-	sequence int64
-	results  map[string]*matchingv1.SubmitOrderResponse
+
+type Store interface {
+	Submit(context.Context, *matchingv1.SubmitOrderRequest) (*matchingv1.SubmitOrderResponse, error)
 }
 
 type Service struct {
 	matchingv1.UnimplementedMatchingEngineServer
-	Publisher  Publisher
-	Latency    time.Duration
-	Metrics    *Metrics
-	partitions sync.Map
+	Store   Store
+	Latency time.Duration
+	Metrics *Metrics
 }
 
 func (s *Service) SubmitOrder(ctx context.Context, req *matchingv1.SubmitOrderRequest) (*matchingv1.SubmitOrderResponse, error) {
@@ -58,55 +38,98 @@ func (s *Service) SubmitOrder(ctx context.Context, req *matchingv1.SubmitOrderRe
 		s.Metrics.Failed.Add(1)
 		return nil, err
 	}
-	key := fmt.Sprintf("%s:%d", req.Symbol, req.EnginePartition)
-	value, _ := s.partitions.LoadOrStore(key, &partitionState{results: map[string]*matchingv1.SubmitOrderResponse{}})
-	state := value.(*partitionState)
-	state.Lock()
-	defer state.Unlock()
-	if prior := state.results[req.RequestId]; prior != nil {
-		return cloneResponse(prior), nil
-	}
-
-	engineStart := time.Now()
+	started := time.Now()
 	if err := wait(ctx, s.Latency); err != nil {
 		s.Metrics.Failed.Add(1)
 		return nil, err
 	}
-	state.sequence++
-	response := &matchingv1.SubmitOrderResponse{OrderId: req.OrderId, Status: "accepted", EngineSequence: state.sequence}
-	engineDuration := time.Since(engineStart)
-	s.Metrics.EngineNS.Add(uint64(engineDuration))
-	s.Metrics.EngineDuration.Observe(engineDuration)
-
-	kafkaStart := time.Now()
-	err := s.Publisher.Publish(ctx, Event{ID: req.RequestId, Type: "OrderAccepted", AggregateID: req.OrderId, MessageKey: key, CorrelationID: req.CorrelationId, CausationID: req.CausationId, TraceParent: req.TraceParent, TraceState: req.TraceState, OccurredAt: time.Now().UTC(), Data: map[string]any{"order": req, "engine_sequence": state.sequence}})
-	kafkaDuration := time.Since(kafkaStart)
-	s.Metrics.KafkaNS.Add(uint64(kafkaDuration))
-	s.Metrics.KafkaDuration.Observe(kafkaDuration)
+	response, err := s.Store.Submit(ctx, req)
+	duration := time.Since(started)
+	s.Metrics.EngineNS.Add(uint64(duration))
+	s.Metrics.EngineDuration.Observe(duration)
 	if err != nil {
-		state.sequence--
 		s.Metrics.Failed.Add(1)
 		return nil, err
 	}
-	state.results[req.RequestId] = response
 	s.Metrics.Accepted.Add(1)
-	return cloneResponse(response), nil
+	return response, nil
 }
 
-func cloneResponse(response *matchingv1.SubmitOrderResponse) *matchingv1.SubmitOrderResponse {
-	return &matchingv1.SubmitOrderResponse{
-		OrderId:        response.OrderId,
-		Status:         response.Status,
-		EngineSequence: response.EngineSequence,
+type PostgresStore struct {
+	db    *pgxpool.Pool
+	topic string
+}
+
+func NewPostgresStore(db *pgxpool.Pool, topic string) *PostgresStore {
+	return &PostgresStore{db: db, topic: topic}
+}
+
+func (s *PostgresStore) Submit(ctx context.Context, req *matchingv1.SubmitOrderRequest) (*matchingv1.SubmitOrderResponse, error) {
+	fingerprint, err := requestFingerprint(req)
+	if err != nil {
+		return nil, err
 	}
+	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, req.RequestId); err != nil {
+		return nil, err
+	}
+	var orderID, status, storedFingerprint string
+	var sequence int64
+	err = tx.QueryRow(ctx, `SELECT order_id,status,engine_sequence,request_fingerprint FROM matching_orders WHERE request_id=$1`, req.RequestId).Scan(&orderID, &status, &sequence, &storedFingerprint)
+	if err == nil {
+		if storedFingerprint != fingerprint {
+			return nil, errors.New("request_id was already used with a different payload")
+		}
+		return &matchingv1.SubmitOrderResponse{OrderId: orderID, Status: status, EngineSequence: sequence}, tx.Commit(ctx)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+
+	if _, err = tx.Exec(ctx, `INSERT INTO matching_books(symbol,next_sequence) VALUES($1,1) ON CONFLICT(symbol) DO NOTHING`, req.Symbol); err != nil {
+		return nil, err
+	}
+	if err = tx.QueryRow(ctx, `UPDATE matching_books SET next_sequence=next_sequence+1 WHERE symbol=$1 RETURNING next_sequence-1`, req.Symbol).Scan(&sequence); err != nil {
+		return nil, err
+	}
+	status = "accepted"
+	_, err = tx.Exec(ctx, `INSERT INTO matching_orders(request_id,request_fingerprint,order_id,user_id,symbol,side,order_type,quantity,price,reservation_id,status,engine_sequence) VALUES($1,$2,$3,$4,$5,$6,$7,$8,NULLIF($9,''),$10,$11,$12)`, req.RequestId, fingerprint, req.OrderId, req.UserId, req.Symbol, req.Side, req.OrderType, req.Quantity, req.Price, req.ReservationId, status, sequence)
+	if err != nil {
+		return nil, err
+	}
+	payload, err := json.Marshal(map[string]any{"id": req.RequestId, "type": "OrderAccepted", "aggregate_id": req.OrderId, "correlation_id": req.CorrelationId, "causation_id": req.CausationId, "trace_parent": req.TraceParent, "trace_state": req.TraceState, "occurred_at": time.Now().UTC(), "data": map[string]any{"order": req, "engine_sequence": sequence}})
+	if err != nil {
+		return nil, err
+	}
+	if _, err = tx.Exec(ctx, `INSERT INTO outbox_events(id,topic,event_type,message_key,payload) VALUES($1,$2,'OrderAccepted',$3,$4)`, req.RequestId, s.topic, req.Symbol, payload); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &matchingv1.SubmitOrderResponse{OrderId: req.OrderId, Status: status, EngineSequence: sequence}, nil
 }
 
+func requestFingerprint(req *matchingv1.SubmitOrderRequest) (string, error) {
+	// Observability context may legitimately change when a timed-out client retries.
+	businessRequest := struct {
+		OrderID, UserID, Symbol, Side, OrderType, Quantity, Price, ReservationID string
+	}{req.OrderId, req.UserId, req.Symbol, req.Side, req.OrderType, req.Quantity, req.Price, req.ReservationId}
+	body, err := json.Marshal(businessRequest)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:]), nil
+}
 func validate(req *matchingv1.SubmitOrderRequest) error {
 	if req == nil || strings.TrimSpace(req.RequestId) == "" || strings.TrimSpace(req.OrderId) == "" || strings.TrimSpace(req.UserId) == "" || strings.TrimSpace(req.Symbol) == "" || strings.TrimSpace(req.ReservationId) == "" {
 		return errors.New("request, order, user, symbol, and reservation IDs are required")
-	}
-	if req.EnginePartition < 0 {
-		return errors.New("engine partition cannot be negative")
 	}
 	return nil
 }
@@ -123,67 +146,3 @@ func wait(ctx context.Context, d time.Duration) error {
 		return nil
 	}
 }
-
-type KafkaPublisher struct {
-	writer  *kafka.Writer
-	topic   string
-	timeout time.Duration
-}
-
-func NewKafkaPublisher(brokers []string, topic string, auth kafkaauth.Config, size int, bytes int64, batchTimeout, timeout time.Duration) *KafkaPublisher {
-	return &KafkaPublisher{topic: topic, timeout: timeout, writer: &kafka.Writer{Addr: kafka.TCP(brokers...), Transport: auth.Transport(), Balancer: &kafka.Hash{}, RequiredAcks: kafka.RequireAll, Async: false, BatchSize: size, BatchBytes: bytes, BatchTimeout: batchTimeout, Compression: kafka.Lz4, MaxAttempts: 5, WriteTimeout: timeout, ReadTimeout: timeout}}
-}
-func (p *KafkaPublisher) Publish(ctx context.Context, event Event) error {
-	ctx, span := tracer.Start(ctx, "kafka.produce", trace.WithSpanKind(trace.SpanKindProducer), trace.WithAttributes(attribute.String("messaging.system", "kafka"), attribute.String("messaging.destination.name", p.topic), attribute.String("messaging.message.id", event.ID)))
-	defer span.End()
-	payload, err := json.Marshal(map[string]any{"id": event.ID, "type": event.Type, "aggregate_id": event.AggregateID, "correlation_id": event.CorrelationID, "causation_id": event.CausationID, "trace_parent": event.TraceParent, "trace_state": event.TraceState, "occurred_at": event.OccurredAt, "data": event.Data})
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return err
-	}
-	callCtx, cancel := context.WithTimeout(ctx, p.timeout)
-	defer cancel()
-	headers := []kafka.Header{{Key: "event-id", Value: []byte(event.ID)}, {Key: "event-type", Value: []byte(event.Type)}}
-	if event.CorrelationID != "" {
-		headers = append(headers, kafka.Header{Key: "correlation-id", Value: []byte(event.CorrelationID)})
-	}
-	if event.CausationID != "" {
-		headers = append(headers, kafka.Header{Key: "causation-id", Value: []byte(event.CausationID)})
-	}
-	if event.TraceParent != "" {
-		headers = append(headers, kafka.Header{Key: "traceparent", Value: []byte(event.TraceParent)})
-	}
-	if event.TraceState != "" {
-		headers = append(headers, kafka.Header{Key: "tracestate", Value: []byte(event.TraceState)})
-	}
-	carrier := propagation.MapCarrier{}
-	otel.GetTextMapPropagator().Inject(ctx, carrier)
-	headers = replaceHeader(headers, "traceparent", carrier.Get("traceparent"))
-	headers = replaceHeader(headers, "tracestate", carrier.Get("tracestate"))
-	err = p.writer.WriteMessages(callCtx, kafka.Message{Topic: p.topic, Key: []byte(event.MessageKey), Value: payload, Headers: headers})
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-	}
-	return err
-}
-
-func replaceHeader(headers []kafka.Header, key, value string) []kafka.Header {
-	if value == "" {
-		return headers
-	}
-	for i := range headers {
-		if headers[i].Key == key {
-			headers[i].Value = []byte(value)
-			return headers
-		}
-	}
-	return append(headers, kafka.Header{Key: key, Value: []byte(value)})
-}
-func (p *KafkaPublisher) Close() error { return p.writer.Close() }
-
-type NoopPublisher struct{}
-
-func (NoopPublisher) Publish(context.Context, Event) error { return nil }
-func (NoopPublisher) Close() error                         { return nil }

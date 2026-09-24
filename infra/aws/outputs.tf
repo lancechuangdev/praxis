@@ -43,6 +43,21 @@ output "cex_client_security_group_id" {
   value       = aws_security_group.cex_clients.id
 }
 
+output "matching_writer_endpoint" {
+  description = "PostgreSQL writer endpoint for the matching engine and its outbox relay."
+  value       = aws_rds_cluster.matching.endpoint
+}
+
+output "matching_reader_endpoint" {
+  description = "Read-only endpoint for replica-safe Matching queries."
+  value       = aws_rds_cluster.matching.reader_endpoint
+}
+
+output "matching_master_secret_arn" {
+  description = "RDS-managed administrative credentials for the Matching cluster."
+  value       = aws_rds_cluster.matching.master_user_secret[0].secret_arn
+}
+
 output "ledger_writer_endpoint" {
   description = "PostgreSQL writer endpoint for the ledger service, outbox relay, and migrations."
   value       = aws_rds_cluster.ledger.endpoint
@@ -218,6 +233,10 @@ output "eks_runtime_config" {
     ledger_db_name            = var.postgres_database_name
     ledger_consumer_group     = var.ledger_consumer_group
     ledger_commands_topic     = aws_msk_topic.this["ledger_commands"].name
+    matching_db_writer_host   = aws_rds_cluster.matching.endpoint
+    matching_db_name          = var.matching_postgres_database_name
+    matching_db_secret_arn    = aws_rds_cluster.matching.master_user_secret[0].secret_arn
+    matching_db_user          = var.matching_postgres_master_username
     matching_events_topic     = aws_msk_topic.this["matching_events"].name
     bootstrap_brokers_iam     = aws_msk_cluster.this.bootstrap_brokers_sasl_iam
     ledger_runtime_secret_arn = var.ledger_runtime_secret_arn

@@ -18,6 +18,10 @@ locals {
     LEDGER_COMMANDS_TOPIC       = local.runtime.ledger_commands_topic
     LEDGER_CONSUMER_GROUP       = local.runtime.ledger_consumer_group
     MATCHING_EVENTS_TOPIC       = local.runtime.matching_events_topic
+    MATCHING_DB_WRITER_HOST     = local.runtime.matching_db_writer_host
+    MATCHING_DB_NAME            = local.runtime.matching_db_name
+    MATCHING_DB_USER            = local.runtime.matching_db_user
+    MATCHING_DB_SECRET_ARN      = local.runtime.matching_db_secret_arn
   }
 
   workload_documents = [

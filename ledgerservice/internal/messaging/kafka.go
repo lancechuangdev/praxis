@@ -24,7 +24,7 @@ type envelope struct {
 type tradeData struct {
 	TradeID             string `json:"trade_id"`
 	EngineID            string `json:"engine_id"`
-	EnginePartition     int32  `json:"engine_partition"`
+	Symbol              string `json:"symbol"`
 	SequenceNumber      int64  `json:"sequence_number"`
 	BuyerOrderID        string `json:"buyer_order_id"`
 	SellerOrderID       string `json:"seller_order_id"`
@@ -40,12 +40,12 @@ type tradeData struct {
 	CausationID         string `json:"causation_id"`
 }
 type cancelData struct {
-	OrderID         string `json:"order_id"`
-	EngineID        string `json:"engine_id"`
-	EnginePartition int32  `json:"engine_partition"`
-	SequenceNumber  int64  `json:"sequence_number"`
-	CorrelationID   string `json:"correlation_id"`
-	CausationID     string `json:"causation_id"`
+	OrderID        string `json:"order_id"`
+	EngineID       string `json:"engine_id"`
+	Symbol         string `json:"symbol"`
+	SequenceNumber int64  `json:"sequence_number"`
+	CorrelationID  string `json:"correlation_id"`
+	CausationID    string `json:"causation_id"`
 }
 type depositData struct {
 	DepositID         string `json:"deposit_id"`
@@ -113,13 +113,13 @@ func (c *Consumer) handle(ctx context.Context, raw []byte) error {
 		var d tradeData
 		err = json.Unmarshal(e.Data, &d)
 		if err == nil {
-			_, err = c.Store.BookTrade(ctx, ledger.TradeExecuted{EventID: e.ID, TradeID: d.TradeID, EngineID: d.EngineID, EnginePartition: d.EnginePartition, SequenceNumber: d.SequenceNumber, BuyerOrderID: d.BuyerOrderID, SellerOrderID: d.SellerOrderID, BuyerUserID: d.BuyerUserID, SellerUserID: d.SellerUserID, BaseAssetID: d.BaseAssetID, QuoteAssetID: d.QuoteAssetID, BaseAmountAtomic: d.BaseAmountAtomic, QuoteAmountAtomic: d.QuoteAmountAtomic, BuyerFeeQuoteAtomic: d.BuyerFeeQuoteAtomic, SellerFeeBaseAtomic: d.SellerFeeBaseAtomic, CorrelationID: d.CorrelationID, CausationID: d.CausationID, OccurredAt: e.OccurredAt})
+			_, err = c.Store.BookTrade(ctx, ledger.TradeExecuted{EventID: e.ID, TradeID: d.TradeID, EngineID: d.EngineID, Symbol: d.Symbol, SequenceNumber: d.SequenceNumber, BuyerOrderID: d.BuyerOrderID, SellerOrderID: d.SellerOrderID, BuyerUserID: d.BuyerUserID, SellerUserID: d.SellerUserID, BaseAssetID: d.BaseAssetID, QuoteAssetID: d.QuoteAssetID, BaseAmountAtomic: d.BaseAmountAtomic, QuoteAmountAtomic: d.QuoteAmountAtomic, BuyerFeeQuoteAtomic: d.BuyerFeeQuoteAtomic, SellerFeeBaseAtomic: d.SellerFeeBaseAtomic, CorrelationID: d.CorrelationID, CausationID: d.CausationID, OccurredAt: e.OccurredAt})
 		}
 	case "OrderCancelled":
 		var d cancelData
 		err = json.Unmarshal(e.Data, &d)
 		if err == nil {
-			_, err = c.Store.CancelOrder(ctx, ledger.CancelOrder{EventID: e.ID, OrderID: d.OrderID, EngineID: d.EngineID, EnginePartition: d.EnginePartition, SequenceNumber: d.SequenceNumber, CorrelationID: d.CorrelationID, CausationID: d.CausationID, OccurredAt: e.OccurredAt})
+			_, err = c.Store.CancelOrder(ctx, ledger.CancelOrder{EventID: e.ID, OrderID: d.OrderID, EngineID: d.EngineID, Symbol: d.Symbol, SequenceNumber: d.SequenceNumber, CorrelationID: d.CorrelationID, CausationID: d.CausationID, OccurredAt: e.OccurredAt})
 		}
 	default:
 		return fmt.Errorf("unsupported event type %q", e.Type)

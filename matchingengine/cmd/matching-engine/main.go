@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
@@ -21,6 +23,8 @@ import (
 	"praxis/matchingengine/internal/config"
 	"praxis/matchingengine/internal/engine"
 	"praxis/matchingengine/internal/observability"
+	"praxis/matchingengine/internal/relay"
+	"praxis/matchingengine/migrations"
 )
 
 func main() {
@@ -56,13 +60,42 @@ func main() {
 		log.Error("listen", "error", err)
 		os.Exit(1)
 	}
-	var publisher engine.Publisher = engine.NoopPublisher{}
-	if cfg.KafkaEnabled {
-		publisher = engine.NewKafkaPublisher(cfg.KafkaBrokers, cfg.EventsTopic, cfg.KafkaAuth, cfg.KafkaBatchSize, cfg.KafkaBatchBytes, cfg.KafkaBatchTimeout, cfg.KafkaTimeout)
+	poolConfig, err := pgxpool.ParseConfig(cfg.DatabaseURL)
+	if err != nil {
+		log.Error("database configuration", "error", err)
+		os.Exit(1)
 	}
-	defer publisher.Close()
+	poolConfig.MaxConns = cfg.DBWriterMaxConns
+	db, err := pgxpool.NewWithConfig(ctx, poolConfig)
+	if err != nil {
+		log.Error("database pool", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+	if err = db.Ping(ctx); err != nil {
+		log.Error("database ping", "error", err)
+		os.Exit(1)
+	}
+	if cfg.MigrateOnStartup {
+		if err = migrations.Apply(ctx, db); err != nil {
+			log.Error("database migration", "error", err)
+			os.Exit(1)
+		}
+	}
+	if len(os.Args) == 2 && os.Args[1] == "migrate" {
+		return
+	}
+	if len(os.Args) == 2 && os.Args[1] == "relay" {
+		worker := relay.New(db, cfg.KafkaBrokers, cfg.KafkaAuth)
+		defer worker.Close()
+		if err = worker.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Error("outbox relay", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 	metrics := &engine.Metrics{}
-	service := &engine.Service{Publisher: publisher, Latency: cfg.EngineLatency, Metrics: metrics}
+	service := &engine.Service{Store: engine.NewPostgresStore(db, cfg.EventsTopic), Latency: cfg.EngineLatency, Metrics: metrics}
 	grpcServer := grpc.NewServer(grpc.StatsHandler(otelgrpc.NewServerHandler()))
 	matchingv1.RegisterMatchingEngineServer(grpcServer, service)
 	healthServer := health.NewServer()
@@ -70,17 +103,23 @@ func main() {
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ready\n")) })
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		if err := db.Ping(r.Context()); err != nil {
+			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte("ready\n"))
+	})
 	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		_, _ = fmt.Fprintf(w, "matching_orders_submitted_total %d\nmatching_orders_accepted_total %d\nmatching_orders_failed_total %d\n", metrics.Submitted.Load(), metrics.Accepted.Load(), metrics.Failed.Load())
-		_, _ = fmt.Fprint(w, metrics.EngineDuration.Prometheus("matching_engine_duration_seconds"), metrics.KafkaDuration.Prometheus("matching_kafka_duration_seconds"))
+		_, _ = fmt.Fprint(w, metrics.EngineDuration.Prometheus("matching_engine_duration_seconds"))
 	})
 	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(mux, "matching.http"), ReadHeaderTimeout: 5 * time.Second}
 	errCh := make(chan error, 2)
 	go func() { errCh <- grpcServer.Serve(listener) }()
 	go func() { errCh <- httpServer.ListenAndServe() }()
-	log.Info("matching engine started", "grpc", cfg.GRPCAddress, "http", cfg.HTTPAddress, "kafka_enabled", cfg.KafkaEnabled, "events_topic", cfg.EventsTopic)
+	log.Info("matching engine started", "grpc", cfg.GRPCAddress, "http", cfg.HTTPAddress, "events_topic", cfg.EventsTopic)
 	select {
 	case <-ctx.Done():
 	case err = <-errCh:

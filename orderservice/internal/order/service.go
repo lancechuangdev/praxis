@@ -62,9 +62,6 @@ func Validate(v Request) error {
 	if v.OrderType == "limit" && strings.TrimSpace(v.Price) == "" {
 		return errors.New("price is required for a limit order")
 	}
-	if v.EnginePartition < 0 {
-		return errors.New("engine_partition cannot be negative")
-	}
 	return nil
 }
 

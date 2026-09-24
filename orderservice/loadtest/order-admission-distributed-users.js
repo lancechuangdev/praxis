@@ -61,7 +61,6 @@ export default function (data) {
     price: "70000",
     reserve_asset_id: __ENV.ASSET_ID || "asset_usdt",
     reserve_amount_atomic: __ENV.RESERVE_AMOUNT_ATOMIC || "1",
-    engine_partition: Number(iteration % Number(__ENV.ENGINE_PARTITIONS || 96)),
   });
   const response = http.post(`${__ENV.BASE_URL || "http://localhost:8083"}/v1/orders`, body, { headers: { "Content-Type": "application/json" } });
   const ok = check(response, { "order accepted": (r) => r.status === 202 });

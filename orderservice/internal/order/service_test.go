@@ -30,7 +30,7 @@ func (f *fakeMatching) Submit(context.Context, Request, Reservation) (MatchResul
 func (*fakeMatching) Close() error { return nil }
 
 func validRequest() Request {
-	return Request{RequestID: "request-1", OrderID: "order-1", UserID: "alice", Symbol: "BTC-USDT", Side: "buy", OrderType: "limit", Quantity: "1000", Price: "70000", ReserveAssetID: "asset_usdt", ReserveAmountAtomic: "70000000", EnginePartition: 3}
+	return Request{RequestID: "request-1", OrderID: "order-1", UserID: "alice", Symbol: "BTC-USDT", Side: "buy", OrderType: "limit", Quantity: "1000", Price: "70000", ReserveAssetID: "asset_usdt", ReserveAmountAtomic: "70000000"}
 }
 
 func TestAdmitRunsReservationBeforeMatching(t *testing.T) {

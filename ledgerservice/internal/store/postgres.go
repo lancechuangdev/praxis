@@ -342,9 +342,9 @@ func lockBalances(ctx context.Context, tx pgx.Tx, ids ...string) error {
 	return nil
 }
 
-func checkSequence(ctx context.Context, tx pgx.Tx, engine string, partition int32, sequence int64) error {
+func checkSequence(ctx context.Context, tx pgx.Tx, engine, symbol string, sequence int64) error {
 	var last int64
-	err := tx.QueryRow(ctx, `SELECT last_sequence_number FROM ledger_engine_offsets WHERE engine_id=$1 AND engine_partition=$2 FOR UPDATE`, engine, partition).Scan(&last)
+	err := tx.QueryRow(ctx, `SELECT last_sequence_number FROM ledger_symbol_offsets WHERE engine_id=$1 AND symbol=$2 FOR UPDATE`, engine, symbol).Scan(&last)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}
@@ -356,8 +356,8 @@ func checkSequence(ctx context.Context, tx pgx.Tx, engine string, partition int3
 	}
 	return nil
 }
-func setSequence(ctx context.Context, tx pgx.Tx, engine string, partition int32, sequence int64) error {
-	_, err := tx.Exec(ctx, `INSERT INTO ledger_engine_offsets(engine_id,engine_partition,last_sequence_number) VALUES($1,$2,$3) ON CONFLICT(engine_id,engine_partition) DO UPDATE SET last_sequence_number=EXCLUDED.last_sequence_number`, engine, partition, sequence)
+func setSequence(ctx context.Context, tx pgx.Tx, engine, symbol string, sequence int64) error {
+	_, err := tx.Exec(ctx, `INSERT INTO ledger_symbol_offsets(engine_id,symbol,last_sequence_number) VALUES($1,$2,$3) ON CONFLICT(engine_id,symbol) DO UPDATE SET last_sequence_number=EXCLUDED.last_sequence_number`, engine, symbol, sequence)
 	return err
 }
 
@@ -371,7 +371,7 @@ func (p *Postgres) BookTrade(ctx context.Context, v ledger.TradeExecuted) (ledge
 	}
 	defer tx.Rollback(ctx)
 	jid := stableID("jrn_", v.EngineID, v.EventID)
-	created, err := createJournal(ctx, tx, jid, "trade", v.TradeID, "trade_executed", v.EngineID, v.EventID, v.CorrelationID, v.CausationID, "book matching engine execution", v.OccurredAt, map[string]any{"partition": v.EnginePartition, "sequence": v.SequenceNumber})
+	created, err := createJournal(ctx, tx, jid, "trade", v.TradeID, "trade_executed", v.EngineID, v.EventID, v.CorrelationID, v.CausationID, "book matching engine execution", v.OccurredAt, map[string]any{"symbol": v.Symbol, "sequence": v.SequenceNumber})
 	if err != nil {
 		return ledger.OperationResult{}, err
 	}
@@ -379,7 +379,7 @@ func (p *Postgres) BookTrade(ctx context.Context, v ledger.TradeExecuted) (ledge
 		_ = tx.Commit(ctx)
 		return ledger.OperationResult{JournalID: jid, Replay: true}, nil
 	}
-	if err = checkSequence(ctx, tx, v.EngineID, v.EnginePartition, v.SequenceNumber); err != nil {
+	if err = checkSequence(ctx, tx, v.EngineID, v.Symbol, v.SequenceNumber); err != nil {
 		return ledger.OperationResult{}, err
 	}
 	rsv, err := lockReservations(ctx, tx, v.BuyerOrderID, v.SellerOrderID)
@@ -453,10 +453,10 @@ func (p *Postgres) BookTrade(ctx context.Context, v ledger.TradeExecuted) (ledge
 			return ledger.OperationResult{}, err
 		}
 	}
-	if err = setSequence(ctx, tx, v.EngineID, v.EnginePartition, v.SequenceNumber); err != nil {
+	if err = setSequence(ctx, tx, v.EngineID, v.Symbol, v.SequenceNumber); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	if err = outbox(ctx, tx, stableID("evt_", jid), "TradeBooked", v.TradeID, v.EngineID+fmt.Sprint(":", v.EnginePartition), v.CorrelationID, v.CausationID, map[string]any{"journal_id": jid, "trade_id": v.TradeID, "sequence_number": v.SequenceNumber}); err != nil {
+	if err = outbox(ctx, tx, stableID("evt_", jid), "TradeBooked", v.TradeID, v.EngineID+":"+v.Symbol, v.CorrelationID, v.CausationID, map[string]any{"journal_id": jid, "trade_id": v.TradeID, "sequence_number": v.SequenceNumber}); err != nil {
 		return ledger.OperationResult{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -482,8 +482,8 @@ func less(a, b string) bool {
 }
 
 func (p *Postgres) CancelOrder(ctx context.Context, v ledger.CancelOrder) (ledger.OperationResult, error) {
-	if v.EventID == "" || v.OrderID == "" || v.EngineID == "" || v.SequenceNumber <= 0 {
-		return ledger.OperationResult{}, errors.New("event, order, engine, and sequence are required")
+	if v.EventID == "" || v.OrderID == "" || v.EngineID == "" || v.Symbol == "" || v.SequenceNumber <= 0 {
+		return ledger.OperationResult{}, errors.New("event, order, engine, symbol, and sequence are required")
 	}
 	tx, err := begin(ctx, p.Writer)
 	if err != nil {
@@ -499,7 +499,7 @@ func (p *Postgres) CancelOrder(ctx context.Context, v ledger.CancelOrder) (ledge
 		_ = tx.Commit(ctx)
 		return ledger.OperationResult{JournalID: jid, Replay: true}, nil
 	}
-	if err = checkSequence(ctx, tx, v.EngineID, v.EnginePartition, v.SequenceNumber); err != nil {
+	if err = checkSequence(ctx, tx, v.EngineID, v.Symbol, v.SequenceNumber); err != nil {
 		return ledger.OperationResult{}, err
 	}
 	rsv, err := lockReservations(ctx, tx, v.OrderID)
@@ -526,7 +526,7 @@ func (p *Postgres) CancelOrder(ctx context.Context, v ledger.CancelOrder) (ledge
 	if err = entry(ctx, tx, jid+":available", jid, "account_customer_available", r.userAccount, r.asset, "", "available", "credit", r.remaining); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	if err = setSequence(ctx, tx, v.EngineID, v.EnginePartition, v.SequenceNumber); err != nil {
+	if err = setSequence(ctx, tx, v.EngineID, v.Symbol, v.SequenceNumber); err != nil {
 		return ledger.OperationResult{}, err
 	}
 	if err = outbox(ctx, tx, stableID("evt_", jid), "FundsReleased", v.OrderID, r.userAccount, v.CorrelationID, v.CausationID, map[string]any{"journal_id": jid, "amount_atomic": r.remaining}); err != nil {

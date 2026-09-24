@@ -50,11 +50,10 @@ func (m *GRPCMatching) Submit(ctx context.Context, req order.Request, reservatio
 		RequestId: req.RequestID, OrderId: req.OrderID, UserId: req.UserID,
 		Symbol: req.Symbol, Side: req.Side, OrderType: req.OrderType,
 		Quantity: req.Quantity, Price: req.Price, ReservationId: reservation.ID,
-		EnginePartition: req.EnginePartition,
-		CorrelationId:   correlationID,
-		CausationId:     causationID,
-		TraceParent:     req.TraceParent,
-		TraceState:      req.TraceState,
+		CorrelationId: correlationID,
+		CausationId:   causationID,
+		TraceParent:   req.TraceParent,
+		TraceState:    req.TraceState,
 	})
 	if err != nil {
 		return order.MatchResult{}, err

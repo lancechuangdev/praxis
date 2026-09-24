@@ -8,7 +8,7 @@ TRUNCATE TABLE
     ledger_journals,
     user_asset_balances,
     user_asset_accounts,
-    ledger_engine_offsets,
+    ledger_symbol_offsets,
     inbox_events,
     outbox_events
 RESTART IDENTITY;

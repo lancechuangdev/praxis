@@ -1,24 +1,32 @@
-# Mock matching engine
+# Durable matching admission
 
-Load-test fixture for synchronous order admission. It accepts `SubmitOrder`
-over gRPC, assigns a sequence independently per symbol/engine partition, and
-publishes an `OrderAccepted` fact to `matching.events.v1` through Kafka.
+The matching service admits orders over gRPC and persists the accepted order and
+its `OrderAccepted` outbox event in one PostgreSQL transaction. PostgreSQL locks
+the row for the requested symbol while assigning `engine_sequence`, so every
+replica observes one serial order for a book such as `BTC-USDT`.
 
 ```text
-Order Service ──gRPC SubmitOrder──► Matching Engine
+Order Service ──gRPC SubmitOrder──► Matching (one pod per AZ)
                                       │
-                                      └──Kafka OrderAccepted──► consumers
+                                      └──transaction──► Matching RDS writer
+                                                        ├─ matching_orders
+                                                        └─ outbox_events ──► relay ──► Kafka
 ```
 
-The mock serializes admission per partition, deduplicates `request_id` in
-memory, and acknowledges only after synchronous Kafka publication succeeds.
-Its state is not durable and it does not implement an order book, matching, or
-recovery, so it is not a production matching engine.
+`request_id` is an idempotency key. Retrying the same request returns the stored
+result; reusing it with a different payload is rejected. Therefore a process can
+commit and crash before returning gRPC without creating a second order on retry.
+The `matching-engine relay` process is intentionally outside the admission transaction and publishes
+at least once; consumers must deduplicate by event `id`.
 
-Set `MATCHING_KAFKA_ENABLED=false` to measure gRPC/engine overhead without
-Kafka. Default ports are gRPC `:9092` and HTTP health/metrics `:8084`.
+The service connects through `MATCHING_DATABASE_WRITER_URL`, or constructs the
+URL from `MATCHING_DB_WRITER_HOST`, `MATCHING_DB_USER`, `MATCHING_DB_NAME`, and
+one of `MATCHING_DB_SECRET_ARN`/`MATCHING_DB_PASSWORD`. `MATCHING_DB_WRITER_MAX_CONNS`
+defaults to 32. `MATCHING_KAFKA_TOPIC` names the topic stored in outbox rows.
 
-The binary also supports a `healthcheck` command used by ECS: it exits
-successfully only when the local `/readyz` endpoint returns HTTP 200. The
-Terraform Matching ECS service is opt-in by image digest and deliberately
-single-replica because this mock has no durable partition ownership.
+Run `/matching-engine migrate` before rollout, or leave
+`MATCHING_MIGRATE_ON_STARTUP=true` for local development. Production uses the
+separate three-instance Matching RDS cluster declared in `infra/aws`.
+
+This version durably admits orders and lays out the price-time order index. Trade
+execution and fill generation remain the next matching-domain increment.

@@ -18,7 +18,7 @@ message SubmitOrderRequest {
   string quantity = 7;
   string price = 8;
   string reservation_id = 9;
-  int32 engine_partition = 10;
+  reserved 10;
   string correlation_id = 11;
   string causation_id = 12;
   string trace_parent = 13;

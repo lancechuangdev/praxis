@@ -33,8 +33,7 @@ type ReserveOrder struct {
 }
 
 type TradeExecuted struct {
-	EventID, TradeID, EngineID               string
-	EnginePartition                          int32
+	EventID, TradeID, EngineID, Symbol       string
 	SequenceNumber                           int64
 	BuyerOrderID, SellerOrderID              string
 	BuyerUserID, SellerUserID                string
@@ -46,10 +45,9 @@ type TradeExecuted struct {
 }
 
 type CancelOrder struct {
-	EventID, OrderID, EngineID, CorrelationID, CausationID string
-	EnginePartition                                        int32
-	SequenceNumber                                         int64
-	OccurredAt                                             time.Time
+	EventID, OrderID, EngineID, Symbol, CorrelationID, CausationID string
+	SequenceNumber                                                 int64
+	OccurredAt                                                     time.Time
 }
 
 type OperationResult struct {
@@ -105,7 +103,7 @@ func ValidateReserve(v ReserveOrder) error {
 }
 
 func ValidateTrade(v TradeExecuted) error {
-	if v.EventID == "" || v.TradeID == "" || v.EngineID == "" || v.SequenceNumber <= 0 || v.BuyerOrderID == "" || v.SellerOrderID == "" || v.BuyerUserID == "" || v.SellerUserID == "" || v.BaseAssetID == "" || v.QuoteAssetID == "" {
+	if v.EventID == "" || v.TradeID == "" || v.EngineID == "" || v.Symbol == "" || v.SequenceNumber <= 0 || v.BuyerOrderID == "" || v.SellerOrderID == "" || v.BuyerUserID == "" || v.SellerUserID == "" || v.BaseAssetID == "" || v.QuoteAssetID == "" {
 		return errors.New("trade identity, engine sequence, users, orders, and assets are required")
 	}
 	for _, amount := range []string{v.BaseAmountAtomic, v.QuoteAmountAtomic} {

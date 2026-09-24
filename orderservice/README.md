@@ -187,7 +187,6 @@ docker run --rm --network=host \
   -e DURATION=60s \
   -e BASE_URL=http://localhost:8083 \
   -e USER_COUNT=10000 \
-  -e ENGINE_PARTITIONS=96 \
   -e RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)" \
   /scripts/order-admission-distributed-users.js
 ```

@@ -20,6 +20,7 @@ metadata:
   namespace: praxis
 spec:
   type: ClusterIP
+  trafficDistribution: PreferSameZone
   selector:
     app: matching
   ports:
@@ -169,9 +170,12 @@ metadata:
   name: matching
   namespace: praxis
 spec:
-  replicas: 1
+  replicas: 3
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: matching
@@ -185,6 +189,14 @@ spec:
       serviceAccountName: matching
       nodeSelector:
         praxis.io/workload: hot-path
+      topologySpreadConstraints:
+        - maxSkew: 1
+          minDomains: 3
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: matching
       terminationGracePeriodSeconds: 40
       securityContext:
         runAsNonRoot: true
@@ -222,17 +234,24 @@ spec:
             - name: OTEL_RESOURCE_ATTRIBUTES
               valueFrom:
                 configMapKeyRef: {name: praxis-runtime, key: OTEL_RESOURCE_ATTRIBUTES}
-            - name: KAFKA_AUTH_MODE
-              value: msk_iam
             - name: MATCHING_GRPC_ADDRESS
               value: ":9092"
             - name: MATCHING_HTTP_ADDRESS
               value: ":8084"
-            - name: MATCHING_KAFKA_ENABLED
-              value: "true"
-            - name: MATCHING_KAFKA_BROKERS
+            - name: MATCHING_DB_WRITER_HOST
               valueFrom:
-                configMapKeyRef: {name: praxis-runtime, key: MSK_BROKERS}
+                configMapKeyRef: {name: praxis-runtime, key: MATCHING_DB_WRITER_HOST}
+            - name: MATCHING_DB_NAME
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MATCHING_DB_NAME}
+            - name: MATCHING_DB_USER
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MATCHING_DB_USER}
+            - name: MATCHING_DB_SECRET_ARN
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MATCHING_DB_SECRET_ARN}
+            - name: MATCHING_DB_WRITER_MAX_CONNS
+              value: "32"
             - name: MATCHING_KAFKA_TOPIC
               valueFrom:
                 configMapKeyRef: {name: praxis-runtime, key: MATCHING_EVENTS_TOPIC}
@@ -346,3 +365,66 @@ spec:
           livenessProbe:
             httpGet: {path: /healthz, port: http}
             periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matching-outbox
+  namespace: praxis
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: matching-outbox
+  template:
+    metadata:
+      labels:
+        app: matching-outbox
+      annotations:
+        checksum/runtime: ${RUNTIME_CONFIG_HASH}
+    spec:
+      serviceAccountName: matching
+      nodeSelector:
+        praxis.io/workload: hot-path
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: relay
+          image: ${MATCHING_IMAGE}
+          imagePullPolicy: IfNotPresent
+          args: [relay]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          env:
+            - name: AWS_REGION
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: AWS_REGION}
+            - name: KAFKA_AUTH_MODE
+              value: msk_iam
+            - name: MATCHING_DB_WRITER_HOST
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MATCHING_DB_WRITER_HOST}
+            - name: MATCHING_DB_NAME
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MATCHING_DB_NAME}
+            - name: MATCHING_DB_USER
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MATCHING_DB_USER}
+            - name: MATCHING_DB_SECRET_ARN
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MATCHING_DB_SECRET_ARN}
+            - name: MATCHING_KAFKA_BROKERS
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MSK_BROKERS}
+            - name: MATCHING_KAFKA_TOPIC
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: MATCHING_EVENTS_TOPIC}
+          resources:
+            requests: {cpu: 250m, memory: 256Mi}
+            limits: {cpu: 500m, memory: 512Mi}

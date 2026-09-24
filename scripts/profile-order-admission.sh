@@ -14,7 +14,6 @@ cooldown_seconds=${COOLDOWN_SECONDS:-60}
 user_count=${USER_COUNT:-10000}
 preallocated_vus=${PREALLOCATED_VUS:-2000}
 max_vus=${MAX_VUS:-10000}
-engine_partitions=${ENGINE_PARTITIONS:-96}
 available_atomic=${AVAILABLE_ATOMIC:-1000000000}
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 batch_id=${BATCH_ID:-phase0-pool-${pool_size}-rate-${rate}-${timestamp}}
@@ -69,7 +68,7 @@ capture_environment() {
     printf 'captured_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf 'batch_id=%s\nrate=%s\npool_size=%s\nruns=%s\n' "${batch_id}" "${rate}" "${pool_size}" "${runs}"
     printf 'warmup_duration=%s\nduration=%s\ncooldown_seconds=%s\n' "${warmup_duration}" "${duration}" "${cooldown_seconds}"
-    printf 'user_count=%s\npreallocated_vus=%s\nmax_vus=%s\nengine_partitions=%s\n' "${user_count}" "${preallocated_vus}" "${max_vus}" "${engine_partitions}"
+    printf 'user_count=%s\npreallocated_vus=%s\nmax_vus=%s\n' "${user_count}" "${preallocated_vus}" "${max_vus}"
     printf 'git_commit=%s\n' "$(git -C "${project_dir}" rev-parse HEAD 2>/dev/null || printf unknown)"
     printf 'git_dirty_files=%s\n' "$(git -C "${project_dir}" status --short 2>/dev/null | wc -l)"
     printf 'kernel=%s\n' "$(uname -srmo)"
@@ -114,7 +113,6 @@ run_k6() {
     -e DURATION="${test_duration}" \
     -e BASE_URL=http://localhost:8083 \
     -e USER_COUNT="${user_count}" \
-    -e ENGINE_PARTITIONS="${engine_partitions}" \
     -e PREALLOCATED_VUS="${preallocated_vus}" \
     -e MAX_VUS="${max_vus}" \
     -e STRICT_PROFILE="${strict}" \

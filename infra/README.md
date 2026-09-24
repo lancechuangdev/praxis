@@ -94,22 +94,25 @@ flowchart TB
         A["EKS Node A<br/>Order-1"]
         B["EKS Node B<br/>Order-2"]
         L1["Ledger-1<br/>on Node A or B"]
+        M1["Matching-1<br/>on Node A or B"]
     end
 
     subgraph AZ2["Availability Zone 2"]
         C["EKS Node C<br/>Order-3"]
         D["EKS Node D<br/>Order-4"]
         L2["Ledger-2<br/>on Node C or D"]
+        M2["Matching-2<br/>on Node C or D"]
     end
 
     subgraph AZ3["Availability Zone 3"]
         E["EKS Node E<br/>Order-5"]
         F["EKS Node F<br/>Order-6"]
         L3["Ledger-3<br/>on Node E or F"]
+        M3["Matching-3<br/>on Node E or F"]
     end
 
-    Matching["Matching pod ×1<br/>scheduler-selected AZ"]
-    RDS[("RDS Multi-AZ cluster<br/>role-aware endpoints")]
+    LedgerRDS[("Ledger RDS Multi-AZ<br/>writer + two standbys")]
+    MatchingRDS[("Matching RDS Multi-AZ<br/>writer + two standbys")]
 
     Internet --> ALB1 & ALB2 & ALB3
     ALB1 -->|"NodePort 30083 · local"| A & B
@@ -120,13 +123,17 @@ flowchart TB
     C & D -->|"PreferSameZone"| L2
     E & F -->|"PreferSameZone"| L3
 
-    A & B & C & D & E & F -.->|"may cross AZ"| Matching
-    L1 & L2 & L3 -.->|"writer or reader may be remote"| RDS
+    A & B -->|"PreferSameZone"| M1
+    C & D -->|"PreferSameZone"| M2
+    E & F -->|"PreferSameZone"| M3
+    L1 & L2 & L3 -.->|"writer or reader may be remote"| LedgerRDS
+    M1 & M2 & M3 -.->|"writer endpoint may be remote"| MatchingRDS
 ```
 
 Solid arrows show the intended same-AZ path. Dashed arrows show hops that can
-still cross zones: Matching remains a singleton, and RDS endpoints follow
-database roles rather than caller locality. If an AZ has no healthy local Order
+still cross zones: each RDS writer endpoint follows the database role rather
+than caller locality. Order-to-Ledger and Order-to-Matching calls prefer a
+healthy pod in the caller's zone. If an AZ has no healthy local Order
 target, the ALB removes that zonal node from DNS and new traffic fails away to a
 healthy zone.
 
@@ -142,13 +149,15 @@ flowchart LR
         subgraph EKS["EKS managed nodes and Kubernetes pods"]
             Order["Order Service<br/>ClusterIP + NodePort 30083"]
             Ledger["Ledger Service"]
-            Matching["Matching Engine"]
+            Matching["Matching Engine ×3"]
+            MatchingRelay["Matching outbox relay"]
             Collector["ADOT Collector"]
         end
 
         Outbox["ECS Fargate<br/>Outbox Relay"]
         OutboxCollector["ADOT sidecar<br/>when configured"]
-        DB[("PostgreSQL<br/>Ledger database")]
+        LedgerDB[("PostgreSQL<br/>Ledger cluster")]
+        MatchingDB[("PostgreSQL<br/>Matching cluster")]
         MSK[("Amazon MSK<br/>Kafka brokers")]
         RT["Private route tables<br/>one per subnet"]
     end
@@ -160,10 +169,12 @@ flowchart LR
 
     Order -->|"gRPC via Kubernetes Service"| Ledger
     Order -->|"gRPC via Kubernetes Service"| Matching
-    Ledger -->|"SQL :5432"| DB
+    Ledger -->|"SQL :5432"| LedgerDB
     Ledger <-->|"Kafka IAM/TLS :9098"| MSK
-    Matching -->|"Kafka IAM/TLS :9098"| MSK
-    Outbox -->|"read outbox rows · SQL :5432"| DB
+    Matching -->|"transactional admission · SQL :5432"| MatchingDB
+    MatchingRelay -->|"claim matching outbox · SQL :5432"| MatchingDB
+    MatchingRelay -->|"publish matching events · IAM/TLS :9098"| MSK
+    Outbox -->|"read ledger outbox rows · SQL :5432"| LedgerDB
     Outbox -->|"publish ledger events · IAM/TLS :9098"| MSK
 
     Order & Ledger & Matching -->|"traces"| Collector
@@ -177,7 +188,7 @@ flowchart LR
     Outbox -->|"task logs"| CloudWatch
     OutboxCollector -.->|"sidecar logs"| CloudWatch
     MSK -->|"broker logs"| CloudWatch
-    DB -->|"database logs"| CloudWatch
+    LedgerDB & MatchingDB -->|"database logs"| CloudWatch
 
     RT -->|"0.0.0.0/0"| NAT["NAT Gateway<br/>in public subnet"]
     NAT --> IGW["Internet Gateway"]

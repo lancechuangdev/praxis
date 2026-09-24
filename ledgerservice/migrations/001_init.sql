@@ -140,11 +140,11 @@ CREATE TABLE fund_reservations (
     updated_at TIMESTAMPTZ NOT NULL
 );
 
-CREATE TABLE ledger_engine_offsets (
+CREATE TABLE ledger_symbol_offsets (
     engine_id TEXT NOT NULL,
-    engine_partition INTEGER NOT NULL,
+    symbol TEXT NOT NULL,
     last_sequence_number BIGINT NOT NULL,
-    PRIMARY KEY (engine_id,engine_partition)
+    PRIMARY KEY (engine_id, symbol)
 );
 
 CREATE TABLE inbox_events (

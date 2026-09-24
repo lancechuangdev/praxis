@@ -1,7 +1,9 @@
 package config
 
 import (
-	"errors"
+	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -13,46 +15,68 @@ import (
 type Config struct {
 	GRPCAddress, HTTPAddress string
 	EngineLatency            time.Duration
-	KafkaEnabled             bool
+	DatabaseURL              string
+	DBWriterMaxConns         int32
+	EventsTopic              string
 	KafkaBrokers             []string
 	KafkaAuth                kafkaauth.Config
-	EventsTopic              string
-	KafkaTimeout             time.Duration
-	KafkaBatchSize           int
-	KafkaBatchBytes          int64
-	KafkaBatchTimeout        time.Duration
+	MigrateOnStartup         bool
 }
 
 func Load() (Config, error) {
-	kafkaAuth, err := kafkaauth.Load()
+	auth, err := kafkaauth.Load()
 	if err != nil {
 		return Config{}, err
 	}
-	c := Config{
-		GRPCAddress: value("MATCHING_GRPC_ADDRESS", ":9092"), HTTPAddress: value("MATCHING_HTTP_ADDRESS", ":8084"),
-		EngineLatency: duration("MATCHING_ENGINE_LATENCY", time.Millisecond), KafkaEnabled: boolean("MATCHING_KAFKA_ENABLED", true),
-		KafkaBrokers: split(value("MATCHING_KAFKA_BROKERS", "localhost:9092")), KafkaAuth: kafkaAuth, EventsTopic: value("MATCHING_KAFKA_TOPIC", "matching.events.v1"),
-		KafkaTimeout: duration("MATCHING_KAFKA_TIMEOUT", 2*time.Second), KafkaBatchSize: integer("MATCHING_KAFKA_BATCH_SIZE", 500),
-		KafkaBatchBytes: int64(integer("MATCHING_KAFKA_BATCH_BYTES", 512*1024)), KafkaBatchTimeout: duration("MATCHING_KAFKA_BATCH_TIMEOUT", 2*time.Millisecond),
+	dbURL, err := databaseURL()
+	if err != nil {
+		return Config{}, err
 	}
-	if c.KafkaBatchSize <= 0 || c.KafkaBatchBytes <= 0 {
-		return c, errors.New("Kafka batch limits must be positive")
+	max, err := positiveInt32("MATCHING_DB_WRITER_MAX_CONNS", 32)
+	if err != nil {
+		return Config{}, err
 	}
-	return c, nil
+	migrate, err := strconv.ParseBool(value("MATCHING_MIGRATE_ON_STARTUP", "true"))
+	if err != nil {
+		return Config{}, fmt.Errorf("MATCHING_MIGRATE_ON_STARTUP must be true or false: %w", err)
+	}
+	return Config{GRPCAddress: value("MATCHING_GRPC_ADDRESS", ":9092"), HTTPAddress: value("MATCHING_HTTP_ADDRESS", ":8084"), EngineLatency: duration("MATCHING_ENGINE_LATENCY", time.Millisecond), DatabaseURL: dbURL, DBWriterMaxConns: max, EventsTopic: value("MATCHING_KAFKA_TOPIC", "matching.events.v1"), KafkaBrokers: strings.Split(value("MATCHING_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: auth, MigrateOnStartup: migrate}, nil
 }
-
+func databaseURL() (string, error) {
+	if raw := strings.TrimSpace(os.Getenv("MATCHING_DATABASE_WRITER_URL")); raw != "" {
+		return raw, nil
+	}
+	host, user, name := strings.TrimSpace(os.Getenv("MATCHING_DB_WRITER_HOST")), strings.TrimSpace(os.Getenv("MATCHING_DB_USER")), strings.TrimSpace(os.Getenv("MATCHING_DB_NAME"))
+	if host == "" || user == "" || name == "" {
+		return "", fmt.Errorf("set MATCHING_DATABASE_WRITER_URL or MATCHING_DB_WRITER_HOST, MATCHING_DB_USER, and MATCHING_DB_NAME")
+	}
+	if strings.ContainsAny(host, ":/") {
+		return "", fmt.Errorf("MATCHING_DB_WRITER_HOST must be a hostname without a port")
+	}
+	password, err := databasePassword()
+	if err != nil {
+		return "", err
+	}
+	u := url.URL{Scheme: "postgres", User: url.UserPassword(user, password), Host: net.JoinHostPort(host, "5432"), Path: "/" + name}
+	u.RawQuery = "sslmode=require"
+	return u.String(), nil
+}
+func positiveInt32(name string, fallback int32) (int32, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback, nil
+	}
+	v, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || v < 1 {
+		return 0, fmt.Errorf("%s must be a positive integer", name)
+	}
+	return int32(v), nil
+}
 func value(k, d string) string {
 	if v := strings.TrimSpace(os.Getenv(k)); v != "" {
 		return v
 	}
 	return d
-}
-func split(v string) []string {
-	p := strings.Split(v, ",")
-	for i := range p {
-		p[i] = strings.TrimSpace(p[i])
-	}
-	return p
 }
 func duration(k string, d time.Duration) time.Duration {
 	v := strings.TrimSpace(os.Getenv(k))
@@ -60,28 +84,6 @@ func duration(k string, d time.Duration) time.Duration {
 		return d
 	}
 	x, e := time.ParseDuration(v)
-	if e != nil {
-		return d
-	}
-	return x
-}
-func integer(k string, d int) int {
-	v := strings.TrimSpace(os.Getenv(k))
-	if v == "" {
-		return d
-	}
-	x, e := strconv.Atoi(v)
-	if e != nil {
-		return d
-	}
-	return x
-}
-func boolean(k string, d bool) bool {
-	v := strings.TrimSpace(os.Getenv(k))
-	if v == "" {
-		return d
-	}
-	x, e := strconv.ParseBool(v)
 	if e != nil {
 		return d
 	}

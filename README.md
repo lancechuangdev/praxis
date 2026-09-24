@@ -868,15 +868,11 @@ consumed.
 
 #### Kafka ordering and idempotency
 
-In the target design, trade events should preserve the authoritative Matching
-Engine sequence:
+Trade events preserve the authoritative per-symbol Matching Engine sequence:
 
 ```text
-Kafka key = matching_engine_id + engine_partition
+Kafka key = symbol
 ```
-
-The current mock uses `symbol + engine_partition` as its Kafka key because it
-models only one in-process engine identity.
 
 Every event includes:
 
@@ -884,7 +880,7 @@ Every event includes:
 event_id
 trade_id
 matching_engine_id
-engine_partition
+symbol
 sequence_number
 buyer_order_id
 seller_order_id
@@ -892,9 +888,10 @@ buyer_reservation_id
 seller_reservation_id
 ```
 
-The Ledger Service records the last sequence processed per engine partition. If
-sequence 1003 arrives after sequence 1001, it pauses that partition and recovers
-sequence 1002 instead of silently booking out of order.
+PostgreSQL serializes each symbol's book through its `matching_books` row. A
+consumer records the last sequence processed per symbol; if sequence 1003
+arrives after sequence 1001, it pauses that symbol and recovers sequence 1002
+instead of silently booking out of order.
 
 Kafka provides at-least-once delivery, so ledger idempotency uses:
 

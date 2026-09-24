@@ -188,6 +188,18 @@ variable "postgres_database_name" {
   default     = "cex_ledger"
 }
 
+variable "matching_postgres_database_name" {
+  description = "Initial PostgreSQL database used by the matching engine."
+  type        = string
+  default     = "cex_matching"
+}
+
+variable "matching_postgres_master_username" {
+  description = "Administrative username for the separate Matching RDS cluster."
+  type        = string
+  default     = "matching_admin"
+}
+
 variable "postgres_master_username" {
   description = "Administrative username. RDS manages its password in Secrets Manager."
   type        = string

@@ -31,6 +31,23 @@ resource "aws_iam_role_policy" "eks_pod_msk" {
   policy = data.aws_iam_policy_document.msk_client[each.value.msk_policy].json
 }
 
+data "aws_iam_policy_document" "eks_matching_database_secret" {
+  statement {
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_rds_cluster.matching.master_user_secret[0].secret_arn]
+  }
+  statement {
+    actions   = ["kms:Decrypt"]
+    resources = [aws_kms_key.postgres.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "eks_matching_database_secret" {
+  name   = "matching-database-secret"
+  role   = aws_iam_role.eks_pod["matching"].id
+  policy = data.aws_iam_policy_document.eks_matching_database_secret.json
+}
+
 data "aws_iam_policy_document" "eks_ledger_runtime_secret" {
   count = var.ledger_runtime_secret_arn == "" ? 0 : 1
 

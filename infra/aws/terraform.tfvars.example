@@ -23,6 +23,8 @@ order_alb_certificate_arn = "arn:aws:acm:us-west-2:123456789012:certificate/repl
 # selected region. Leave the version null to let AWS choose its current default.
 postgres_engine_version       = null
 postgres_instance_class       = "db.r6gd.xlarge"
+matching_postgres_database_name = "cex_matching"
+matching_postgres_master_username = "matching_admin"
 postgres_allocated_storage_gib = 500
 postgres_iops                  = 10000
 postgres_backup_retention_days = 14
