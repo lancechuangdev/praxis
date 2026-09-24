@@ -117,6 +117,13 @@ Matching can publish its event topic through separate scoped Pod Identity
 roles. The mock Matching Engine must remain single-replica until it has
 durable state and fenced ownership.
 
+The Order ALB target group disables cross-zone forwarding. Order uses local-only
+NodePort routing, Order runs two replicas per AZ on distinct nodes, Ledger runs
+one replica per AZ, and their Services use
+`trafficDistribution: PreferSameZone`. The EKS minimum node count must therefore
+be at least twice the configured AZ count. Matching and RDS endpoint selection remain potential cross-zone hops; this configuration reduces
+unnecessary crossings rather than promising a fully AZ-local transaction.
+
 ## ECS Outbox Relay
 
 Set `outbox_image_digest` after its migration and runtime credential are

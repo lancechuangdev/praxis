@@ -22,8 +22,9 @@ created by `aws/`.
 
 The AWS stack creates one public and one private subnet in each of three
 Availability Zones. The internet-facing Order ALB uses all three public
-subnets and forwards HTTPS requests to the Order NodePort on private EKS
-nodes. Each private subnet has its own route table for outbound traffic.
+subnets and forwards HTTPS requests to healthy Order NodePort targets in the
+same Availability Zone; target-group cross-zone forwarding is disabled. Each
+private subnet has its own route table for outbound traffic.
 
 ```mermaid
 flowchart TB
@@ -70,6 +71,64 @@ tables point to the NAT gateway in public subnet 1.
 The dotted lines from the ALB show its placement; its solid arrows show request
 flow. AWS manages ALB nodes in the public subnets; the ALB forwards requests
 to Order targets on private EKS nodes.
+
+## AZ-aware application topology
+
+The EKS baseline has six nodes and six Order replicas. Hard zone and hostname
+spread constraints place two Order replicas on distinct nodes in each AZ. Ledger
+runs one replica per AZ. The ALB target group routes within its zone, and the
+Order NodePort accepts external traffic only on a node with a local ready Order
+Pod. Order-to-Ledger Service traffic prefers the same zone.
+
+```mermaid
+flowchart TB
+    Internet((Internet))
+
+    subgraph ALB["One logical Order ALB"]
+        ALB1["ALB node · AZ1"]
+        ALB2["ALB node · AZ2"]
+        ALB3["ALB node · AZ3"]
+    end
+
+    subgraph AZ1["Availability Zone 1"]
+        A["EKS Node A<br/>Order-1"]
+        B["EKS Node B<br/>Order-2"]
+        L1["Ledger-1<br/>on Node A or B"]
+    end
+
+    subgraph AZ2["Availability Zone 2"]
+        C["EKS Node C<br/>Order-3"]
+        D["EKS Node D<br/>Order-4"]
+        L2["Ledger-2<br/>on Node C or D"]
+    end
+
+    subgraph AZ3["Availability Zone 3"]
+        E["EKS Node E<br/>Order-5"]
+        F["EKS Node F<br/>Order-6"]
+        L3["Ledger-3<br/>on Node E or F"]
+    end
+
+    Matching["Matching pod ×1<br/>scheduler-selected AZ"]
+    RDS[("RDS Multi-AZ cluster<br/>role-aware endpoints")]
+
+    Internet --> ALB1 & ALB2 & ALB3
+    ALB1 -->|"NodePort 30083 · local"| A & B
+    ALB2 -->|"NodePort 30083 · local"| C & D
+    ALB3 -->|"NodePort 30083 · local"| E & F
+
+    A & B -->|"PreferSameZone"| L1
+    C & D -->|"PreferSameZone"| L2
+    E & F -->|"PreferSameZone"| L3
+
+    A & B & C & D & E & F -.->|"may cross AZ"| Matching
+    L1 & L2 & L3 -.->|"writer or reader may be remote"| RDS
+```
+
+Solid arrows show the intended same-AZ path. Dashed arrows show hops that can
+still cross zones: Matching remains a singleton, and RDS endpoints follow
+database roles rather than caller locality. If an AZ has no healthy local Order
+target, the ALB removes that zonal node from DNS and new traffic fails away to a
+healthy zone.
 
 ## Private tier
 

@@ -72,6 +72,24 @@ non-root Pods, and keeps Matching at one replica with `Recreate` updates. The
 mock Matching Engine has no durable order book or fenced ownership; do not
 scale it above one. This stack adds no edge authentication.
 
+Order runs six replicas with hard zone and hostname spread constraints, placing
+two replicas per Availability Zone on separate nodes. Ledger runs three replicas
+with one replica per zone. Their Services use `trafficDistribution: PreferSameZone`, so
+Order-to-Ledger connections select a Ledger Pod in the caller's zone when a
+healthy endpoint exists there and fall back to another zone otherwise. The Order
+NodePort uses `externalTrafficPolicy: Local`; together with cross-zone routing
+disabled on the ALB target group, an ALB node sends ingress only to an Order Pod
+on a node in the same zone. Nodes without a local ready Order Pod fail the
+target-group health check and receive no ingress. This requires at least six EKS
+nodes and increases the baseline EC2 cost; if a zone lacks two eligible nodes,
+the affected Order replica remains Pending instead of colocating.
+
+Matching remains one replica, so Order-to-Matching and Matching-to-Kafka traffic
+cannot be guaranteed AZ-local. RDS cluster endpoints are role-aware rather than
+zone-aware; Ledger-to-PostgreSQL traffic can also cross zones when the selected
+database writer or reader is elsewhere. These settings reduce avoidable
+cross-zone hops but do not guarantee an entirely single-AZ order path.
+
 ## Verify and operate
 
 Terraform waits for the migration Job and Deployment rollouts. From a machine

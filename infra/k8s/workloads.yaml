@@ -5,6 +5,7 @@ metadata:
   namespace: praxis
 spec:
   type: ClusterIP
+  trafficDistribution: PreferSameZone
   selector:
     app: ledger
   ports:
@@ -33,6 +34,8 @@ metadata:
   namespace: praxis
 spec:
   type: NodePort
+  externalTrafficPolicy: Local
+  trafficDistribution: PreferSameZone
   selector:
     app: order
   ports:
@@ -47,7 +50,7 @@ metadata:
   name: ledger
   namespace: praxis
 spec:
-  replicas: 1
+  replicas: 3
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -66,6 +69,14 @@ spec:
       serviceAccountName: ledger
       nodeSelector:
         praxis.io/workload: hot-path
+      topologySpreadConstraints:
+        - maxSkew: 1
+          minDomains: 3
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: ledger
       terminationGracePeriodSeconds: 40
       securityContext:
         runAsNonRoot: true
@@ -245,7 +256,7 @@ metadata:
   name: order
   namespace: praxis
 spec:
-  replicas: 1
+  replicas: 6
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -265,6 +276,21 @@ spec:
       automountServiceAccountToken: false
       nodeSelector:
         praxis.io/workload: hot-path
+      topologySpreadConstraints:
+        - maxSkew: 1
+          minDomains: 3
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: order
+        - maxSkew: 1
+          minDomains: 6
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: order
       terminationGracePeriodSeconds: 40
       securityContext:
         runAsNonRoot: true

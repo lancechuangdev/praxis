@@ -70,9 +70,9 @@ variable "eks_node_instance_types" {
 }
 
 variable "eks_node_min_size" {
-  description = "Minimum EKS EC2 node count across three Availability Zones."
+  description = "Minimum EKS EC2 node count; keep at least two nodes in each of the three Availability Zones for node-local Order redundancy."
   type        = number
-  default     = 3
+  default     = 6
 
   validation {
     condition     = var.eks_node_min_size >= 1 && var.eks_node_min_size <= 20 && floor(var.eks_node_min_size) == var.eks_node_min_size

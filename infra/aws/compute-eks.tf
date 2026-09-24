@@ -52,6 +52,11 @@ resource "aws_eks_cluster" "this" {
       condition     = var.eks_node_min_size <= var.eks_node_max_size
       error_message = "eks_node_min_size must not exceed eks_node_max_size."
     }
+
+    precondition {
+      condition     = var.eks_node_min_size >= var.availability_zone_count * 2
+      error_message = "eks_node_min_size must be at least twice availability_zone_count so two node-local Order targets can run in every zone."
+    }
   }
 
   depends_on = [aws_iam_role_policy_attachment.eks_cluster, aws_cloudwatch_log_group.eks_control_plane]

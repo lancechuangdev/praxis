@@ -54,6 +54,8 @@ resource "aws_lb_target_group" "order" {
   target_type = "instance"
   vpc_id      = aws_vpc.cex.id
 
+  load_balancing_cross_zone_enabled = "false"
+
   health_check {
     enabled             = true
     path                = "/readyz"
