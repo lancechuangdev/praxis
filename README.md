@@ -11,7 +11,7 @@ The repository contains:
 
 - `orderservice`: HTTP order admission, risk simulation, Ledger gRPC, and Matching Engine gRPC.
 - `ledgerservice`: PostgreSQL-backed double-entry ledger and reservation APIs.
-- `matchingengine`: mock partitioned admission engine that emits `OrderAccepted` to Kafka.
+- `matchingengine`: durable PostgreSQL-backed order admission with a transactional outbox and asynchronous Kafka relay.
 - `outboxrelay`: batched PostgreSQL-outbox-to-Kafka relay.
 - `infra/aws`: independent VPC, Amazon MSK, Kafka topics, and Multi-AZ PostgreSQL Terraform.
 
@@ -21,7 +21,7 @@ The repository contains:
 |---|---|
 | Ledger Service | Implements deposits, hold releases, order reservations, balance queries, immutable journals/entries, balance projections, and a transactional outbox. |
 | Order Service | Implements synchronous risk simulation, Ledger reservation over gRPC, and Matching Engine admission over gRPC. |
-| Matching Engine | An order-admission test double that partitions requests in memory and synchronously publishes `OrderAccepted` to Kafka. It does not match orders or emit fills. |
+| Matching Engine | Implements durable per-symbol order admission and a transactional outbox with an asynchronous relay. It does not yet execute matches or emit fills. |
 | Outbox Relay | Independently runnable batched relay for publishing PostgreSQL outbox records to Kafka; it is not started by the main Compose file. |
 | AWS infrastructure | Terraform reference configuration for an isolated VPC, Amazon MSK, Kafka topics, and Multi-AZ PostgreSQL. Applying it creates billable AWS resources and requires environment-specific review. |
 | Deposit architecture | Reference design only; the Address, Indexer, Risk, Treasury, Wallet, Notification, and Reconciliation services are not implemented here. |
@@ -29,6 +29,8 @@ The repository contains:
 ## Documentation
 
 - [Ledger Service](ledgerservice/README.md)
+- [Ledger scaling and Market-Clearing Ledger Sharding](docs/ledger-scaling-and-mcls.md)
+- [Ledger reconciliation and analytics](docs/ledger-reconciliation-and-analytics.md)
 - [Order Service and load tests](orderservice/README.md)
 - [Matching Engine](matchingengine/README.md)
 - [Outbox Relay](outboxrelay/README.md)
