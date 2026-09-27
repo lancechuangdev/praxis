@@ -6,6 +6,16 @@ option go_package = "praxis/orderservice/gen/ledger/v1;ledgerv1";
 
 service LedgerService {
   rpc ReserveForOrder(ReserveForOrderRequest) returns (ReservationResponse);
+  rpc ReleaseOrderReservation(ReleaseOrderReservationRequest) returns (ReservationResponse);
+}
+
+message ReleaseOrderReservationRequest {
+  string command_id = 1;
+  string order_id = 2;
+  string reason = 3;
+  string correlation_id = 4;
+  string causation_id = 5;
+  string occurred_at = 6;
 }
 
 message ReserveForOrderRequest {

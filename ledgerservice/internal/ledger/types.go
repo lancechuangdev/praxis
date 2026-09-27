@@ -32,6 +32,11 @@ type ReserveOrder struct {
 	OccurredAt                                          time.Time
 }
 
+type ReleaseOrderReservation struct {
+	CommandID, OrderID, Reason, CorrelationID, CausationID string
+	OccurredAt                                             time.Time
+}
+
 type TradeExecuted struct {
 	EventID, TradeID, EngineID, Symbol       string
 	SequenceNumber                           int64
@@ -124,6 +129,7 @@ type Store interface {
 	PostDeposit(context.Context, PostDeposit) (OperationResult, error)
 	ReleaseHold(context.Context, ReleaseHold) (OperationResult, error)
 	ReserveForOrder(context.Context, ReserveOrder) (Reservation, error)
+	ReleaseOrderReservation(context.Context, ReleaseOrderReservation) (Reservation, error)
 	BookTrade(context.Context, TradeExecuted) (OperationResult, error)
 	CancelOrder(context.Context, CancelOrder) (OperationResult, error)
 	GetBalance(context.Context, string, string) (Balance, error)

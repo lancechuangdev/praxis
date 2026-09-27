@@ -269,6 +269,66 @@ func reservationTx(ctx context.Context, tx pgx.Tx, order string) (ledger.Reserva
 func (p *Postgres) GetReservation(ctx context.Context, order string) (ledger.Reservation, error) {
 	return reservationPool(ctx, p.Reader, order)
 }
+
+// ReleaseOrderReservation returns whatever remains reserved to available funds.
+// The command ID is recorded as the source event, making retries idempotent.
+func (p *Postgres) ReleaseOrderReservation(ctx context.Context, v ledger.ReleaseOrderReservation) (ledger.Reservation, error) {
+	if v.CommandID == "" || v.OrderID == "" || (v.Reason != "matching_failed" && v.Reason != "execution_complete") {
+		return ledger.Reservation{}, errors.New("command_id, order_id, and a valid release reason are required")
+	}
+	tx, err := begin(ctx, p.Writer)
+	if err != nil {
+		return ledger.Reservation{}, err
+	}
+	defer tx.Rollback(ctx)
+	jid := stableID("jrn_", "order-saga", v.CommandID)
+	created, err := createJournal(ctx, tx, jid, "order", v.OrderID, "order_reservation_released", "order-saga", v.CommandID, v.CorrelationID, v.CausationID, "release order reservation: "+v.Reason, v.OccurredAt, map[string]any{"reason": v.Reason})
+	if err != nil {
+		return ledger.Reservation{}, err
+	}
+	if !created {
+		r, e := reservationTx(ctx, tx, v.OrderID)
+		if e == nil {
+			r.Replay = true
+			e = tx.Commit(ctx)
+		}
+		return r, e
+	}
+	rsv, err := lockReservations(ctx, tx, v.OrderID)
+	if err != nil {
+		return ledger.Reservation{}, err
+	}
+	r := rsv[v.OrderID]
+	if r.remaining != "0" {
+		ct, e := tx.Exec(ctx, `UPDATE user_asset_balances SET reserved_atomic=reserved_atomic-$1::numeric,available_atomic=available_atomic+$1::numeric,version=version+1,updated_at=now() WHERE user_asset_account_id=$2 AND reserved_atomic>=$1::numeric`, r.remaining, r.userAccount)
+		if e != nil {
+			return ledger.Reservation{}, e
+		}
+		if ct.RowsAffected() != 1 {
+			return ledger.Reservation{}, ledger.ErrInsufficientFunds
+		}
+		if _, e = tx.Exec(ctx, `UPDATE fund_reservations SET remaining_atomic=0,status='released',version=version+1,updated_at=now() WHERE id=$1`, r.id); e != nil {
+			return ledger.Reservation{}, e
+		}
+		if e = entry(ctx, tx, jid+":reserved", jid, "account_customer_reserved", r.userAccount, r.asset, "", "reserved", "debit", r.remaining); e != nil {
+			return ledger.Reservation{}, e
+		}
+		if e = entry(ctx, tx, jid+":available", jid, "account_customer_available", r.userAccount, r.asset, "", "available", "credit", r.remaining); e != nil {
+			return ledger.Reservation{}, e
+		}
+		if e = outbox(ctx, tx, stableID("evt_", jid), "FundsReleased", v.OrderID, r.userAccount, v.CorrelationID, v.CausationID, map[string]any{"journal_id": jid, "amount_atomic": r.remaining, "reason": v.Reason}); e != nil {
+			return ledger.Reservation{}, e
+		}
+	}
+	result, err := reservationTx(ctx, tx, v.OrderID)
+	if err != nil {
+		return ledger.Reservation{}, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return ledger.Reservation{}, err
+	}
+	return result, nil
+}
 func reservationPool(ctx context.Context, db *pgxpool.Pool, order string) (ledger.Reservation, error) {
 	var r ledger.Reservation
 	err := db.QueryRow(ctx, `SELECT r.id,r.order_id,r.status,r.original_atomic::text,r.remaining_atomic::text,b.version FROM fund_reservations r JOIN user_asset_balances b ON b.user_asset_account_id=r.user_asset_account_id WHERE r.order_id=$1`, order).Scan(&r.ID, &r.OrderID, &r.Status, &r.OriginalAtomic, &r.RemainingAtomic, &r.BalanceVersion)

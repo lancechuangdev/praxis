@@ -24,7 +24,21 @@ func (h HTTP) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", h.ready)
 	mux.HandleFunc("GET /metrics", h.metrics)
 	mux.HandleFunc("POST /v1/orders", h.admit)
+	mux.HandleFunc("POST /v1/orders/{order_id}/execution-complete", h.executionComplete)
 	return withRequestMetadata(mux)
+}
+
+func (h HTTP) executionComplete(w http.ResponseWriter, r *http.Request) {
+	orderID := r.PathValue("order_id")
+	if orderID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "order_id is required"})
+		return
+	}
+	if err := h.Service.CompleteExecution(r.Context(), orderID); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"order_id": orderID, "status": "reservation_released"})
 }
 
 func (h HTTP) ready(w http.ResponseWriter, r *http.Request) {

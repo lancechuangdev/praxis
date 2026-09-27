@@ -20,7 +20,18 @@ var tracer = otel.Tracer("praxis/order-service")
 
 type Ledger interface {
 	Reserve(context.Context, Request) (Reservation, error)
+	Release(context.Context, ReleaseRequest) (Reservation, error)
 	Close() error
+}
+
+type SagaStore interface {
+	Start(context.Context, Request) error
+	Reserved(context.Context, string, string) error
+	Accepted(context.Context, string) error
+	RequestRelease(context.Context, string, string) (Saga, error)
+	Released(context.Context, string) error
+	ReleaseFailed(context.Context, string, error) error
+	DueReleases(context.Context, int) ([]Saga, error)
 }
 
 type MatchingEngine interface {
@@ -41,6 +52,7 @@ type Service struct {
 	RiskLatency   time.Duration
 	RiskRejectBPS int
 	Metrics       *Metrics
+	Sagas         SagaStore
 }
 
 func Validate(v Request) error {
@@ -72,7 +84,6 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 		s.failed(started)
 		return Response{}, err
 	}
-
 	riskStart := time.Now()
 	riskCtx, riskSpan := tracer.Start(ctx, "risk.check")
 	if err := wait(riskCtx, s.RiskLatency); err != nil {
@@ -96,6 +107,12 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	}
 	riskSpan.SetAttributes(attribute.Bool("risk.rejected", false))
 	riskSpan.End()
+	if s.Sagas != nil {
+		if err := s.Sagas.Start(ctx, req); err != nil {
+			s.failed(started)
+			return Response{}, fmt.Errorf("persist order saga: %w", err)
+		}
+	}
 
 	reserveStart := time.Now()
 	reservation, err := s.Ledger.Reserve(ctx, req)
@@ -106,6 +123,12 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 		s.failed(started)
 		return Response{}, fmt.Errorf("reserve funds: %w", err)
 	}
+	if s.Sagas != nil {
+		if err := s.Sagas.Reserved(ctx, req.RequestID, reservation.ID); err != nil {
+			s.failed(started)
+			return Response{}, fmt.Errorf("persist reservation step: %w", err)
+		}
+	}
 
 	matchingStart := time.Now()
 	match, err := s.Matching.Submit(ctx, req, reservation)
@@ -113,8 +136,20 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	s.Metrics.MatchingNS.Add(uint64(matchingDuration))
 	s.Metrics.MatchingDuration.Observe(matchingDuration)
 	if err != nil {
+		if s.Sagas != nil {
+			saga, persistErr := s.Sagas.RequestRelease(context.Background(), req.OrderID, "matching_failed")
+			if persistErr == nil {
+				_ = s.release(context.Background(), saga)
+			}
+		}
 		s.failed(started)
 		return Response{}, fmt.Errorf("matching admission: %w", err)
+	}
+	if s.Sagas != nil {
+		if err := s.Sagas.Accepted(ctx, req.RequestID); err != nil {
+			s.failed(started)
+			return Response{}, fmt.Errorf("persist matching step: %w", err)
+		}
 	}
 
 	total := time.Since(started)
@@ -122,6 +157,49 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	s.Metrics.TotalNS.Add(uint64(total))
 	s.Metrics.TotalDuration.Observe(total)
 	return Response{OrderID: req.OrderID, Status: match.Status, Reservation: reservation, EngineSequence: match.EngineSequence, Timings: Timings{RiskMS: milliseconds(riskDuration), ReserveMS: milliseconds(reserveDuration), MatchingMS: milliseconds(matchingDuration), TotalMS: milliseconds(total)}}, nil
+}
+
+// CompleteExecution is called after all TradeExecuted events for the order have
+// been booked by Ledger. Release is safe because Ledger returns only the unused remainder.
+func (s *Service) CompleteExecution(ctx context.Context, orderID string) error {
+	if s.Sagas == nil {
+		return errors.New("persistent saga store is not configured")
+	}
+	saga, err := s.Sagas.RequestRelease(ctx, orderID, "execution_complete")
+	if err != nil {
+		return err
+	}
+	return s.release(ctx, saga)
+}
+
+func (s *Service) release(ctx context.Context, saga Saga) error {
+	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, err := s.Ledger.Release(callCtx, ReleaseRequest{CommandID: saga.RequestID + ":release:" + saga.ReleaseReason, OrderID: saga.OrderID, Reason: saga.ReleaseReason, CorrelationID: saga.CorrelationID, CausationID: saga.CausationID})
+	if err != nil {
+		_ = s.Sagas.ReleaseFailed(context.Background(), saga.RequestID, err)
+		return err
+	}
+	return s.Sagas.Released(context.Background(), saga.RequestID)
+}
+
+func (s *Service) RunSagaRecovery(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			sagas, err := s.Sagas.DueReleases(ctx, 100)
+			if err != nil {
+				continue
+			}
+			for _, saga := range sagas {
+				_ = s.release(ctx, saga)
+			}
+		}
+	}
 }
 
 func (s *Service) failed(started time.Time) {

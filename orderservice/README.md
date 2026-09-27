@@ -7,9 +7,9 @@ testing:
 HTTP client → mock risk check → ledger ReserveForOrder gRPC → matching engine gRPC
 ```
 
-It is a benchmark fixture, not a production order service. It intentionally
-does not persist an order state machine or implement compensation when matching
-admission fails after a successful reservation.
+It is a benchmark fixture, not a production order service. It persists the
+order-admission saga in PostgreSQL and retries an idempotent Ledger release when
+matching fails after funds were reserved.
 
 ## Modes
 
@@ -37,6 +37,13 @@ was committed on the PostgreSQL writer. Clients should update their local state
 from this response instead of immediately issuing a GET for the same state. The
 current mock Matching Engine returns only after Kafka acknowledges its
 `OrderAccepted` event; it does not yet persist an order state machine.
+
+Set `ORDER_DATABASE_URL` to the Order saga database. The service applies its
+`order_sagas` migration on startup and retries pending releases after restarts.
+After Ledger has booked every `TradeExecuted` event for a completed order, call
+`POST /v1/orders/{order_id}/execution-complete`; Ledger atomically returns only
+the reservation's unused remainder to available funds. The caller must emit
+this terminal signal only after Ledger has acknowledged all trade bookings.
 
 Ledger balance and reservation GET endpoints are served from read replicas and
 are eventually consistent. They can temporarily return an older version than a

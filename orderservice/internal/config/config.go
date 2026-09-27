@@ -11,6 +11,8 @@ import (
 
 type Config struct {
 	HTTPAddress         string
+	DatabaseURL         string
+	SagaRetryInterval   time.Duration
 	LedgerMode          string
 	LedgerGRPCAddress   string
 	LedgerTimeout       time.Duration
@@ -26,6 +28,8 @@ type Config struct {
 func Load() (Config, error) {
 	c := Config{
 		HTTPAddress:         value("ORDER_HTTP_ADDRESS", ":8083"),
+		DatabaseURL:         value("ORDER_DATABASE_URL", "postgres://ledger:ledger@localhost:5433/cex_ledger?sslmode=disable"),
+		SagaRetryInterval:   duration("ORDER_SAGA_RETRY_INTERVAL", time.Second),
 		LedgerMode:          value("ORDER_LEDGER_MODE", "grpc"),
 		LedgerGRPCAddress:   value("ORDER_LEDGER_GRPC_ADDRESS", "localhost:9091"),
 		LedgerTimeout:       duration("ORDER_LEDGER_TIMEOUT", 2*time.Second),

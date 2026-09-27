@@ -59,6 +59,16 @@ func (l *GRPCLedger) Reserve(ctx context.Context, req order.Request) (order.Rese
 	return order.Reservation{ID: response.ReservationId, BalanceVersion: response.BalanceVersion, Replay: response.IdempotentReplay}, nil
 }
 
+func (l *GRPCLedger) Release(ctx context.Context, req order.ReleaseRequest) (order.Reservation, error) {
+	callCtx, cancel := context.WithTimeout(ctx, l.timeout)
+	defer cancel()
+	response, err := l.client.ReleaseOrderReservation(callCtx, &ledgerv1.ReleaseOrderReservationRequest{CommandId: req.CommandID, OrderId: req.OrderID, Reason: req.Reason, CorrelationId: req.CorrelationID, CausationId: req.CausationID, OccurredAt: time.Now().UTC().Format(time.RFC3339Nano)})
+	if err != nil {
+		return order.Reservation{}, err
+	}
+	return order.Reservation{ID: response.ReservationId, BalanceVersion: response.BalanceVersion, Replay: response.IdempotentReplay}, nil
+}
+
 func requestContext(req order.Request) (string, string) {
 	correlationID := req.CorrelationID
 	if correlationID == "" {
@@ -82,6 +92,12 @@ func (m MockLedger) Reserve(ctx context.Context, req order.Request) (order.Reser
 	}
 	hash := sha256.Sum256([]byte(req.OrderID))
 	return order.Reservation{ID: "mock_rsv_" + hex.EncodeToString(hash[:8]), BalanceVersion: 1}, nil
+}
+func (m MockLedger) Release(ctx context.Context, req order.ReleaseRequest) (order.Reservation, error) {
+	if err := wait(ctx, m.Latency); err != nil {
+		return order.Reservation{}, err
+	}
+	return order.Reservation{ID: req.OrderID + ":released", BalanceVersion: 2}, nil
 }
 func (MockLedger) Close() error { return nil }
 

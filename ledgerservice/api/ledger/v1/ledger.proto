@@ -8,8 +8,18 @@ service LedgerService {
   rpc PostDeposit(PostDepositRequest) returns (OperationResponse);
   rpc ReleaseHold(ReleaseHoldRequest) returns (OperationResponse);
   rpc ReserveForOrder(ReserveForOrderRequest) returns (ReservationResponse);
+  rpc ReleaseOrderReservation(ReleaseOrderReservationRequest) returns (ReservationResponse);
   rpc GetBalance(GetBalanceRequest) returns (BalanceResponse);
   rpc GetReservation(GetReservationRequest) returns (ReservationResponse);
+}
+
+message ReleaseOrderReservationRequest {
+  string command_id = 1;
+  string order_id = 2;
+  string reason = 3;
+  string correlation_id = 4;
+  string causation_id = 5;
+  string occurred_at = 6;
 }
 
 message PostDepositRequest {

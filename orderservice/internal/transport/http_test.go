@@ -41,6 +41,9 @@ func (c *captureLedger) Reserve(_ context.Context, request order.Request) (order
 	c.request = request
 	return order.Reservation{ID: "reservation-1"}, nil
 }
+func (*captureLedger) Release(context.Context, order.ReleaseRequest) (order.Reservation, error) {
+	return order.Reservation{}, nil
+}
 func (*captureLedger) Close() error { return nil }
 
 type acceptingMatching struct{}

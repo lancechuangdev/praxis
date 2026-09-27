@@ -21,6 +21,90 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type ReleaseOrderReservationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	OrderId       string                 `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
+	CorrelationId string                 `protobuf:"bytes,4,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	CausationId   string                 `protobuf:"bytes,5,opt,name=causation_id,json=causationId,proto3" json:"causation_id,omitempty"`
+	OccurredAt    string                 `protobuf:"bytes,6,opt,name=occurred_at,json=occurredAt,proto3" json:"occurred_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseOrderReservationRequest) Reset() {
+	*x = ReleaseOrderReservationRequest{}
+	mi := &file_api_ledger_v1_ledger_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseOrderReservationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseOrderReservationRequest) ProtoMessage() {}
+
+func (x *ReleaseOrderReservationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_ledger_v1_ledger_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseOrderReservationRequest.ProtoReflect.Descriptor instead.
+func (*ReleaseOrderReservationRequest) Descriptor() ([]byte, []int) {
+	return file_api_ledger_v1_ledger_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *ReleaseOrderReservationRequest) GetCommandId() string {
+	if x != nil {
+		return x.CommandId
+	}
+	return ""
+}
+
+func (x *ReleaseOrderReservationRequest) GetOrderId() string {
+	if x != nil {
+		return x.OrderId
+	}
+	return ""
+}
+
+func (x *ReleaseOrderReservationRequest) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+func (x *ReleaseOrderReservationRequest) GetCorrelationId() string {
+	if x != nil {
+		return x.CorrelationId
+	}
+	return ""
+}
+
+func (x *ReleaseOrderReservationRequest) GetCausationId() string {
+	if x != nil {
+		return x.CausationId
+	}
+	return ""
+}
+
+func (x *ReleaseOrderReservationRequest) GetOccurredAt() string {
+	if x != nil {
+		return x.OccurredAt
+	}
+	return ""
+}
+
 type ReserveForOrderRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
@@ -39,7 +123,7 @@ type ReserveForOrderRequest struct {
 
 func (x *ReserveForOrderRequest) Reset() {
 	*x = ReserveForOrderRequest{}
-	mi := &file_api_ledger_v1_ledger_proto_msgTypes[0]
+	mi := &file_api_ledger_v1_ledger_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -51,7 +135,7 @@ func (x *ReserveForOrderRequest) String() string {
 func (*ReserveForOrderRequest) ProtoMessage() {}
 
 func (x *ReserveForOrderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_ledger_v1_ledger_proto_msgTypes[0]
+	mi := &file_api_ledger_v1_ledger_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -64,7 +148,7 @@ func (x *ReserveForOrderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReserveForOrderRequest.ProtoReflect.Descriptor instead.
 func (*ReserveForOrderRequest) Descriptor() ([]byte, []int) {
-	return file_api_ledger_v1_ledger_proto_rawDescGZIP(), []int{0}
+	return file_api_ledger_v1_ledger_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *ReserveForOrderRequest) GetCommandId() string {
@@ -152,7 +236,7 @@ type ReservationResponse struct {
 
 func (x *ReservationResponse) Reset() {
 	*x = ReservationResponse{}
-	mi := &file_api_ledger_v1_ledger_proto_msgTypes[1]
+	mi := &file_api_ledger_v1_ledger_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -164,7 +248,7 @@ func (x *ReservationResponse) String() string {
 func (*ReservationResponse) ProtoMessage() {}
 
 func (x *ReservationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_ledger_v1_ledger_proto_msgTypes[1]
+	mi := &file_api_ledger_v1_ledger_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -177,7 +261,7 @@ func (x *ReservationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReservationResponse.ProtoReflect.Descriptor instead.
 func (*ReservationResponse) Descriptor() ([]byte, []int) {
-	return file_api_ledger_v1_ledger_proto_rawDescGZIP(), []int{1}
+	return file_api_ledger_v1_ledger_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ReservationResponse) GetReservationId() string {
@@ -233,7 +317,16 @@ var File_api_ledger_v1_ledger_proto protoreflect.FileDescriptor
 
 const file_api_ledger_v1_ledger_proto_rawDesc = "" +
 	"\n" +
-	"\x1aapi/ledger/v1/ledger.proto\x12\tledger.v1\"\xda\x02\n" +
+	"\x1aapi/ledger/v1/ledger.proto\x12\tledger.v1\"\xdd\x01\n" +
+	"\x1eReleaseOrderReservationRequest\x12\x1d\n" +
+	"\n" +
+	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x19\n" +
+	"\border_id\x18\x02 \x01(\tR\aorderId\x12\x16\n" +
+	"\x06reason\x18\x03 \x01(\tR\x06reason\x12%\n" +
+	"\x0ecorrelation_id\x18\x04 \x01(\tR\rcorrelationId\x12!\n" +
+	"\fcausation_id\x18\x05 \x01(\tR\vcausationId\x12\x1f\n" +
+	"\voccurred_at\x18\x06 \x01(\tR\n" +
+	"occurredAt\"\xda\x02\n" +
 	"\x16ReserveForOrderRequest\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x19\n" +
@@ -256,9 +349,10 @@ const file_api_ledger_v1_ledger_proto_rawDesc = "" +
 	"\x0foriginal_atomic\x18\x04 \x01(\tR\x0eoriginalAtomic\x12)\n" +
 	"\x10remaining_atomic\x18\x05 \x01(\tR\x0fremainingAtomic\x12'\n" +
 	"\x0fbalance_version\x18\x06 \x01(\x03R\x0ebalanceVersion\x12+\n" +
-	"\x11idempotent_replay\x18\a \x01(\bR\x10idempotentReplay2e\n" +
+	"\x11idempotent_replay\x18\a \x01(\bR\x10idempotentReplay2\xcb\x01\n" +
 	"\rLedgerService\x12T\n" +
-	"\x0fReserveForOrder\x12!.ledger.v1.ReserveForOrderRequest\x1a\x1e.ledger.v1.ReservationResponseB,Z*praxis/orderservice/gen/ledger/v1;ledgerv1b\x06proto3"
+	"\x0fReserveForOrder\x12!.ledger.v1.ReserveForOrderRequest\x1a\x1e.ledger.v1.ReservationResponse\x12d\n" +
+	"\x17ReleaseOrderReservation\x12).ledger.v1.ReleaseOrderReservationRequest\x1a\x1e.ledger.v1.ReservationResponseB,Z*praxis/orderservice/gen/ledger/v1;ledgerv1b\x06proto3"
 
 var (
 	file_api_ledger_v1_ledger_proto_rawDescOnce sync.Once
@@ -272,16 +366,19 @@ func file_api_ledger_v1_ledger_proto_rawDescGZIP() []byte {
 	return file_api_ledger_v1_ledger_proto_rawDescData
 }
 
-var file_api_ledger_v1_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_api_ledger_v1_ledger_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_api_ledger_v1_ledger_proto_goTypes = []any{
-	(*ReserveForOrderRequest)(nil), // 0: ledger.v1.ReserveForOrderRequest
-	(*ReservationResponse)(nil),    // 1: ledger.v1.ReservationResponse
+	(*ReleaseOrderReservationRequest)(nil), // 0: ledger.v1.ReleaseOrderReservationRequest
+	(*ReserveForOrderRequest)(nil),         // 1: ledger.v1.ReserveForOrderRequest
+	(*ReservationResponse)(nil),            // 2: ledger.v1.ReservationResponse
 }
 var file_api_ledger_v1_ledger_proto_depIdxs = []int32{
-	0, // 0: ledger.v1.LedgerService.ReserveForOrder:input_type -> ledger.v1.ReserveForOrderRequest
-	1, // 1: ledger.v1.LedgerService.ReserveForOrder:output_type -> ledger.v1.ReservationResponse
-	1, // [1:2] is the sub-list for method output_type
-	0, // [0:1] is the sub-list for method input_type
+	1, // 0: ledger.v1.LedgerService.ReserveForOrder:input_type -> ledger.v1.ReserveForOrderRequest
+	0, // 1: ledger.v1.LedgerService.ReleaseOrderReservation:input_type -> ledger.v1.ReleaseOrderReservationRequest
+	2, // 2: ledger.v1.LedgerService.ReserveForOrder:output_type -> ledger.v1.ReservationResponse
+	2, // 3: ledger.v1.LedgerService.ReleaseOrderReservation:output_type -> ledger.v1.ReservationResponse
+	2, // [2:4] is the sub-list for method output_type
+	0, // [0:2] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -298,7 +395,7 @@ func file_api_ledger_v1_ledger_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_ledger_v1_ledger_proto_rawDesc), len(file_api_ledger_v1_ledger_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

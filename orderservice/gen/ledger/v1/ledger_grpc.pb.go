@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LedgerService_ReserveForOrder_FullMethodName = "/ledger.v1.LedgerService/ReserveForOrder"
+	LedgerService_ReserveForOrder_FullMethodName         = "/ledger.v1.LedgerService/ReserveForOrder"
+	LedgerService_ReleaseOrderReservation_FullMethodName = "/ledger.v1.LedgerService/ReleaseOrderReservation"
 )
 
 // LedgerServiceClient is the client API for LedgerService service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type LedgerServiceClient interface {
 	ReserveForOrder(ctx context.Context, in *ReserveForOrderRequest, opts ...grpc.CallOption) (*ReservationResponse, error)
+	ReleaseOrderReservation(ctx context.Context, in *ReleaseOrderReservationRequest, opts ...grpc.CallOption) (*ReservationResponse, error)
 }
 
 type ledgerServiceClient struct {
@@ -47,11 +49,22 @@ func (c *ledgerServiceClient) ReserveForOrder(ctx context.Context, in *ReserveFo
 	return out, nil
 }
 
+func (c *ledgerServiceClient) ReleaseOrderReservation(ctx context.Context, in *ReleaseOrderReservationRequest, opts ...grpc.CallOption) (*ReservationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReservationResponse)
+	err := c.cc.Invoke(ctx, LedgerService_ReleaseOrderReservation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LedgerServiceServer is the server API for LedgerService service.
 // All implementations must embed UnimplementedLedgerServiceServer
 // for forward compatibility.
 type LedgerServiceServer interface {
 	ReserveForOrder(context.Context, *ReserveForOrderRequest) (*ReservationResponse, error)
+	ReleaseOrderReservation(context.Context, *ReleaseOrderReservationRequest) (*ReservationResponse, error)
 	mustEmbedUnimplementedLedgerServiceServer()
 }
 
@@ -64,6 +77,9 @@ type UnimplementedLedgerServiceServer struct{}
 
 func (UnimplementedLedgerServiceServer) ReserveForOrder(context.Context, *ReserveForOrderRequest) (*ReservationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReserveForOrder not implemented")
+}
+func (UnimplementedLedgerServiceServer) ReleaseOrderReservation(context.Context, *ReleaseOrderReservationRequest) (*ReservationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReleaseOrderReservation not implemented")
 }
 func (UnimplementedLedgerServiceServer) mustEmbedUnimplementedLedgerServiceServer() {}
 func (UnimplementedLedgerServiceServer) testEmbeddedByValue()                       {}
@@ -104,6 +120,24 @@ func _LedgerService_ReserveForOrder_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerService_ReleaseOrderReservation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReleaseOrderReservationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).ReleaseOrderReservation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_ReleaseOrderReservation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).ReleaseOrderReservation(ctx, req.(*ReleaseOrderReservationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LedgerService_ServiceDesc is the grpc.ServiceDesc for LedgerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -114,6 +148,10 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReserveForOrder",
 			Handler:    _LedgerService_ReserveForOrder_Handler,
+		},
+		{
+			MethodName: "ReleaseOrderReservation",
+			Handler:    _LedgerService_ReleaseOrderReservation_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

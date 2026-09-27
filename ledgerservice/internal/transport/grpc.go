@@ -81,6 +81,17 @@ func (s *GRPC) ReserveForOrder(ctx context.Context, r *ledgerv1.ReserveForOrderR
 	}
 	return reservation(v), nil
 }
+func (s *GRPC) ReleaseOrderReservation(ctx context.Context, r *ledgerv1.ReleaseOrderReservationRequest) (*ledgerv1.ReservationResponse, error) {
+	at, e := eventTime(r.OccurredAt)
+	if e != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid occurred_at")
+	}
+	v, e := s.Store.ReleaseOrderReservation(ctx, ledger.ReleaseOrderReservation{CommandID: r.CommandId, OrderID: r.OrderId, Reason: r.Reason, CorrelationID: r.CorrelationId, CausationID: r.CausationId, OccurredAt: at})
+	if e != nil {
+		return nil, grpcErr(e)
+	}
+	return reservation(v), nil
+}
 func (s *GRPC) GetBalance(ctx context.Context, r *ledgerv1.GetBalanceRequest) (*ledgerv1.BalanceResponse, error) {
 	v, e := s.Store.GetBalance(ctx, r.UserId, r.AssetId)
 	if e != nil {

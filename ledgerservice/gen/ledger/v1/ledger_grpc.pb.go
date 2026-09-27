@@ -19,11 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	LedgerService_PostDeposit_FullMethodName     = "/ledger.v1.LedgerService/PostDeposit"
-	LedgerService_ReleaseHold_FullMethodName     = "/ledger.v1.LedgerService/ReleaseHold"
-	LedgerService_ReserveForOrder_FullMethodName = "/ledger.v1.LedgerService/ReserveForOrder"
-	LedgerService_GetBalance_FullMethodName      = "/ledger.v1.LedgerService/GetBalance"
-	LedgerService_GetReservation_FullMethodName  = "/ledger.v1.LedgerService/GetReservation"
+	LedgerService_PostDeposit_FullMethodName             = "/ledger.v1.LedgerService/PostDeposit"
+	LedgerService_ReleaseHold_FullMethodName             = "/ledger.v1.LedgerService/ReleaseHold"
+	LedgerService_ReserveForOrder_FullMethodName         = "/ledger.v1.LedgerService/ReserveForOrder"
+	LedgerService_ReleaseOrderReservation_FullMethodName = "/ledger.v1.LedgerService/ReleaseOrderReservation"
+	LedgerService_GetBalance_FullMethodName              = "/ledger.v1.LedgerService/GetBalance"
+	LedgerService_GetReservation_FullMethodName          = "/ledger.v1.LedgerService/GetReservation"
 )
 
 // LedgerServiceClient is the client API for LedgerService service.
@@ -33,6 +34,7 @@ type LedgerServiceClient interface {
 	PostDeposit(ctx context.Context, in *PostDepositRequest, opts ...grpc.CallOption) (*OperationResponse, error)
 	ReleaseHold(ctx context.Context, in *ReleaseHoldRequest, opts ...grpc.CallOption) (*OperationResponse, error)
 	ReserveForOrder(ctx context.Context, in *ReserveForOrderRequest, opts ...grpc.CallOption) (*ReservationResponse, error)
+	ReleaseOrderReservation(ctx context.Context, in *ReleaseOrderReservationRequest, opts ...grpc.CallOption) (*ReservationResponse, error)
 	GetBalance(ctx context.Context, in *GetBalanceRequest, opts ...grpc.CallOption) (*BalanceResponse, error)
 	GetReservation(ctx context.Context, in *GetReservationRequest, opts ...grpc.CallOption) (*ReservationResponse, error)
 }
@@ -75,6 +77,16 @@ func (c *ledgerServiceClient) ReserveForOrder(ctx context.Context, in *ReserveFo
 	return out, nil
 }
 
+func (c *ledgerServiceClient) ReleaseOrderReservation(ctx context.Context, in *ReleaseOrderReservationRequest, opts ...grpc.CallOption) (*ReservationResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReservationResponse)
+	err := c.cc.Invoke(ctx, LedgerService_ReleaseOrderReservation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *ledgerServiceClient) GetBalance(ctx context.Context, in *GetBalanceRequest, opts ...grpc.CallOption) (*BalanceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(BalanceResponse)
@@ -102,6 +114,7 @@ type LedgerServiceServer interface {
 	PostDeposit(context.Context, *PostDepositRequest) (*OperationResponse, error)
 	ReleaseHold(context.Context, *ReleaseHoldRequest) (*OperationResponse, error)
 	ReserveForOrder(context.Context, *ReserveForOrderRequest) (*ReservationResponse, error)
+	ReleaseOrderReservation(context.Context, *ReleaseOrderReservationRequest) (*ReservationResponse, error)
 	GetBalance(context.Context, *GetBalanceRequest) (*BalanceResponse, error)
 	GetReservation(context.Context, *GetReservationRequest) (*ReservationResponse, error)
 	mustEmbedUnimplementedLedgerServiceServer()
@@ -122,6 +135,9 @@ func (UnimplementedLedgerServiceServer) ReleaseHold(context.Context, *ReleaseHol
 }
 func (UnimplementedLedgerServiceServer) ReserveForOrder(context.Context, *ReserveForOrderRequest) (*ReservationResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ReserveForOrder not implemented")
+}
+func (UnimplementedLedgerServiceServer) ReleaseOrderReservation(context.Context, *ReleaseOrderReservationRequest) (*ReservationResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReleaseOrderReservation not implemented")
 }
 func (UnimplementedLedgerServiceServer) GetBalance(context.Context, *GetBalanceRequest) (*BalanceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetBalance not implemented")
@@ -204,6 +220,24 @@ func _LedgerService_ReserveForOrder_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LedgerService_ReleaseOrderReservation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReleaseOrderReservationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LedgerServiceServer).ReleaseOrderReservation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LedgerService_ReleaseOrderReservation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LedgerServiceServer).ReleaseOrderReservation(ctx, req.(*ReleaseOrderReservationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _LedgerService_GetBalance_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetBalanceRequest)
 	if err := dec(in); err != nil {
@@ -258,6 +292,10 @@ var LedgerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ReserveForOrder",
 			Handler:    _LedgerService_ReserveForOrder_Handler,
+		},
+		{
+			MethodName: "ReleaseOrderReservation",
+			Handler:    _LedgerService_ReleaseOrderReservation_Handler,
 		},
 		{
 			MethodName: "GetBalance",

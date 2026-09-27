@@ -42,3 +42,12 @@ type MatchResult struct {
 	Status         string
 	EngineSequence int64
 }
+
+type ReleaseRequest struct {
+	CommandID, OrderID, Reason, CorrelationID, CausationID string
+}
+
+type Saga struct {
+	RequestID, OrderID, CorrelationID, CausationID, ReservationID, State, ReleaseReason string
+	Attempts                                                                            int
+}

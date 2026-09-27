@@ -18,6 +18,7 @@ import (
 	"praxis/orderservice/internal/observability"
 	"praxis/orderservice/internal/order"
 	"praxis/orderservice/internal/transport"
+	"praxis/orderservice/migrations"
 )
 
 func main() {
@@ -34,6 +35,16 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Error("configuration", "error", err)
+		os.Exit(1)
+	}
+	sagaDB, err := order.OpenSagaDB(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Error("saga database", "error", err)
+		os.Exit(1)
+	}
+	defer sagaDB.Close()
+	if err = migrations.Apply(ctx, sagaDB); err != nil {
+		log.Error("saga migrations", "error", err)
 		os.Exit(1)
 	}
 	tracingShutdown, err := observability.SetupTracing(ctx, "order-service")
@@ -85,9 +96,11 @@ func main() {
 	}
 	defer matching.Close()
 
-	service := &order.Service{Ledger: ledger, Matching: matching, RiskLatency: cfg.RiskLatency, RiskRejectBPS: cfg.RiskRejectBPS, Metrics: &order.Metrics{}}
+	service := &order.Service{Ledger: ledger, Matching: matching, RiskLatency: cfg.RiskLatency, RiskRejectBPS: cfg.RiskRejectBPS, Metrics: &order.Metrics{}, Sagas: &order.PostgresSagaStore{DB: sagaDB}}
+	go service.RunSagaRecovery(ctx, cfg.SagaRetryInterval)
 	ready := func(ctx context.Context) error {
-		results := make(chan error, 2)
+		results := make(chan error, 3)
+		go func() { results <- sagaDB.Ping(ctx) }()
 		go func() {
 			if readyErr := ledgerReady(ctx); readyErr != nil {
 				results <- fmt.Errorf("ledger: %w", readyErr)
@@ -102,7 +115,7 @@ func main() {
 			}
 			results <- nil
 		}()
-		return errors.Join(<-results, <-results)
+		return errors.Join(<-results, <-results, <-results)
 	}
 	server := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Service: service, Ready: ready}.Handler(), "order.http"), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	errCh := make(chan error, 1)

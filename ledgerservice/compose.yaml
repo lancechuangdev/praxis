@@ -80,6 +80,7 @@ services:
       matching-engine: {condition: service_started}
     environment:
       ORDER_HTTP_ADDRESS: :8083
+      ORDER_DATABASE_URL: postgres://ledger:ledger@postgres:5432/cex_ledger?sslmode=disable
       ORDER_LEDGER_MODE: grpc
       ORDER_LEDGER_GRPC_ADDRESS: ledger-service:9091
       ORDER_MATCHING_MODE: grpc
