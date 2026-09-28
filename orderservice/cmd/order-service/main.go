@@ -96,7 +96,7 @@ func main() {
 	}
 	defer matching.Close()
 
-	service := &order.Service{Ledger: ledger, Matching: matching, RiskLatency: cfg.RiskLatency, RiskRejectBPS: cfg.RiskRejectBPS, Metrics: &order.Metrics{}, Sagas: &order.PostgresSagaStore{DB: sagaDB}}
+	service := &order.Service{Ledger: ledger, Matching: matching, RiskLatency: cfg.RiskLatency, RiskRejectBPS: cfg.RiskRejectBPS, Metrics: &order.Metrics{}, Sagas: &order.PostgresSagaStore{DB: sagaDB, MaxReleaseAttempts: cfg.SagaMaxReleaseAttempts, MaxReservationAttempts: cfg.SagaMaxReservationAttempts}}
 	go service.RunSagaRecovery(ctx, cfg.SagaRetryInterval)
 	ready := func(ctx context.Context) error {
 		results := make(chan error, 3)

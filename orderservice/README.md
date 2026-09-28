@@ -1,10 +1,10 @@
-# Mock CEX order service
+# Order service
 
 This independent service models the synchronous order-admission path for load
 testing:
 
 ```text
-HTTP client → mock risk check → ledger ReserveForOrder gRPC → matching engine gRPC
+HTTP client → Risk check → ledger ReserveForOrder gRPC → matching engine gRPC
 ```
 
 It is a benchmark fixture, not a production order service. It persists the
@@ -40,10 +40,55 @@ current mock Matching Engine returns only after Kafka acknowledges its
 
 Set `ORDER_DATABASE_URL` to the Order saga database. The service applies its
 `order_sagas` migration on startup and retries pending releases after restarts.
+Transient Ledger reservation failures remain `reservation_pending` and retry
+with the original idempotency key. Permanent errors, or exhaustion of
+`ORDER_SAGA_MAX_RESERVATION_ATTEMPTS` (default `10`), move to
+`order_saga_dead_letters`. Release failures use the same backoff policy and
+dead-letter after `ORDER_SAGA_MAX_RELEASE_ATTEMPTS` attempts (default `10`);
+`order_saga_dead_lettered_total` reports both paths.
 After Ledger has booked every `TradeExecuted` event for a completed order, call
 `POST /v1/orders/{order_id}/execution-complete`; Ledger atomically returns only
 the reservation's unused remainder to available funds. The caller must emit
 this terminal signal only after Ledger has acknowledged all trade bookings.
+
+### Saga state transitions
+
+```mermaid
+flowchart TD
+    A[Order request] --> B{Risk approved?}
+
+    B -- No --> X[Return risk rejection<br/>No saga created]
+    B -- Yes --> C[reservation_pending]
+
+    C --> D[Call Ledger Reserve]
+    D --> E{Reservation result}
+
+    E -- Success --> F[reserved]
+    E -- Transient failure --> G{Attempts exhausted?}
+    G -- No --> C
+    G -- Yes --> DL[dead_letter]
+    E -- Permanent failure --> DL
+
+    F --> H[Submit to Matching]
+    H --> I{Matching result}
+
+    I -- Accepted --> J[accepted]
+    I -- Failed --> K[release_pending]
+
+    J --> L[Execution completes]
+    L --> K
+
+    K --> M[Call Ledger Release]
+    M --> N{Release result}
+
+    N -- Success --> O[released]
+    N -- Failure --> P{Attempts exhausted?}
+    P -- No --> K
+    P -- Yes --> DL
+```
+
+Matching failure releases the full reservation. Execution completion releases
+only the unused remainder after Ledger has booked all fills.
 
 Ledger balance and reservation GET endpoints are served from read replicas and
 are eventually consistent. They can temporarily return an older version than a

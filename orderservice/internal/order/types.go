@@ -48,6 +48,7 @@ type ReleaseRequest struct {
 }
 
 type Saga struct {
-	RequestID, OrderID, CorrelationID, CausationID, ReservationID, State, ReleaseReason string
-	Attempts                                                                            int
+	Request                             Request
+	ReservationID, State, ReleaseReason string
+	Attempts                            int
 }

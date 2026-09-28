@@ -81,6 +81,8 @@ services:
     environment:
       ORDER_HTTP_ADDRESS: :8083
       ORDER_DATABASE_URL: postgres://ledger:ledger@postgres:5432/cex_ledger?sslmode=disable
+      ORDER_SAGA_MAX_RELEASE_ATTEMPTS: ${ORDER_SAGA_MAX_RELEASE_ATTEMPTS:-10}
+      ORDER_SAGA_MAX_RESERVATION_ATTEMPTS: ${ORDER_SAGA_MAX_RESERVATION_ATTEMPTS:-10}
       ORDER_LEDGER_MODE: grpc
       ORDER_LEDGER_GRPC_ADDRESS: ledger-service:9091
       ORDER_MATCHING_MODE: grpc

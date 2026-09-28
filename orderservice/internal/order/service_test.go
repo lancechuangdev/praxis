@@ -3,6 +3,8 @@ package order
 import (
 	"context"
 	"errors"
+	grpcCodes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"testing"
 )
 
@@ -80,28 +82,49 @@ func TestValidateRejectsInvalidAmount(t *testing.T) {
 }
 
 type fakeSagas struct {
-	saga     Saga
-	state    string
-	failures int
+	saga                  Saga
+	state                 string
+	failures              int
+	deadLetterOnRelease   bool
+	deadLetterReservation bool
 }
 
-func (f *fakeSagas) Start(context.Context, Request) error { f.state = "started"; return nil }
+func (f *fakeSagas) Start(_ context.Context, req Request) error {
+	f.state = "reservation_pending"
+	f.saga.Request = req
+	return nil
+}
 func (f *fakeSagas) Reserved(_ context.Context, requestID, reservationID string) error {
 	f.state = "reserved"
-	f.saga.RequestID = requestID
+	f.saga.Request.RequestID = requestID
 	f.saga.ReservationID = reservationID
 	return nil
 }
 func (f *fakeSagas) Accepted(context.Context, string) error { f.state = "accepted"; return nil }
+func (f *fakeSagas) ReservationFailed(context.Context, string, error, bool) (bool, error) {
+	if f.deadLetterReservation {
+		f.state = "dead_letter"
+	} else {
+		f.state = "reservation_pending"
+	}
+	return f.deadLetterReservation, nil
+}
 func (f *fakeSagas) RequestRelease(_ context.Context, orderID, reason string) (Saga, error) {
 	f.state = "release_pending"
-	f.saga.OrderID = orderID
+	f.saga.Request.OrderID = orderID
 	f.saga.ReleaseReason = reason
 	return f.saga, nil
 }
-func (f *fakeSagas) Released(context.Context, string) error             { f.state = "released"; return nil }
-func (f *fakeSagas) ReleaseFailed(context.Context, string, error) error { f.failures++; return nil }
+func (f *fakeSagas) Released(context.Context, string) error { f.state = "released"; return nil }
+func (f *fakeSagas) ReleaseFailed(context.Context, string, error) (bool, error) {
+	f.failures++
+	if f.deadLetterOnRelease {
+		f.state = "dead_letter"
+	}
+	return f.deadLetterOnRelease, nil
+}
 func (*fakeSagas) DueReleases(context.Context, int) ([]Saga, error)     { return nil, nil }
+func (*fakeSagas) DueReservations(context.Context, int) ([]Saga, error) { return nil, nil }
 
 func TestMatchingFailureCompensatesReservation(t *testing.T) {
 	ledger := &fakeLedger{reservation: Reservation{ID: "reservation-1"}}
@@ -120,7 +143,7 @@ func TestMatchingFailureCompensatesReservation(t *testing.T) {
 
 func TestExecutionCompletionReleasesOnlyLedgerRemainder(t *testing.T) {
 	ledger := &fakeLedger{}
-	sagas := &fakeSagas{saga: Saga{RequestID: "request-1", OrderID: "order-1"}, state: "accepted"}
+	sagas := &fakeSagas{saga: Saga{Request: Request{RequestID: "request-1", OrderID: "order-1"}}, state: "accepted"}
 	service := &Service{Ledger: ledger, Sagas: sagas, Metrics: &Metrics{}}
 	if err := service.CompleteExecution(context.Background(), "order-1"); err != nil {
 		t.Fatal(err)
@@ -130,5 +153,58 @@ func TestExecutionCompletionReleasesOnlyLedgerRemainder(t *testing.T) {
 	}
 	if sagas.state != "released" {
 		t.Fatalf("saga state=%s", sagas.state)
+	}
+}
+
+func TestTransientReservationFailureRemainsPending(t *testing.T) {
+	ledger := &fakeLedger{err: errors.New("ledger unavailable")}
+	sagas := &fakeSagas{}
+	service := &Service{Ledger: ledger, Matching: &fakeMatching{}, Sagas: sagas, Metrics: &Metrics{}}
+	if _, err := service.Admit(context.Background(), validRequest()); err == nil {
+		t.Fatal("expected reservation failure")
+	}
+	if sagas.state != "reservation_pending" {
+		t.Fatalf("saga state=%s", sagas.state)
+	}
+	if service.Metrics.DeadLettered.Load() != 0 {
+		t.Fatalf("dead letters=%d", service.Metrics.DeadLettered.Load())
+	}
+}
+
+func TestPermanentReservationFailureIsDeadLettered(t *testing.T) {
+	ledger := &fakeLedger{err: status.Error(grpcCodes.FailedPrecondition, "insufficient funds")}
+	sagas := &fakeSagas{deadLetterReservation: true}
+	service := &Service{Ledger: ledger, Matching: &fakeMatching{}, Sagas: sagas, Metrics: &Metrics{}}
+	if _, err := service.Admit(context.Background(), validRequest()); err == nil {
+		t.Fatal("expected reservation failure")
+	}
+	if sagas.state != "dead_letter" || service.Metrics.DeadLettered.Load() != 1 {
+		t.Fatalf("state=%s dead letters=%d", sagas.state, service.Metrics.DeadLettered.Load())
+	}
+}
+
+func TestReservationRetryResumesMatching(t *testing.T) {
+	req := validRequest()
+	ledger := &fakeLedger{reservation: Reservation{ID: "reservation-1"}}
+	matching := &fakeMatching{}
+	sagas := &fakeSagas{saga: Saga{Request: req}, state: "reservation_pending"}
+	service := &Service{Ledger: ledger, Matching: matching, Sagas: sagas, Metrics: &Metrics{}}
+	if err := service.resumeReservation(context.Background(), sagas.saga); err != nil {
+		t.Fatal(err)
+	}
+	if ledger.calls != 1 || matching.calls != 1 || sagas.state != "accepted" {
+		t.Fatalf("ledger=%d matching=%d state=%s", ledger.calls, matching.calls, sagas.state)
+	}
+}
+
+func TestExhaustedReleaseRetriesIncrementDeadLetterMetric(t *testing.T) {
+	ledger := &fakeLedger{releaseErr: errors.New("ledger unavailable")}
+	sagas := &fakeSagas{saga: Saga{Request: Request{RequestID: "request-1", OrderID: "order-1"}}, state: "accepted", deadLetterOnRelease: true}
+	service := &Service{Ledger: ledger, Sagas: sagas, Metrics: &Metrics{}}
+	if err := service.CompleteExecution(context.Background(), "order-1"); err == nil {
+		t.Fatal("expected release failure")
+	}
+	if sagas.state != "dead_letter" || service.Metrics.DeadLettered.Load() != 1 {
+		t.Fatalf("state=%s dead letters=%d", sagas.state, service.Metrics.DeadLettered.Load())
 	}
 }

@@ -10,36 +10,40 @@ import (
 )
 
 type Config struct {
-	HTTPAddress         string
-	DatabaseURL         string
-	SagaRetryInterval   time.Duration
-	LedgerMode          string
-	LedgerGRPCAddress   string
-	LedgerTimeout       time.Duration
-	MockLedgerLatency   time.Duration
-	RiskLatency         time.Duration
-	RiskRejectBPS       int
-	MatchingMode        string
-	MatchingGRPCAddress string
-	MatchingTimeout     time.Duration
-	MockMatchingLatency time.Duration
+	HTTPAddress                string
+	DatabaseURL                string
+	SagaRetryInterval          time.Duration
+	SagaMaxReleaseAttempts     int
+	SagaMaxReservationAttempts int
+	LedgerMode                 string
+	LedgerGRPCAddress          string
+	LedgerTimeout              time.Duration
+	MockLedgerLatency          time.Duration
+	RiskLatency                time.Duration
+	RiskRejectBPS              int
+	MatchingMode               string
+	MatchingGRPCAddress        string
+	MatchingTimeout            time.Duration
+	MockMatchingLatency        time.Duration
 }
 
 func Load() (Config, error) {
 	c := Config{
-		HTTPAddress:         value("ORDER_HTTP_ADDRESS", ":8083"),
-		DatabaseURL:         value("ORDER_DATABASE_URL", "postgres://ledger:ledger@localhost:5433/cex_ledger?sslmode=disable"),
-		SagaRetryInterval:   duration("ORDER_SAGA_RETRY_INTERVAL", time.Second),
-		LedgerMode:          value("ORDER_LEDGER_MODE", "grpc"),
-		LedgerGRPCAddress:   value("ORDER_LEDGER_GRPC_ADDRESS", "localhost:9091"),
-		LedgerTimeout:       duration("ORDER_LEDGER_TIMEOUT", 2*time.Second),
-		MockLedgerLatency:   duration("ORDER_MOCK_LEDGER_LATENCY", 3*time.Millisecond),
-		RiskLatency:         duration("ORDER_RISK_LATENCY", time.Millisecond),
-		RiskRejectBPS:       integer("ORDER_RISK_REJECT_BPS", 0),
-		MatchingMode:        value("ORDER_MATCHING_MODE", "grpc"),
-		MatchingGRPCAddress: value("ORDER_MATCHING_GRPC_ADDRESS", "localhost:9092"),
-		MatchingTimeout:     duration("ORDER_MATCHING_TIMEOUT", 2*time.Second),
-		MockMatchingLatency: duration("ORDER_MOCK_MATCHING_LATENCY", time.Millisecond),
+		HTTPAddress:                value("ORDER_HTTP_ADDRESS", ":8083"),
+		DatabaseURL:                value("ORDER_DATABASE_URL", "postgres://ledger:ledger@localhost:5433/cex_ledger?sslmode=disable"),
+		SagaRetryInterval:          duration("ORDER_SAGA_RETRY_INTERVAL", time.Second),
+		SagaMaxReleaseAttempts:     integer("ORDER_SAGA_MAX_RELEASE_ATTEMPTS", 10),
+		SagaMaxReservationAttempts: integer("ORDER_SAGA_MAX_RESERVATION_ATTEMPTS", 10),
+		LedgerMode:                 value("ORDER_LEDGER_MODE", "grpc"),
+		LedgerGRPCAddress:          value("ORDER_LEDGER_GRPC_ADDRESS", "localhost:9091"),
+		LedgerTimeout:              duration("ORDER_LEDGER_TIMEOUT", 2*time.Second),
+		MockLedgerLatency:          duration("ORDER_MOCK_LEDGER_LATENCY", 3*time.Millisecond),
+		RiskLatency:                duration("ORDER_RISK_LATENCY", time.Millisecond),
+		RiskRejectBPS:              integer("ORDER_RISK_REJECT_BPS", 0),
+		MatchingMode:               value("ORDER_MATCHING_MODE", "grpc"),
+		MatchingGRPCAddress:        value("ORDER_MATCHING_GRPC_ADDRESS", "localhost:9092"),
+		MatchingTimeout:            duration("ORDER_MATCHING_TIMEOUT", 2*time.Second),
+		MockMatchingLatency:        duration("ORDER_MOCK_MATCHING_LATENCY", time.Millisecond),
 	}
 	if c.LedgerMode != "grpc" && c.LedgerMode != "mock" {
 		return c, errors.New("ORDER_LEDGER_MODE must be grpc or mock")
@@ -49,6 +53,12 @@ func Load() (Config, error) {
 	}
 	if c.MatchingMode != "grpc" && c.MatchingMode != "mock" {
 		return c, errors.New("ORDER_MATCHING_MODE must be grpc or mock")
+	}
+	if c.SagaMaxReleaseAttempts < 1 {
+		return c, errors.New("ORDER_SAGA_MAX_RELEASE_ATTEMPTS must be positive")
+	}
+	if c.SagaMaxReservationAttempts < 1 {
+		return c, errors.New("ORDER_SAGA_MAX_RESERVATION_ATTEMPTS must be positive")
 	}
 	return c, nil
 }

@@ -13,6 +13,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	grpcCodes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var ErrRiskRejected = errors.New("risk rejected order")
@@ -28,10 +30,12 @@ type SagaStore interface {
 	Start(context.Context, Request) error
 	Reserved(context.Context, string, string) error
 	Accepted(context.Context, string) error
+	ReservationFailed(context.Context, string, error, bool) (bool, error)
 	RequestRelease(context.Context, string, string) (Saga, error)
 	Released(context.Context, string) error
-	ReleaseFailed(context.Context, string, error) error
+	ReleaseFailed(context.Context, string, error) (bool, error)
 	DueReleases(context.Context, int) ([]Saga, error)
+	DueReservations(context.Context, int) ([]Saga, error)
 }
 
 type MatchingEngine interface {
@@ -40,10 +44,10 @@ type MatchingEngine interface {
 }
 
 type Metrics struct {
-	Requests, Accepted, RiskRejected, Failed atomic.Uint64
-	RiskNS, ReserveNS, MatchingNS, TotalNS   atomic.Uint64
-	RiskDuration, ReserveDuration            DurationHistogram
-	MatchingDuration, TotalDuration          DurationHistogram
+	Requests, Accepted, RiskRejected, Failed, DeadLettered atomic.Uint64
+	RiskNS, ReserveNS, MatchingNS, TotalNS                 atomic.Uint64
+	RiskDuration, ReserveDuration                          DurationHistogram
+	MatchingDuration, TotalDuration                        DurationHistogram
 }
 
 type Service struct {
@@ -120,6 +124,14 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	s.Metrics.ReserveNS.Add(uint64(reserveDuration))
 	s.Metrics.ReserveDuration.Observe(reserveDuration)
 	if err != nil {
+		if s.Sagas != nil {
+			deadLettered, deadLetterErr := s.Sagas.ReservationFailed(context.Background(), req.RequestID, err, retryableReservationError(err))
+			if deadLetterErr != nil {
+				err = errors.Join(err, fmt.Errorf("persist reservation failure: %w", deadLetterErr))
+			} else if deadLettered {
+				s.Metrics.DeadLettered.Add(1)
+			}
+		}
 		s.failed(started)
 		return Response{}, fmt.Errorf("reserve funds: %w", err)
 	}
@@ -175,12 +187,18 @@ func (s *Service) CompleteExecution(ctx context.Context, orderID string) error {
 func (s *Service) release(ctx context.Context, saga Saga) error {
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_, err := s.Ledger.Release(callCtx, ReleaseRequest{CommandID: saga.RequestID + ":release:" + saga.ReleaseReason, OrderID: saga.OrderID, Reason: saga.ReleaseReason, CorrelationID: saga.CorrelationID, CausationID: saga.CausationID})
+	_, err := s.Ledger.Release(callCtx, ReleaseRequest{CommandID: saga.Request.RequestID + ":release:" + saga.ReleaseReason, OrderID: saga.Request.OrderID, Reason: saga.ReleaseReason, CorrelationID: saga.Request.CorrelationID, CausationID: saga.Request.CausationID})
 	if err != nil {
-		_ = s.Sagas.ReleaseFailed(context.Background(), saga.RequestID, err)
+		deadLettered, persistErr := s.Sagas.ReleaseFailed(context.Background(), saga.Request.RequestID, err)
+		if deadLettered {
+			s.Metrics.DeadLettered.Add(1)
+		}
+		if persistErr != nil {
+			return errors.Join(err, fmt.Errorf("persist release failure: %w", persistErr))
+		}
 		return err
 	}
-	return s.Sagas.Released(context.Background(), saga.RequestID)
+	return s.Sagas.Released(context.Background(), saga.Request.RequestID)
 }
 
 func (s *Service) RunSagaRecovery(ctx context.Context, interval time.Duration) {
@@ -191,6 +209,12 @@ func (s *Service) RunSagaRecovery(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			reservations, reservationErr := s.Sagas.DueReservations(ctx, 100)
+			if reservationErr == nil {
+				for _, saga := range reservations {
+					_ = s.resumeReservation(ctx, saga)
+				}
+			}
 			sagas, err := s.Sagas.DueReleases(ctx, 100)
 			if err != nil {
 				continue
@@ -199,6 +223,42 @@ func (s *Service) RunSagaRecovery(ctx context.Context, interval time.Duration) {
 				_ = s.release(ctx, saga)
 			}
 		}
+	}
+}
+
+func (s *Service) resumeReservation(ctx context.Context, saga Saga) error {
+	reservation, err := s.Ledger.Reserve(ctx, saga.Request)
+	if err != nil {
+		deadLettered, persistErr := s.Sagas.ReservationFailed(context.Background(), saga.Request.RequestID, err, retryableReservationError(err))
+		if deadLettered {
+			s.Metrics.DeadLettered.Add(1)
+		}
+		if persistErr != nil {
+			return errors.Join(err, persistErr)
+		}
+		return err
+	}
+	if err = s.Sagas.Reserved(ctx, saga.Request.RequestID, reservation.ID); err != nil {
+		return err
+	}
+	_, err = s.Matching.Submit(ctx, saga.Request, reservation)
+	if err != nil {
+		pending, persistErr := s.Sagas.RequestRelease(context.Background(), saga.Request.OrderID, "matching_failed")
+		if persistErr != nil {
+			return errors.Join(err, persistErr)
+		}
+		_ = s.release(context.Background(), pending)
+		return err
+	}
+	return s.Sagas.Accepted(ctx, saga.Request.RequestID)
+}
+
+func retryableReservationError(err error) bool {
+	switch status.Code(err) {
+	case grpcCodes.InvalidArgument, grpcCodes.FailedPrecondition, grpcCodes.AlreadyExists, grpcCodes.NotFound, grpcCodes.PermissionDenied, grpcCodes.Unauthenticated:
+		return false
+	default:
+		return true
 	}
 }
 
