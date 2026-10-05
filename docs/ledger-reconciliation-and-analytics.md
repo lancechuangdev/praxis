@@ -165,6 +165,128 @@ GROUP BY symbol, asset_id;
 
 Athena reports are not part of the order or settlement hot path. Query delay or temporary unavailability must not block financial mutations.
 
+## Avoid N+1 reconciliation work
+
+Reconciliation processes enough journals, entries, accounts, and settlement legs that per-record queries become expensive quickly. Query and enrichment counts should remain approximately constant as a result batch grows; they must not grow by one database query or service call for every record.
+
+### Bad: query entries once per journal
+
+This application pattern performs one query for the journal page and then one more query for every journal:
+
+```go
+journals := loadJournals(ctx, start, end) // 1 query
+
+for i := range journals {
+    journals[i].Entries = loadEntries(ctx, journals[i].ID) // N queries
+}
+```
+
+Loading 100,000 journals would require 100,001 database round trips. The same problem occurs when code calls Ledger, Matching, or another service once per journal, trade, or account.
+
+### Good: reconcile with a set-based query
+
+When only aggregate evidence is required, join and aggregate in one bounded query:
+
+```sql
+SELECT
+    j.id AS journal_id,
+    j.journal_type,
+    j.occurred_at,
+    e.asset_id,
+    SUM(e.amount_atomic) FILTER (WHERE e.side = 'debit')  AS debit_atomic,
+    SUM(e.amount_atomic) FILTER (WHERE e.side = 'credit') AS credit_atomic
+FROM ledger_journals AS j
+JOIN ledger_entries AS e ON e.journal_id = j.id
+WHERE j.occurred_at >= $1
+  AND j.occurred_at < $2
+GROUP BY j.id, j.journal_type, j.occurred_at, e.asset_id;
+```
+
+When the application needs individual entry rows, fetch them for a bounded journal batch:
+
+```sql
+SELECT journal_id, asset_id, side, amount_atomic
+FROM ledger_entries
+WHERE journal_id = ANY($1)
+ORDER BY journal_id, id;
+```
+
+The application can group those rows by `journal_id` in memory. A page then uses two queries regardless of whether it contains 10 or 1,000 journals:
+
+```text
+1 query for a bounded journal page
+1 query for all entries in that page
+```
+
+Use keyset pagination and stable checkpoints rather than loading the entire history into memory:
+
+```sql
+SELECT id, journal_type, occurred_at
+FROM ledger_journals
+WHERE (occurred_at, id) > ($1, $2)
+  AND occurred_at < $3
+ORDER BY occurred_at, id
+LIMIT $4;
+```
+
+### Bad: one Athena query per account
+
+Application loops can reproduce N+1 behavior in analytics systems:
+
+```text
+SELECT DISTINCT user_id ...                  -- 1 Athena query
+for each user_id:
+    SELECT SUM(amount_atomic) ...             -- N Athena queries
+```
+
+This repeatedly scans data, increases cost, creates many query-planning and startup delays, and makes the reconciliation run difficult to reproduce as one consistent calculation.
+
+### Good: aggregate every account in one Athena query
+
+Submit one set-based query over the required partitions:
+
+```sql
+SELECT
+    user_id,
+    asset_id,
+    SUM(
+        CASE side
+            WHEN 'credit' THEN amount_atomic
+            WHEN 'debit'  THEN -amount_atomic
+        END
+    ) AS reconstructed_atomic
+FROM journal_entries
+WHERE event_date BETWEEN DATE '2026-09-01' AND DATE '2026-09-30'
+GROUP BY user_id, asset_id;
+```
+
+Write large intermediate or final results to governed S3 output rather than downloading all rows into one service process. Partition pruning is essential: every Athena query must constrain the relevant partition columns whenever the reconciliation scope permits it.
+
+### Avoid the equivalent S3 small-object pattern
+
+N+1 can also appear as one object read per event or one tiny output object per record. Export reasonably sized Parquet files containing batches of facts, and compact small files before recurring analytical scans. Partition only by fields with useful pruning behavior; excessively granular partitions create metadata and object-request overhead.
+
+### Process exceptions individually only after bulk detection
+
+Individual processing is appropriate after a set-based control has reduced a large population to a small, bounded discrepancy set:
+
+```text
+Millions of journal entries
+        |
+        v
+Set-based reconciliation query
+        |
+        v
+Small discrepancy result set
+        |
+        v
+Per-case evidence collection and operator workflow
+```
+
+Per-case investigation may require separate queries or service calls because each exception has its own evidence and remediation. Bound its concurrency, make every action idempotent, and record the reconciliation run and rule version that produced the exception.
+
+Monitor database round trips, downstream calls, Athena queries, scanned bytes, S3 object requests, and elapsed time per reconciliation batch. Tests should confirm that increasing a batch from 10 to 100 records does not increase query or RPC count from 11 to 101.
+
 ## Exact financial representation
 
 Never use binary floating-point values for financial quantities.
