@@ -87,7 +87,8 @@ order_accepted_total %d
 order_risk_rejected_total %d
 order_failed_total %d
 order_saga_dead_lettered_total %d
-`, m.Requests.Load(), m.Accepted.Load(), m.RiskRejected.Load(), m.Failed.Load(), m.DeadLettered.Load())
+order_saga_recovery_panics_total %d
+`, m.Requests.Load(), m.Accepted.Load(), m.RiskRejected.Load(), m.Failed.Load(), m.DeadLettered.Load(), m.SagaRecoveryPanics.Load())
 	_, _ = fmt.Fprint(w, m.RiskDuration.Prometheus("order_risk_duration_seconds"), m.ReserveDuration.Prometheus("order_reserve_duration_seconds"), m.MatchingDuration.Prometheus("order_matching_duration_seconds"), m.TotalDuration.Prometheus("order_total_duration_seconds"))
 }
 

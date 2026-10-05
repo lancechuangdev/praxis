@@ -13,6 +13,8 @@ type Config struct {
 	HTTPAddress                string
 	DatabaseURL                string
 	SagaRetryInterval          time.Duration
+	SagaRecoveryRestartDelay   time.Duration
+	SagaRecoveryMaxPanics      int
 	SagaMaxReleaseAttempts     int
 	SagaMaxReservationAttempts int
 	LedgerMode                 string
@@ -32,6 +34,8 @@ func Load() (Config, error) {
 		HTTPAddress:                value("ORDER_HTTP_ADDRESS", ":8083"),
 		DatabaseURL:                value("ORDER_DATABASE_URL", "postgres://ledger:ledger@localhost:5433/cex_ledger?sslmode=disable"),
 		SagaRetryInterval:          duration("ORDER_SAGA_RETRY_INTERVAL", time.Second),
+		SagaRecoveryRestartDelay:   duration("ORDER_SAGA_RECOVERY_RESTART_DELAY", time.Second),
+		SagaRecoveryMaxPanics:      integer("ORDER_SAGA_RECOVERY_MAX_PANICS", 3),
 		SagaMaxReleaseAttempts:     integer("ORDER_SAGA_MAX_RELEASE_ATTEMPTS", 10),
 		SagaMaxReservationAttempts: integer("ORDER_SAGA_MAX_RESERVATION_ATTEMPTS", 10),
 		LedgerMode:                 value("ORDER_LEDGER_MODE", "grpc"),
@@ -56,6 +60,15 @@ func Load() (Config, error) {
 	}
 	if c.SagaMaxReleaseAttempts < 1 {
 		return c, errors.New("ORDER_SAGA_MAX_RELEASE_ATTEMPTS must be positive")
+	}
+	if c.SagaRetryInterval <= 0 {
+		return c, errors.New("ORDER_SAGA_RETRY_INTERVAL must be positive")
+	}
+	if c.SagaRecoveryRestartDelay < 0 {
+		return c, errors.New("ORDER_SAGA_RECOVERY_RESTART_DELAY must not be negative")
+	}
+	if c.SagaRecoveryMaxPanics < 1 {
+		return c, errors.New("ORDER_SAGA_RECOVERY_MAX_PANICS must be positive")
 	}
 	if c.SagaMaxReservationAttempts < 1 {
 		return c, errors.New("ORDER_SAGA_MAX_RESERVATION_ATTEMPTS must be positive")

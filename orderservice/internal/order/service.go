@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"math/big"
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -44,10 +46,10 @@ type MatchingEngine interface {
 }
 
 type Metrics struct {
-	Requests, Accepted, RiskRejected, Failed, DeadLettered atomic.Uint64
-	RiskNS, ReserveNS, MatchingNS, TotalNS                 atomic.Uint64
-	RiskDuration, ReserveDuration                          DurationHistogram
-	MatchingDuration, TotalDuration                        DurationHistogram
+	Requests, Accepted, RiskRejected, Failed, DeadLettered, SagaRecoveryPanics atomic.Uint64
+	RiskNS, ReserveNS, MatchingNS, TotalNS                                     atomic.Uint64
+	RiskDuration, ReserveDuration                                              DurationHistogram
+	MatchingDuration, TotalDuration                                            DurationHistogram
 }
 
 type Service struct {
@@ -57,7 +59,12 @@ type Service struct {
 	RiskRejectBPS int
 	Metrics       *Metrics
 	Sagas         SagaStore
+	recoveryState atomic.Uint32
 }
+
+const recoveryUnhealthy = 2
+
+var ErrSagaRecoveryUnhealthy = errors.New("saga recovery worker is unhealthy")
 
 func Validate(v Request) error {
 	if v.RequestID == "" || v.OrderID == "" || v.UserID == "" || v.Symbol == "" || v.ReserveAssetID == "" {
@@ -209,20 +216,81 @@ func (s *Service) RunSagaRecovery(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			reservations, reservationErr := s.Sagas.DueReservations(ctx, 100)
-			if reservationErr == nil {
-				for _, saga := range reservations {
-					_ = s.resumeReservation(ctx, saga)
-				}
-			}
-			sagas, err := s.Sagas.DueReleases(ctx, 100)
-			if err != nil {
-				continue
-			}
-			for _, saga := range sagas {
-				_ = s.release(ctx, saga)
-			}
+			s.recoverSagas(ctx)
 		}
+	}
+}
+
+// RunSagaRecoverySupervised runs recovery cycles until the context is canceled
+// or maxConsecutivePanics is reached. A successful cycle resets the consecutive
+// panic count. A panic never resumes the failed cycle; the next iteration starts
+// a fresh cycle from the durable saga state.
+func (s *Service) RunSagaRecoverySupervised(ctx context.Context, interval, restartDelay time.Duration, maxConsecutivePanics int, log *slog.Logger) error {
+	if interval <= 0 || restartDelay < 0 || maxConsecutivePanics < 1 {
+		return errors.New("invalid saga recovery supervisor configuration")
+	}
+	s.recoveryState.Store(1)
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+	consecutivePanics := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-timer.C:
+		}
+
+		panicValue, panicStack, panicked := s.runSagaRecoveryCycle(ctx)
+		delay := interval
+		if panicked {
+			s.Metrics.SagaRecoveryPanics.Add(1)
+			consecutivePanics++
+			if log != nil {
+				log.ErrorContext(ctx, "saga recovery cycle panicked", "panic", panicValue, "consecutive_panics", consecutivePanics, "stack", string(panicStack))
+			}
+			if consecutivePanics >= maxConsecutivePanics {
+				s.recoveryState.Store(recoveryUnhealthy)
+				return fmt.Errorf("%w after %d consecutive panics", ErrSagaRecoveryUnhealthy, consecutivePanics)
+			}
+			delay = restartDelay
+		} else {
+			consecutivePanics = 0
+		}
+		timer.Reset(delay)
+	}
+}
+
+func (s *Service) SagaRecoveryReady() error {
+	if s.recoveryState.Load() == recoveryUnhealthy {
+		return ErrSagaRecoveryUnhealthy
+	}
+	return nil
+}
+
+func (s *Service) runSagaRecoveryCycle(ctx context.Context) (panicValue any, panicStack []byte, panicked bool) {
+	defer func() {
+		if panicValue = recover(); panicValue != nil {
+			panicStack = debug.Stack()
+			panicked = true
+		}
+	}()
+	s.recoverSagas(ctx)
+	return nil, nil, false
+}
+
+func (s *Service) recoverSagas(ctx context.Context) {
+	reservations, reservationErr := s.Sagas.DueReservations(ctx, 100)
+	if reservationErr == nil {
+		for _, saga := range reservations {
+			_ = s.resumeReservation(ctx, saga)
+		}
+	}
+	sagas, err := s.Sagas.DueReleases(ctx, 100)
+	if err != nil {
+		return
+	}
+	for _, saga := range sagas {
+		_ = s.release(ctx, saga)
 	}
 }
 

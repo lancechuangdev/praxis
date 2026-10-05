@@ -97,8 +97,15 @@ func main() {
 	defer matching.Close()
 
 	service := &order.Service{Ledger: ledger, Matching: matching, RiskLatency: cfg.RiskLatency, RiskRejectBPS: cfg.RiskRejectBPS, Metrics: &order.Metrics{}, Sagas: &order.PostgresSagaStore{DB: sagaDB, MaxReleaseAttempts: cfg.SagaMaxReleaseAttempts, MaxReservationAttempts: cfg.SagaMaxReservationAttempts}}
-	go service.RunSagaRecovery(ctx, cfg.SagaRetryInterval)
+	go func() {
+		if recoveryErr := service.RunSagaRecoverySupervised(ctx, cfg.SagaRetryInterval, cfg.SagaRecoveryRestartDelay, cfg.SagaRecoveryMaxPanics, log); recoveryErr != nil {
+			log.Error("saga recovery worker stopped", "error", recoveryErr)
+		}
+	}()
 	ready := func(ctx context.Context) error {
+		if readyErr := service.SagaRecoveryReady(); readyErr != nil {
+			return readyErr
+		}
 		results := make(chan error, 3)
 		go func() { results <- sagaDB.Ping(ctx) }()
 		go func() {

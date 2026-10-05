@@ -46,6 +46,12 @@ with the original idempotency key. Permanent errors, or exhaustion of
 `order_saga_dead_letters`. Release failures use the same backoff policy and
 dead-letter after `ORDER_SAGA_MAX_RELEASE_ATTEMPTS` attempts (default `10`);
 `order_saga_dead_lettered_total` reports both paths.
+The saga recovery worker catches panics at the polling-cycle boundary, reports
+them through `order_saga_recovery_panics_total`, and retries after
+`ORDER_SAGA_RECOVERY_RESTART_DELAY` (default `1s`). A successful cycle resets
+the consecutive-panic count. After `ORDER_SAGA_RECOVERY_MAX_PANICS` consecutive
+panics (default `3`), the worker stops and `/readyz` reports the service as
+unavailable until the process is restarted.
 After Ledger has booked every `TradeExecuted` event for a completed order, call
 `POST /v1/orders/{order_id}/execution-complete`; Ledger atomically returns only
 the reservation's unused remainder to available funds. The caller must emit

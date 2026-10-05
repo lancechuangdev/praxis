@@ -5,7 +5,10 @@ import (
 	"errors"
 	grpcCodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"io"
+	"log/slog"
 	"testing"
+	"time"
 )
 
 type fakeLedger struct {
@@ -87,6 +90,7 @@ type fakeSagas struct {
 	failures              int
 	deadLetterOnRelease   bool
 	deadLetterReservation bool
+	dueReservationPanics  int
 }
 
 func (f *fakeSagas) Start(_ context.Context, req Request) error {
@@ -123,8 +127,72 @@ func (f *fakeSagas) ReleaseFailed(context.Context, string, error) (bool, error) 
 	}
 	return f.deadLetterOnRelease, nil
 }
-func (*fakeSagas) DueReleases(context.Context, int) ([]Saga, error)     { return nil, nil }
-func (*fakeSagas) DueReservations(context.Context, int) ([]Saga, error) { return nil, nil }
+func (*fakeSagas) DueReleases(context.Context, int) ([]Saga, error) { return nil, nil }
+func (f *fakeSagas) DueReservations(context.Context, int) ([]Saga, error) {
+	if f.dueReservationPanics > 0 {
+		f.dueReservationPanics--
+		panic("corrupt saga")
+	}
+	return nil, nil
+}
+
+func TestSagaRecoveryStopsAndBecomesUnreadyAfterConsecutivePanics(t *testing.T) {
+	sagas := &fakeSagas{dueReservationPanics: 2}
+	service := &Service{Sagas: sagas, Metrics: &Metrics{}}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	err := service.RunSagaRecoverySupervised(context.Background(), time.Nanosecond, 0, 2, log)
+	if !errors.Is(err, ErrSagaRecoveryUnhealthy) {
+		t.Fatalf("error = %v, want unhealthy saga recovery", err)
+	}
+	if err := service.SagaRecoveryReady(); !errors.Is(err, ErrSagaRecoveryUnhealthy) {
+		t.Fatalf("readiness error = %v", err)
+	}
+	if got := service.Metrics.SagaRecoveryPanics.Load(); got != 2 {
+		t.Fatalf("panic count = %d, want 2", got)
+	}
+}
+
+func TestSuccessfulSagaRecoveryCycleResetsConsecutivePanics(t *testing.T) {
+	sagas := &alternatingPanicSagas{}
+	service := &Service{Sagas: sagas, Metrics: &Metrics{}}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	if err := service.RunSagaRecoverySupervised(ctx, time.Microsecond, 0, 2, nil); err != nil {
+		t.Fatalf("supervisor stopped after non-consecutive panics: %v", err)
+	}
+	if err := service.SagaRecoveryReady(); err != nil {
+		t.Fatalf("readiness error = %v", err)
+	}
+	if service.Metrics.SagaRecoveryPanics.Load() == 0 {
+		t.Fatal("expected recovered panics")
+	}
+}
+
+type alternatingPanicSagas struct{ calls int }
+
+func (*alternatingPanicSagas) Start(context.Context, Request) error           { return nil }
+func (*alternatingPanicSagas) Reserved(context.Context, string, string) error { return nil }
+func (*alternatingPanicSagas) Accepted(context.Context, string) error         { return nil }
+func (*alternatingPanicSagas) ReservationFailed(context.Context, string, error, bool) (bool, error) {
+	return false, nil
+}
+func (*alternatingPanicSagas) RequestRelease(context.Context, string, string) (Saga, error) {
+	return Saga{}, nil
+}
+func (*alternatingPanicSagas) Released(context.Context, string) error { return nil }
+func (*alternatingPanicSagas) ReleaseFailed(context.Context, string, error) (bool, error) {
+	return false, nil
+}
+func (*alternatingPanicSagas) DueReleases(context.Context, int) ([]Saga, error) { return nil, nil }
+func (s *alternatingPanicSagas) DueReservations(context.Context, int) ([]Saga, error) {
+	s.calls++
+	if s.calls%2 == 1 {
+		panic("intermittent")
+	}
+	return nil, nil
+}
 
 func TestMatchingFailureCompensatesReservation(t *testing.T) {
 	ledger := &fakeLedger{reservation: Reservation{ID: "reservation-1"}}
