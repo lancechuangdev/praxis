@@ -12,7 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	matchingv1 "praxis/matchingengine/gen/matching/v1"
+	matchingv1 "praxis/api/gen/matching/v1"
 )
 
 type Metrics struct {

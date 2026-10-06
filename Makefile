@@ -7,18 +7,19 @@ PROFILE_WARMUP_DURATION ?= 0s
 PROFILE_DURATION ?= 60s
 PROFILE_COOLDOWN_SECONDS ?= 60
 
-.PHONY: test vet protobuf-lint compose-up compose-down observability-up observability-down reset-load-data seed-distributed-users monitor profile-phase0 terraform-fmt
+.PHONY: test vet protobuf-generate protobuf-lint compose-up compose-down observability-up observability-down reset-load-data seed-distributed-users monitor profile-phase0 terraform-fmt
 
 test:
-	go test ./ledgerservice/... ./matchingengine/... ./orderservice/... ./outboxrelay/...
+	go test ./api/... ./ledgerservice/... ./matchingengine/... ./orderservice/... ./outboxrelay/...
 
 vet:
-	go vet ./ledgerservice/... ./matchingengine/... ./orderservice/... ./outboxrelay/...
+	go vet ./api/... ./ledgerservice/... ./matchingengine/... ./orderservice/... ./outboxrelay/...
 
 protobuf-lint:
-	buf lint ledgerservice
-	buf lint matchingengine
-	buf lint orderservice
+	buf lint api
+
+protobuf-generate:
+	cd api && buf generate
 
 compose-up:
 	docker compose -f ledgerservice/compose.yaml up --build

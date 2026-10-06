@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	matchingv1 "praxis/orderservice/gen/matching/v1"
+	matchingv1 "praxis/api/gen/matching/v1"
 	"praxis/orderservice/internal/order"
 )
 

@@ -1,0 +1,16 @@
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+  except:
+    # Preserve existing response names until an API-versioned migration can
+    # rename them without breaking generated clients.
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_RESPONSE_STANDARD_NAME
+    # MatchingEngine is an established public service name.
+    - SERVICE_SUFFIX
+breaking:
+  use:
+    - FILE

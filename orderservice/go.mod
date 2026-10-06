@@ -10,8 +10,10 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.39.0
 	go.opentelemetry.io/otel/sdk v1.39.0
 	google.golang.org/grpc v1.79.0
-	google.golang.org/protobuf v1.36.11
+	praxis/api v0.0.0
 )
+
+replace praxis/api => ../api
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -36,4 +38,5 @@ require (
 	golang.org/x/text v0.32.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 )

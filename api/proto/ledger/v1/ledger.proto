@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package ledger.v1;
 
-option go_package = "praxis/ledgerservice/gen/ledger/v1;ledgerv1";
+option go_package = "praxis/api/gen/ledger/v1;ledgerv1";
 
 service LedgerService {
   rpc PostDeposit(PostDepositRequest) returns (OperationResponse);

@@ -124,7 +124,8 @@ controlled asset, network, and custody provisioning in production.
 ## Regenerate protobuf code
 
 ```bash
-protoc --go_out=. --go_opt=module=praxis/ledgerservice \
-  --go-grpc_out=. --go-grpc_opt=module=praxis/ledgerservice \
-  api/ledger/v1/ledger.proto
+make protobuf-generate
 ```
+
+Ledger and Matching protobuf contracts are owned by the repository's shared
+`praxis/api` module. Both servers and clients import its generated packages.

@@ -7,7 +7,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	ledgerv1 "praxis/ledgerservice/gen/ledger/v1"
+	ledgerv1 "praxis/api/gen/ledger/v1"
 	"praxis/ledgerservice/internal/ledger"
 	"praxis/ledgerservice/internal/observability"
 )

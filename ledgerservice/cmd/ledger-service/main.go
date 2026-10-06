@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	ledgerv1 "praxis/ledgerservice/gen/ledger/v1"
+	ledgerv1 "praxis/api/gen/ledger/v1"
 	"praxis/ledgerservice/internal/config"
 	"praxis/ledgerservice/internal/messaging"
 	"praxis/ledgerservice/internal/observability"

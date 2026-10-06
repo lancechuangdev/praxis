@@ -3,7 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
-	matchingv1 "praxis/matchingengine/gen/matching/v1"
+	matchingv1 "praxis/api/gen/matching/v1"
 	"testing"
 )
 

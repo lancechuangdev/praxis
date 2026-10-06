@@ -54,7 +54,9 @@ services:
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic matching.events.v1 --partitions 96 --replication-factor 1
 
   ledger-service:
-    build: .
+    build:
+      context: ..
+      dockerfile: ledgerservice/Dockerfile
     depends_on:
       postgres: {condition: service_healthy}
       kafka-init: {condition: service_completed_successfully}
@@ -74,7 +76,9 @@ services:
     ports: ["8081:8081", "9091:9091"]
 
   order-service:
-    build: ../orderservice
+    build:
+      context: ..
+      dockerfile: orderservice/Dockerfile
     depends_on:
       ledger-service: {condition: service_started}
       matching-engine: {condition: service_started}
@@ -97,7 +101,9 @@ services:
     ports: ["8083:8083"]
 
   matching-engine:
-    build: ../matchingengine
+    build:
+      context: ..
+      dockerfile: matchingengine/Dockerfile
     depends_on:
       kafka-init: {condition: service_completed_successfully}
     environment:

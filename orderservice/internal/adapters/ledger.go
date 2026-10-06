@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	ledgerv1 "praxis/orderservice/gen/ledger/v1"
+	ledgerv1 "praxis/api/gen/ledger/v1"
 	"praxis/orderservice/internal/order"
 )
 

@@ -9,6 +9,7 @@ system.
 
 The repository contains:
 
+- `api`: canonical Ledger and Matching protobuf contracts and generated Go transport packages.
 - `orderservice`: HTTP order admission, risk simulation, Ledger gRPC, and Matching Engine gRPC.
 - `ledgerservice`: PostgreSQL-backed double-entry ledger and reservation APIs.
 - `matchingengine`: durable PostgreSQL-backed order admission with a transactional outbox and asynchronous Kafka relay.
@@ -28,6 +29,7 @@ The repository contains:
 
 ## Documentation
 
+- [API contracts](api/README.md)
 - [Ledger Service](ledgerservice/README.md)
 - [Ledger scaling and Market-Clearing Ledger Sharding](docs/ledger-scaling-and-mcls.md)
 - [Ledger reconciliation and analytics](docs/ledger-reconciliation-and-analytics.md)

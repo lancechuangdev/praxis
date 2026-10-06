@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package matching.v1;
 
-option go_package = "praxis/orderservice/gen/matching/v1;matchingv1";
+option go_package = "praxis/api/gen/matching/v1;matchingv1";
 
 service MatchingEngine {
   rpc SubmitOrder(SubmitOrderRequest) returns (SubmitOrderResponse);

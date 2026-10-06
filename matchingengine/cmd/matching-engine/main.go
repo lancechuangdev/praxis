@@ -19,7 +19,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	matchingv1 "praxis/matchingengine/gen/matching/v1"
+	matchingv1 "praxis/api/gen/matching/v1"
 	"praxis/matchingengine/internal/config"
 	"praxis/matchingengine/internal/engine"
 	"praxis/matchingengine/internal/observability"
