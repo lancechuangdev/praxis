@@ -166,6 +166,52 @@ resource "aws_eks_addon" "pod_identity_agent" {
   depends_on                  = [aws_eks_node_group.hot_path]
 }
 
+resource "aws_eks_addon" "metrics_server" {
+  cluster_name                = aws_eks_cluster.this.name
+  addon_name                  = "metrics-server"
+  addon_version               = var.eks_metrics_server_addon_version
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "PRESERVE"
+  depends_on                  = [aws_eks_node_group.hot_path]
+}
+
+resource "aws_cloudwatch_log_group" "eks_container_insights" {
+  for_each = toset(["application", "dataplane", "host", "performance"])
+
+  name              = "/aws/containerinsights/${local.resource_name}/${each.value}"
+  retention_in_days = var.ecs_log_retention_days
+}
+
+resource "aws_iam_role" "eks_cloudwatch_observability" {
+  name               = "${local.resource_name}-eks-cloudwatch-observability"
+  description        = "Pod identity for the EKS CloudWatch Observability add-on"
+  assume_role_policy = data.aws_iam_policy_document.eks_pod_assume.json
+}
+
+resource "aws_iam_role_policy_attachment" "eks_cloudwatch_observability" {
+  role       = aws_iam_role.eks_cloudwatch_observability.name
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
+resource "aws_eks_addon" "cloudwatch_observability" {
+  cluster_name                = aws_eks_cluster.this.name
+  addon_name                  = "amazon-cloudwatch-observability"
+  addon_version               = var.eks_cloudwatch_observability_addon_version
+  resolve_conflicts_on_create = "OVERWRITE"
+  resolve_conflicts_on_update = "PRESERVE"
+
+  pod_identity_association {
+    role_arn        = aws_iam_role.eks_cloudwatch_observability.arn
+    service_account = "cloudwatch-agent"
+  }
+
+  depends_on = [
+    aws_eks_addon.pod_identity_agent,
+    aws_iam_role_policy_attachment.eks_cloudwatch_observability,
+    aws_cloudwatch_log_group.eks_container_insights
+  ]
+}
+
 # Managed nodes use the EKS cluster security group for pod VPC traffic.
 resource "aws_vpc_security_group_ingress_rule" "msk_from_eks" {
   security_group_id            = aws_security_group.msk.id

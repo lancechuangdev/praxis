@@ -80,6 +80,25 @@ resource "aws_lb_listener" "order_https" {
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 
   default_action {
+    order = 1
+    type  = "authenticate-oidc"
+
+    authenticate_oidc {
+      authorization_endpoint     = var.order_oidc.authorization_endpoint
+      client_id                  = var.order_oidc.client_id
+      client_secret              = var.order_oidc.client_secret
+      issuer                     = var.order_oidc.issuer
+      token_endpoint             = var.order_oidc.token_endpoint
+      user_info_endpoint         = var.order_oidc.user_info_endpoint
+      scope                      = var.order_oidc.scope
+      on_unauthenticated_request = "authenticate"
+      session_cookie_name        = "PraxisOrderSession"
+      session_timeout            = 3600
+    }
+  }
+
+  default_action {
+    order            = 2
     type             = "forward"
     target_group_arn = aws_lb_target_group.order.arn
   }

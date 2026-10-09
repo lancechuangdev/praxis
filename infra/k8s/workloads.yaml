@@ -428,3 +428,111 @@ spec:
           resources:
             requests: {cpu: 250m, memory: 256Mi}
             limits: {cpu: 500m, memory: 512Mi}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: order
+  namespace: praxis
+spec:
+  minAvailable: 4
+  selector:
+    matchLabels: {app: order}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ledger
+  namespace: praxis
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: {app: ledger}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: matching
+  namespace: praxis
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: {app: matching}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: order
+  namespace: praxis
+spec:
+  minReplicas: 6
+  maxReplicas: 18
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - {type: Percent, value: 100, periodSeconds: 60}
+        - {type: Pods, value: 3, periodSeconds: 60}
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - {type: Percent, value: 25, periodSeconds: 60}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 65}
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: order}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ledger
+  namespace: praxis
+spec:
+  minReplicas: 3
+  maxReplicas: 9
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - {type: Percent, value: 100, periodSeconds: 60}
+        - {type: Pods, value: 2, periodSeconds: 60}
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - {type: Percent, value: 25, periodSeconds: 60}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 65}
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: ledger}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: matching
+  namespace: praxis
+spec:
+  minReplicas: 3
+  maxReplicas: 9
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - {type: Percent, value: 100, periodSeconds: 60}
+        - {type: Pods, value: 2, periodSeconds: 60}
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - {type: Percent, value: 25, periodSeconds: 60}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 65}
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: matching}

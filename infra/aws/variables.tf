@@ -129,6 +129,52 @@ variable "order_alb_certificate_arn" {
   }
 }
 
+variable "order_oidc" {
+  description = "OIDC client and endpoints used by the public Order ALB. The client secret is sensitive and will be stored in Terraform state."
+  type = object({
+    authorization_endpoint = string
+    client_id              = string
+    client_secret          = string
+    issuer                 = string
+    token_endpoint         = string
+    user_info_endpoint     = string
+    scope                  = optional(string, "openid")
+  })
+  sensitive = true
+
+  validation {
+    condition = alltrue([
+      for value in [
+        var.order_oidc.authorization_endpoint,
+        var.order_oidc.issuer,
+        var.order_oidc.token_endpoint,
+        var.order_oidc.user_info_endpoint
+      ] : can(regex("^https://", value))
+    ]) && length(trimspace(var.order_oidc.client_id)) > 0 && length(var.order_oidc.client_secret) >= 16
+    error_message = "order_oidc endpoints must use HTTPS, client_id must be nonempty, and client_secret must contain at least 16 characters."
+  }
+}
+
+variable "eks_metrics_server_addon_version" {
+  description = "Pinned EKS metrics-server add-on version used by workload HPAs."
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.eks_metrics_server_addon_version)) > 0
+    error_message = "eks_metrics_server_addon_version must be a pinned version returned by aws eks describe-addon-versions."
+  }
+}
+
+variable "eks_cloudwatch_observability_addon_version" {
+  description = "Pinned amazon-cloudwatch-observability EKS add-on version for application logs and Container Insights."
+  type        = string
+
+  validation {
+    condition     = length(trimspace(var.eks_cloudwatch_observability_addon_version)) > 0
+    error_message = "eks_cloudwatch_observability_addon_version must be a pinned version returned by aws eks describe-addon-versions."
+  }
+}
+
 variable "kafka_version" {
   description = "Amazon MSK Kafka version available in the selected region."
   type        = string

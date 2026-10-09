@@ -16,6 +16,7 @@ locals {
           relabel_configs = [
             { action = "keep", source_labels = ["__meta_kubernetes_pod_label_app"], regex = "order|ledger|matching" },
             { action = "keep", source_labels = ["__meta_kubernetes_pod_container_port_name"], regex = "http" },
+            { action = "keep", source_labels = ["__meta_kubernetes_pod_node_name"], regex = "$${env:K8S_NODE_NAME}" },
             { action = "replace", source_labels = ["__meta_kubernetes_namespace"], target_label = "namespace" },
             { action = "replace", source_labels = ["__meta_kubernetes_pod_label_app"], target_label = "service" },
             { action = "replace", source_labels = ["__meta_kubernetes_pod_name"], target_label = "pod" },
@@ -138,19 +139,19 @@ resource "kubernetes_manifest" "collector_service" {
   }
 }
 
-# A single replica avoids duplicate Prometheus scrapes; make this highly
-# available with target allocation/deduplication before scaling it up.
-resource "kubernetes_manifest" "collector_deployment" {
+# One collector runs on every hot-path node and scrapes only pods on its own
+# node. This avoids duplicate Prometheus samples while removing the former
+# single-collector failure domain.
+resource "kubernetes_manifest" "collector_daemonset" {
   count = var.deploy_workloads ? 1 : 0
 
   manifest = {
     apiVersion = "apps/v1"
-    kind       = "Deployment"
+    kind       = "DaemonSet"
     metadata   = { name = "otel-collector", namespace = kubernetes_namespace_v1.observability.metadata[0].name }
     spec = {
-      replicas = 1
-      strategy = { type = "Recreate" }
-      selector = { matchLabels = { app = "otel-collector" } }
+      updateStrategy = { type = "RollingUpdate", rollingUpdate = { maxUnavailable = 1 } }
+      selector       = { matchLabels = { app = "otel-collector" } }
       template = {
         metadata = {
           labels      = { app = "otel-collector" }
@@ -175,6 +176,7 @@ resource "kubernetes_manifest" "collector_deployment" {
             }
             env = [
               { name = "AWS_REGION", value = local.runtime.aws_region },
+              { name = "K8S_NODE_NAME", valueFrom = { fieldRef = { fieldPath = "spec.nodeName" } } },
               { name = "AOT_CONFIG_CONTENT", valueFrom = { configMapKeyRef = { name = "otel-collector", key = "collector.yaml" } } }
             ]
             volumeMounts = [{ name = "tmp", mountPath = "/tmp" }]

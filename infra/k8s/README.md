@@ -56,21 +56,29 @@ Pod Identity role. The migration Job has a separate role limited to the RDS
 admin secret. Neither password is stored in Kubernetes Secrets or Terraform
 state. A rotated runtime password is fetched when the Ledger Pod restarts.
 
-The Kubernetes stack deploys one shared ADOT Collector in the restricted
-`observability` namespace. Its Prometheus receiver discovers the three
-application pods and reads `/metrics` on each pod's named `http` port, then
-remote-writes to AMP with SigV4. Its OTLP receiver accepts traces from the
-three Go services over the private `otel-collector` Service and sends them to
-X-Ray. The collector's Pod Identity role has AMP and X-Ray write permissions;
-its Kubernetes Role can watch only pods in `praxis`. No per-application sidecar
-is needed. Check `up{job="praxis-eks-hot-path"}` in AMP and generate a sampled
-request to verify a trace in X-Ray. Container-log shipping is still separate.
+The Kubernetes stack deploys an ADOT Collector DaemonSet in the restricted
+`observability` namespace. Each Prometheus receiver discovers the application
+pods on its own node and reads `/metrics` on their named `http` ports, then
+remote-writes to AMP with SigV4. Node filtering prevents duplicate samples
+without retaining a single collector-pod failure domain. The collectors accept
+OTLP traces over the private `otel-collector` Service and send them to X-Ray.
+Their Pod Identity role has AMP and X-Ray write permissions; their Kubernetes
+Role can watch only pods in `praxis`. No per-application sidecar is needed.
+Check `up{job="praxis-eks-hot-path"}` in AMP and generate a sampled request to
+verify a trace in X-Ray.
 
-The manifest exposes Order on NodePort 30083 for the public ALB in
-`infra/aws`, routes its gRPC calls through Kubernetes Services, uses restricted
-non-root Pods, and keeps Matching at one replica with `Recreate` updates. The
-mock Matching Engine has no durable order book or fenced ownership; do not
-scale it above one. This stack adds no edge authentication.
+The manifest exposes Order on NodePort 30083 for the public ALB in `infra/aws`.
+The ALB terminates TLS and requires OIDC authentication before forwarding. Its
+callback URL is `https://<order-alb-dns>/oauth2/idpresponse`. Protect the OIDC
+client secret and the Terraform state that contains it.
+
+Order, Ledger, and Matching use CPU HPAs backed by the pinned EKS metrics-server
+add-on and disruption budgets for voluntary maintenance. CloudWatch application
+logs and Container Insights use the pinned CloudWatch Observability add-on and
+Pod Identity. Scaling limits are initial safety bounds, not production capacity
+claims; validate them under load. The mock Matching Engine still lacks fenced
+market ownership and complete order-book recovery, so it is not production
+matching even when replicas are healthy.
 
 Order runs six replicas with hard zone and hostname spread constraints, placing
 two replicas per Availability Zone on separate nodes. Ledger runs three replicas
@@ -102,8 +110,12 @@ kubectl -n praxis port-forward service/order 8083:8083
 
 Outbox Relay and its migration task remain on ECS Fargate. Run
 `./infra/aws/run-migrations.sh outbox` separately after the Ledger migration
-has completed; the task also bootstraps both runtime roles. Kubernetes
-application log shipping, live trace/metric export verification, network policies,
-authenticated ingress, restore drills, and durable Matching remain separate
-work. No live AWS deployment or failure drill has been performed by this
-repository change.
+has completed; the task also bootstraps both runtime roles.
+
+After deployment, run `../../scripts/verify-phase1.sh` and complete the evidence
+and failure exercises in
+[`../../docs/phase-1-production-baseline.md`](../../docs/phase-1-production-baseline.md).
+Live trace, metric, log, authentication, alert-delivery, scaling, restore, and
+failure verification remain operator gates. Network policies and durable
+Matching also remain separate work. No live AWS deployment or failure drill is
+implied by this repository configuration.

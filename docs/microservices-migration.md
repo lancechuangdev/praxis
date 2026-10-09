@@ -62,7 +62,9 @@ The current platform baseline has been delivered incrementally:
         execution role, enhanced Container Insights, and service log groups.
   - [x] Provision EKS on EC2 with Pod Identity for Ledger and Matching and
         private Kubernetes Services for the current hot-path workloads.
-  - [ ] Add authenticated Order ingress and validated Kubernetes scaling.
+  - [x] Define OIDC-authenticated Order ingress, CPU HPAs, disruption budgets,
+        and pinned metrics-server and CloudWatch Observability add-ons.
+  - [ ] Apply and validate authenticated ingress and Kubernetes scaling in AWS.
 - [x] Add a one-off Ledger EKS migration Job and Outbox ECS migration task,
       runtime schema verification, serialized migration execution, and separate runtime
       database credentials. AWS deployment and production verification remain

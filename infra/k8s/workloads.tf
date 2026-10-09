@@ -34,6 +34,28 @@ locals {
   ]
   services    = { for document in local.workload_documents : document.metadata.name => document if document.kind == "Service" }
   deployments = { for document in local.workload_documents : document.metadata.name => document if document.kind == "Deployment" }
+  disruption_budgets = {
+    for document in local.workload_documents : document.metadata.name => document
+    if document.kind == "PodDisruptionBudget"
+  }
+  autoscalers = {
+    for document in local.workload_documents : document.metadata.name => document
+    if document.kind == "HorizontalPodAutoscaler"
+  }
+}
+
+resource "kubernetes_manifest" "disruption_budget" {
+  for_each = var.deploy_workloads ? local.disruption_budgets : {}
+  manifest = each.value
+
+  depends_on = [kubernetes_manifest.deployments]
+}
+
+resource "kubernetes_manifest" "autoscaler" {
+  for_each = var.deploy_workloads ? local.autoscalers : {}
+  manifest = each.value
+
+  depends_on = [kubernetes_manifest.deployments]
 }
 
 resource "kubernetes_namespace_v1" "praxis" {
@@ -169,7 +191,7 @@ resource "kubernetes_manifest" "deployments" {
     kubernetes_service_account_v1.workloads,
     kubernetes_manifest.services,
     kubernetes_manifest.ledger_migration,
-    kubernetes_manifest.collector_deployment
+    kubernetes_manifest.collector_daemonset
   ]
 
   lifecycle {

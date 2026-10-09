@@ -103,6 +103,10 @@ remain deliberately unset until the deployed topology is measured in Phase 1.
 
 ## Phase 1: validate production observability and deployment
 
+Status: repository controls implemented; non-production apply, live evidence,
+failure exercises, and acceptance approval remain pending. See
+[Phase 1 production-like baseline](phase-1-production-baseline.md).
+
 Primary documents:
 
 - [Observability and Istio](observability-and-istio.md), baseline work only

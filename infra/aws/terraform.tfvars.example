@@ -19,6 +19,25 @@ nat_gateway_per_az      = true
 # Supply an issued ACM certificate in this region for the public Order ALB.
 order_alb_certificate_arn = "arn:aws:acm:us-west-2:123456789012:certificate/replace-me"
 
+# Register the ALB callback URL https://<order-alb-dns>/oauth2/idpresponse with
+# the identity provider. Supply the secret through a protected tfvars file or
+# CI secret input; Terraform state contains it and must be encrypted and access
+# controlled.
+order_oidc = {
+  authorization_endpoint = "https://identity.example.com/oauth2/authorize"
+  client_id              = "replace-with-order-alb-client-id"
+  client_secret          = "replace-with-a-long-random-client-secret"
+  issuer                 = "https://identity.example.com/"
+  token_endpoint         = "https://identity.example.com/oauth2/token"
+  user_info_endpoint     = "https://identity.example.com/oauth2/userInfo"
+  scope                  = "openid"
+}
+
+# Resolve versions supported by the selected cluster version and region with
+# aws eks describe-addon-versions, then pin them here.
+eks_metrics_server_addon_version               = "replace-with-supported-version"
+eks_cloudwatch_observability_addon_version     = "replace-with-supported-version"
+
 # Verify the desired engine version and instance-class availability in the
 # selected region. Leave the version null to let AWS choose its current default.
 postgres_engine_version       = null
