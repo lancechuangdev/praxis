@@ -53,7 +53,8 @@ envelope.
   before applying business effects and commit offsets only after local state is
   durable.
 - Poison records use bounded retries and a DLQ/replay process; consumers do not
-  skip them silently.
+  skip them silently. The planned contract and atomic handoff requirements are
+  defined in [Kafka dead-letter queues](../kafka-dead-letter-queues.md).
 
 ## Consequences
 

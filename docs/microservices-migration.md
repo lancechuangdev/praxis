@@ -4,11 +4,15 @@
 
 Move Praxis to independently deployable services without weakening Ledger
 invariants or putting asynchronous messaging in calls that need an immediate
-answer. The current target runs Order Admission, Ledger, and Matching on EKS
-with EC2 nodes. Outbox Relay remains on ECS Fargate; Reconciliation, Reporting,
-and Notification are planned for ECS Fargate when implemented. The earlier
-all-Fargate and ECS EC2 stages below are historical planning context, not the
-current Terraform deployment path.
+answer. The authoritative delivery order and cross-document exit gates are in
+the [implementation roadmap](implementation-roadmap.md). This document owns the
+service boundaries, target runtime topology, and migration constraints.
+
+The current target runs Order Admission, Ledger, and Matching on EKS with EC2
+nodes. Outbox Relay remains on ECS Fargate; Reconciliation, Reporting, and
+Notification are planned for ECS Fargate when implemented. Earlier all-Fargate
+and ECS-on-EC2 hot-path plans are archived below and are not active deployment
+steps.
 
 This is an implementation plan, not a claim that every component exists. The
 repository currently contains Order, Ledger, a mock Matching Engine, and an
@@ -17,7 +21,7 @@ Notification require extraction or implementation.
 
 ## Implementation progress
 
-Phase 1 is being delivered incrementally:
+The current platform baseline has been delivered incrementally:
 
 - [x] Existing images run as a non-root user.
 - [x] Existing services load runtime configuration from the environment.
@@ -160,7 +164,14 @@ Partitioning affects correctness. Events for an account use `account_id`;
 matching events use `market_id`. Ordering is guaranteed only inside one topic
 partition, not globally.
 
-## Phase 1: ECS Fargate
+## Archived deployment alternatives
+
+The following two sections preserve the rationale behind the earlier
+all-Fargate and hybrid ECS plans. They must not be used as implementation
+phases. Terraform now targets EKS on EC2 for Order, Ledger, and Matching, and
+ECS Fargate for Outbox Relay and future asynchronous services.
+
+### Archived: all services on ECS Fargate
 
 Run each long-running process as its own ECS service in private subnets across
 three Availability Zones. Use capacity providers in deployment automation.
@@ -201,7 +212,7 @@ Each process must first have a non-root image, `/healthz`, dependency-aware
 structured correlation-aware logs, metrics, and trace propagation over HTTP,
 gRPC, and Kafka headers.
 
-## Phase 2: hybrid ECS capacity
+### Archived: hybrid ECS capacity
 
 Measure Fargate before deciding it is inadequate. Then create an EC2 Auto
 Scaling group capacity provider and move Order, Ledger, and Matching in that
@@ -238,84 +249,52 @@ other asynchronous services can remain on ECS Fargate; they share managed RDS
 and MSK with Kubernetes workloads through private networking and scoped IAM.
 Keep MSK and RDS managed outside Kubernetes.
 
-## Migration order and exit gates
+## Active migration order and exit gates
 
-### 0. Baseline
+The [implementation roadmap](implementation-roadmap.md) is the single
+authoritative sequence. It orders current-path safety and messaging correctness
+before service extraction, mesh policy, projections, and scaling.
 
-Standardize IDs, event envelopes, health, shutdown, and configuration. Record
-latency, throughput, error rates, Kafka lag, DB saturation, and financial
-invariants. Add duplicate/replay contract tests.
+Phase 0 governance is complete in the repository:
 
-**Gate:** current behavior and objectives are measurable.
+- ADRs define synchronous versus asynchronous interaction, ownership, Kafka
+  ordering, retry policy, event compatibility, and authoritative state;
+- the former ECS hot-path proposals are explicitly archived; and
+- [the local Phase 0 baseline](phase-0-baseline.md) records reproducible
+  throughput, latency, failure, database, and integrity evidence.
 
-### 1. Extract Risk
+The local baseline does not satisfy the production deployment gate. The active
+infrastructure path still requires:
 
-Put the existing deterministic risk logic behind an in-process interface, add a
-versioned `CheckOrder` gRPC service, deploy it in shadow mode, compare decisions,
-then switch Order behind a feature flag. Use a strict timeout and explicit
-fail-closed policy before removing the embedded implementation.
+1. apply and verify the AWS and Kubernetes stacks in a non-production account;
+2. validate authenticated Order ingress, autoscaling, Pod Identity, and private
+   service connectivity;
+3. verify ADOT, AMP, X-Ray, Grafana, logs, and alert delivery with real traffic;
+4. record per-pod, per-zone, Kafka, database, and outbox baselines;
+5. exercise pod, node, Availability Zone, broker, and database failure; and
+6. rehearse workload and infrastructure rollback.
 
-**Gate:** independent deployment, zero unexplained shadow mismatches, tested
-rollback.
-
-### 2. Make event publication durable
-
-Add transactional outboxes to Order and stateful Risk changes. Harden relay
-leasing, retries, schema validation, observability, and shutdown.
-
-**Gate:** killing a process between DB commit and publish loses no event;
-redelivery creates no duplicate business effect.
-
-### 3. Add consumers
-
-Build Notification first with an inbox and fake provider. Add rebuildable
-Reporting projections. Run Reconciliation in detect-only mode, then require
-approval for repair commands before automating proven cases.
-
-**Gate:** projections rebuild, lag is visible, poison records quarantine, and
-replay has a runbook.
-
-### 4. Deploy on Fargate
-
-Add ECS/IAM/discovery/ALB/autoscaling/telemetry pipelines. Exercise task death,
-broker interruption, DB failover, slow consumers, and provider failure.
-
-**Gate:** a task or AZ loss preserves agreed availability and Ledger invariants.
-
-### 5. Move measured hot paths to EC2
-
-Move Order, Ledger, and Matching in that order; rerun load, failure,
-rolling-deployment, cost, and rollback tests after each move.
-
-This earlier ECS EC2 path was superseded by the EKS-on-EC2 deployment. The
-legacy Order, Ledger, and Matching ECS service definitions have been removed.
-No AWS baseline, traffic cutover, or rollback drill has been completed. The
-mock Matching Engine still has no partition fencing or durable recovery.
-
-**Gate:** the move improves a named target and rollback to Fargate works.
-
-### 6. Adopt Kubernetes
-
-Run Order, Ledger, and Matching on Kubernetes EC2 nodes. Validate and hand off
-each service deliberately; the earlier ECS EC2 experiments are not a
-prerequisite. Keep Outbox Relay and other asynchronous services on ECS
-Fargate. Any shadow consumers use separate consumer groups and must suppress
-side effects.
-
-The default Terraform path provisions an EKS control plane, EC2 node group,
-and Pod Identity roles; Order, Ledger, and Matching have no ECS services.
-Their private Kubernetes workloads are managed by the separate `infra/k8s`
-Terraform stack. No cluster has been applied or verified in AWS. Order has no
-public Kubernetes ingress; the mock Matching Engine still cannot recover its
-order book. The deployment runbook is in `infra/k8s/README.md`.
-
-**Gate:** behavior, load, failure, security, cost, and rollback criteria pass.
+The EKS stack is defined but has not been applied and verified in AWS. The mock
+Matching Engine still lacks partition fencing and durable recovery. These are
+explicit later gates, not evidence that the archived ECS phases should be
+resumed.
 
 ## Production checklist
 
-- [ ] ADRs for synchronous calls, partition keys, failure policy, and ownership
-  - [x] ADR 0001 defines synchronous request-path calls versus asynchronous
-        Kafka messaging and their failure semantics.
+- [x] ADRs for synchronous calls, partition keys, failure policy, ownership,
+      event compatibility, and authoritative state
+  - [x] [ADR 0001](adr/0001-synchronous-calls-and-kafka.md) defines synchronous
+        request-path calls versus asynchronous Kafka messaging.
+  - [x] [ADR 0002](adr/0002-service-and-data-ownership.md) defines service and
+        data ownership.
+  - [x] [ADR 0003](adr/0003-kafka-keys-and-ordering.md) defines Kafka keys and
+        ordering scopes.
+  - [x] [ADR 0004](adr/0004-retries-and-failure-policy.md) defines the
+        end-to-end retry and failure policy.
+  - [x] [ADR 0005](adr/0005-event-envelope-compatibility.md) defines event
+        envelopes and compatibility.
+  - [x] [ADR 0006](adr/0006-authoritative-and-derived-state.md) separates
+        authoritative state from derived views.
 - [ ] Protobuf compatibility checks in CI
   - [x] Local Buf lint and `FILE`-level compatibility policies are configured
         independently for Ledger, Matching, and Order service contracts.
@@ -334,7 +313,15 @@ order book. The deployment runbook is in `infra/k8s/README.md`.
   - [x] Ledger has a configurable MSK `MaxOffsetLag` alarm for its command
         consumer group and topic.
 - [ ] Replay, DLQ, stuck-reservation, broker, and database runbooks
+  - [x] The planned Kafka DLQ contract, atomic handoff, and replay policy are
+        documented in [Kafka dead-letter queues](kafka-dead-letter-queues.md).
+  - [x] Projection rebuilding and replay safety are documented in
+        [Event replay and projections](event-replay-and-projections.md).
+  - [ ] Implement Kafka DLQ publication, IAM, monitoring, and replay tooling.
 - [ ] Load tests for normal traffic, hot accounts, and partition skew
+  - [x] A repeatable local distributed-account profile and integrity baseline is
+        recorded in [Phase 0 baseline](phase-0-baseline.md).
+  - [ ] Record EKS, dominant-market, and Kafka partition-skew baselines.
 - [ ] Backup restore and reconciliation proof
 - [ ] ECS and Kubernetes rollback drills
 
