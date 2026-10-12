@@ -16,6 +16,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 	grpcCodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -301,14 +303,37 @@ func (s *Service) recoverSagas(ctx context.Context) {
 	reservations, reservationErr := s.Sagas.DueReservations(ctx, reservationLimit, s.RecoveryOwner, lease)
 	if reservationErr == nil {
 		s.Metrics.SagaClaims.Add(uint64(len(reservations)))
-		s.runBounded(reservations, reservationLimit, func(saga Saga) { _ = s.resumeReservation(ctx, saga) })
+		s.runBounded(reservations, reservationLimit, func(saga Saga) {
+			recoveryCtx, span := s.startRecoverySpan(ctx, saga, "reservation")
+			defer span.End()
+			_ = s.resumeReservation(recoveryCtx, saga)
+		})
 	}
 	sagas, err := s.Sagas.DueReleases(ctx, releaseLimit, s.RecoveryOwner, lease)
 	if err != nil {
 		return
 	}
 	s.Metrics.SagaClaims.Add(uint64(len(sagas)))
-	s.runBounded(sagas, releaseLimit, func(saga Saga) { _ = s.release(ctx, saga) })
+	s.runBounded(sagas, releaseLimit, func(saga Saga) {
+		recoveryCtx, span := s.startRecoverySpan(ctx, saga, "release")
+		defer span.End()
+		_ = s.release(recoveryCtx, saga)
+	})
+}
+
+// startRecoverySpan deliberately starts a new trace for delayed work and links
+// it to the original request trace when a valid durable context is available.
+func (s *Service) startRecoverySpan(ctx context.Context, saga Saga, stage string) (context.Context, trace.Span) {
+	carrier := propagation.MapCarrier{"traceparent": saga.Request.TraceParent, "tracestate": saga.Request.TraceState}
+	linked := otel.GetTextMapPropagator().Extract(context.Background(), carrier)
+	options := []trace.SpanStartOption{
+		trace.WithNewRoot(),
+		trace.WithAttributes(attribute.String("saga.stage", stage), attribute.String("saga.request_id", saga.Request.RequestID), attribute.String("saga.correlation_id", saga.Request.CorrelationID)),
+	}
+	if trace.SpanContextFromContext(linked).IsValid() {
+		options = append(options, trace.WithLinks(trace.LinkFromContext(linked)))
+	}
+	return tracer.Start(ctx, "order.saga.recovery", options...)
 }
 
 func (s *Service) runBounded(sagas []Saga, limit int, work func(Saga)) {

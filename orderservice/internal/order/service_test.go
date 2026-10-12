@@ -3,12 +3,18 @@ package order
 import (
 	"context"
 	"errors"
-	grpcCodes "google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"io"
 	"log/slog"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
+	grpcCodes "google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type fakeLedger struct {
@@ -149,6 +155,39 @@ func TestSagaRecoveryPropagatesClaimOwnership(t *testing.T) {
 	}
 	if got := service.Metrics.SagaClaims.Load(); got != 1 {
 		t.Fatalf("claims=%d, want 1", got)
+	}
+}
+
+func TestRecoverySpanStartsNewTraceLinkedToOriginalRequest(t *testing.T) {
+	previousPropagator := otel.GetTextMapPropagator()
+	previousTracer := tracer
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	tracer = provider.Tracer("test")
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	t.Cleanup(func() {
+		tracer = previousTracer
+		otel.SetTextMapPropagator(previousPropagator)
+		_ = provider.Shutdown(context.Background())
+	})
+	original := trace.NewSpanContext(trace.SpanContextConfig{TraceID: trace.TraceID{1}, SpanID: trace.SpanID{2}, TraceFlags: trace.FlagsSampled, Remote: true})
+	carrier := propagation.MapCarrier{}
+	propagation.TraceContext{}.Inject(trace.ContextWithRemoteSpanContext(context.Background(), original), carrier)
+	saga := Saga{Request: Request{RequestID: "request-1", CorrelationID: "correlation-1", TraceParent: carrier.Get("traceparent")}}
+
+	_, span := (&Service{}).startRecoverySpan(context.Background(), saga, "reservation")
+	span.End()
+
+	ended := recorder.Ended()
+	if len(ended) != 1 {
+		t.Fatalf("spans=%d, want 1", len(ended))
+	}
+	if len(ended[0].Links()) != 1 {
+		t.Fatalf("links=%d, want 1", len(ended[0].Links()))
+	}
+	linked := ended[0].Links()[0].SpanContext
+	if ended[0].SpanContext().TraceID() == original.TraceID() || linked.TraceID() != original.TraceID() || linked.SpanID() != original.SpanID() {
+		t.Fatal("recovery span must use a new trace linked to the original context")
 	}
 }
 func (f *fakeSagas) DueReservations(context.Context, int, string, time.Duration) ([]Saga, error) {

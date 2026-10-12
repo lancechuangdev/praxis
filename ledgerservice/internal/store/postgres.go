@@ -98,7 +98,8 @@ func entry(ctx context.Context, tx pgx.Tx, id, journalID, accountID, userAccount
 }
 
 func outbox(ctx context.Context, tx pgx.Tx, id, eventType, aggregate, key, correlationID, causationID string, data any) error {
-	b, err := makeOutboxPayload(id, eventType, aggregate, correlationID, causationID, "", "", time.Now().UTC(), data)
+	traceParent, traceState := durableTraceContext(ctx)
+	b, err := makeOutboxPayload(id, eventType, aggregate, correlationID, causationID, traceParent, traceState, time.Now().UTC(), data)
 	if err != nil {
 		return err
 	}
@@ -230,7 +231,8 @@ func (p *Postgres) ReserveForOrder(ctx context.Context, v ledger.ReserveOrder) (
 	rid := stableID("rsv_", v.OrderID)
 	jid := stableID("jrn_", "order-service", v.CommandID)
 	eid := stableID("evt_", jid)
-	outboxPayload, err := makeOutboxPayload(eid, "FundsReserved", v.OrderID, v.CorrelationID, v.CausationID, v.TraceParent, v.TraceState, time.Now().UTC(), map[string]any{"journal_id": jid, "reservation_id": rid, "amount_atomic": v.AmountAtomic})
+	traceParent, traceState := durableTraceContext(ctx)
+	outboxPayload, err := makeOutboxPayload(eid, "FundsReserved", v.OrderID, v.CorrelationID, v.CausationID, traceParent, traceState, time.Now().UTC(), map[string]any{"journal_id": jid, "reservation_id": rid, "amount_atomic": v.AmountAtomic})
 	if err != nil {
 		return ledger.Reservation{}, err
 	}

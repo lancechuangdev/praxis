@@ -2,31 +2,25 @@
 
 ## Status
 
-This document records a trace-propagation issue in the current Praxis design
-and a possible future remediation. It does not change the running system.
+Implemented for synchronous gRPC metadata, context-aware Ledger and Matching
+outbox creation, and linked saga-recovery traces. Explicit protobuf trace
+fields remain temporarily for wire compatibility but are no longer populated
+by Order or authoritative for new outbox events.
 
 ## Summary
 
-Praxis currently propagates trace context through two mechanisms:
+Praxis propagates trace context through two mechanisms:
 
 1. OpenTelemetry gRPC instrumentation automatically injects the active trace
    context into gRPC metadata and extracts it at the receiving service.
-2. Order Service also copies the original inbound HTTP `traceparent` and
-   `tracestate` values into protobuf request fields. Ledger and Matching persist
-   those fields in outbox event payloads so the context can cross the later
-   PostgreSQL and Kafka boundary.
+2. Ledger and Matching inject their active server context into durable outbox
+   event payloads so the context can cross the later PostgreSQL and Kafka
+   boundary.
 
-The first mechanism is appropriate for synchronous gRPC calls. The second is
-needed in some form for durable asynchronous work, because transient gRPC
-metadata is not automatically stored with an outbox event. The issue is that
-the explicit protobuf fields can contain the original inbound parent rather
-than the current active span at the point where an event is created. This can
-produce an inaccurate trace tree even when the synchronous gRPC trace is
-correct.
-
-Release events have an additional gap: `ReleaseOrderReservationRequest` and the
-corresponding Ledger domain type do not carry trace fields, and the generic
-Ledger outbox helper writes empty `trace_parent` and `trace_state` values.
+The first mechanism handles live calls. The second is required for durable
+asynchronous work because transient gRPC metadata is not automatically stored
+with an outbox event. New events use the active context at creation time;
+legacy protobuf trace fields are ignored.
 
 ## Current synchronous gRPC flow
 
@@ -89,7 +83,7 @@ With Istio, workload mTLS and coarse service-to-service authorization can stay
 in the mesh, while interceptors remain useful for business-level authorization
 and application audit context.
 
-## Current durable propagation flow
+## Previous durable propagation flow
 
 Order separately validates the inbound HTTP `traceparent` and `tracestate`
 headers and copies their raw values into `order.Request`. The Ledger reservation
@@ -179,7 +173,7 @@ An application must not derive financial idempotency or business causality
 from a trace ID. Traces can be unsampled, restarted, or split intentionally
 across long-running workflows.
 
-## Recommended future design
+## Implemented design
 
 ### Synchronous calls
 
@@ -258,15 +252,15 @@ maintaining separate application parsers where possible. Apply limits to
 `tracestate` and baggage, do not log baggage indiscriminately, and do not allow
 sensitive business data in propagation fields.
 
-## Migration outline
+## Migration status
 
-1. Add trace-propagation tests that capture outgoing gRPC metadata and verify
+1. [x] Add trace-propagation tests that capture outgoing gRPC metadata and verify
    that it represents the active client span.
-2. Introduce a context-aware outbox carrier helper with unit tests.
-3. Convert Ledger reservation and release event creation to the helper.
-4. Convert Matching event creation to the helper.
-5. Define the saga-recovery span and link policy.
-6. Remove explicit protobuf trace fields after all durable producers derive
+2. [x] Introduce a context-aware outbox carrier helper with unit tests.
+3. [x] Convert Ledger reservation and release event creation to the helper.
+4. [x] Convert Matching event creation to the helper.
+5. [x] Define the saga-recovery span and link policy.
+6. [ ] Remove explicit protobuf trace fields after all durable producers derive
    context locally and compatibility requirements permit their removal.
 7. Regenerate protobuf code and update integration tests.
 8. Verify complete traces through HTTP, gRPC, PostgreSQL outbox, relay, Kafka,
@@ -279,7 +273,7 @@ field.
 
 ## Verification scenarios
 
-The eventual implementation should demonstrate:
+The implementation and deployment verification should demonstrate:
 
 1. An HTTP order trace continues through Order, Ledger, and Matching via gRPC
    metadata without explicit protobuf trace fields.
@@ -302,7 +296,8 @@ The eventual implementation should demonstrate:
 - `orderservice/internal/observability/tracing.go` configures the W3C
   propagator and trace provider.
 - `orderservice/internal/adapters/ledger.go` and `matching.go` install gRPC
-  client handlers and currently populate explicit protobuf trace fields.
+  client handlers; they retain but no longer populate explicit protobuf trace
+  fields.
 - `ledgerservice/cmd/ledger-service/main.go` and
   `matchingengine/cmd/matching-engine/main.go` install gRPC server handlers.
 - `orderservice/internal/transport/request_context.go` currently validates and

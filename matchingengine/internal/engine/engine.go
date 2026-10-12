@@ -102,7 +102,8 @@ func (s *PostgresStore) Submit(ctx context.Context, req *matchingv1.SubmitOrderR
 	if err != nil {
 		return nil, err
 	}
-	payload, err := json.Marshal(map[string]any{"id": req.RequestId, "type": "OrderAccepted", "aggregate_id": req.OrderId, "correlation_id": req.CorrelationId, "causation_id": req.CausationId, "trace_parent": req.TraceParent, "trace_state": req.TraceState, "occurred_at": time.Now().UTC(), "data": map[string]any{"order": req, "engine_sequence": sequence}})
+	traceParent, traceState := durableTraceContext(ctx)
+	payload, err := json.Marshal(map[string]any{"id": req.RequestId, "type": "OrderAccepted", "aggregate_id": req.OrderId, "correlation_id": req.CorrelationId, "causation_id": req.CausationId, "trace_parent": traceParent, "trace_state": traceState, "occurred_at": time.Now().UTC(), "data": map[string]any{"order": req, "engine_sequence": sequence}})
 	if err != nil {
 		return nil, err
 	}

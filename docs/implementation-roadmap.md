@@ -136,8 +136,9 @@ deployment rollback has been rehearsed.
 
 ## Phase 2: harden the existing order path
 
-Status: Phase 2.1 lease-based saga recovery is implemented in the repository;
-deployment failure exercises and Phases 2.2-2.3 remain pending.
+Status: Phase 2.1 lease-based saga recovery and Phase 2.2 trace propagation are
+implemented in the repository; deployment failure exercises and Phase 2.3
+remain pending.
 
 Primary documents:
 
@@ -164,12 +165,14 @@ currently select the same due saga.
 
 ### 2.2 Correct trace propagation
 
-1. Add propagation contract tests for outgoing gRPC metadata.
-2. Introduce a context-aware outbox carrier.
-3. Correct Ledger reservation and release event context.
-4. Correct Matching event context.
-5. Define span-link or new-trace behavior for delayed saga recovery.
-6. Remove explicit protobuf trace fields only after compatibility permits it.
+1. [x] Add propagation contract tests for outgoing gRPC metadata.
+2. [x] Introduce a context-aware outbox carrier.
+3. [x] Correct Ledger reservation and release event context.
+4. [x] Correct Matching event context.
+5. [x] Define span-link or new-trace behavior for delayed saga recovery.
+6. [ ] Remove explicit protobuf trace fields only after compatibility permits
+   it. Order no longer populates them and outbox producers no longer trust
+   them.
 
 Correlation and causation identifiers remain durable business identifiers;
 trace identifiers do not replace them.

@@ -7,9 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	ledgerv1 "praxis/api/gen/ledger/v1"
 	"praxis/orderservice/internal/order"
@@ -23,7 +21,7 @@ type GRPCLedger struct {
 }
 
 func NewGRPCLedger(address string, timeout time.Duration) (*GRPCLedger, error) {
-	connection, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithStatsHandler(otelgrpc.NewClientHandler()))
+	connection, err := grpc.NewClient(address, grpcClientOptions()...)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +49,7 @@ func (l *GRPCLedger) Reserve(ctx context.Context, req order.Request) (order.Rese
 		CommandId: req.RequestID, OrderId: req.OrderID, UserId: req.UserID,
 		AssetId: req.ReserveAssetID, AmountAtomic: req.ReserveAmountAtomic,
 		CorrelationId: correlationID, CausationId: causationID,
-		OccurredAt: time.Now().UTC().Format(time.RFC3339Nano), TraceParent: req.TraceParent, TraceState: req.TraceState,
+		OccurredAt: time.Now().UTC().Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		return order.Reservation{}, err
