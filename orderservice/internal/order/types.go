@@ -43,6 +43,7 @@ type Response struct {
 type MatchResult struct {
 	Status         string
 	EngineSequence int64
+	Replay         bool
 }
 
 type ReleaseRequest struct {

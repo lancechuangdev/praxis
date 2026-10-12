@@ -85,7 +85,7 @@ func (s *PostgresStore) Submit(ctx context.Context, req *matchingv1.SubmitOrderR
 		if storedFingerprint != fingerprint {
 			return nil, errors.New("request_id was already used with a different payload")
 		}
-		return &matchingv1.SubmitOrderResponse{OrderId: orderID, Status: status, EngineSequence: sequence}, tx.Commit(ctx)
+		return &matchingv1.SubmitOrderResponse{OrderId: orderID, Status: status, EngineSequence: sequence, IdempotentReplay: true}, tx.Commit(ctx)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err

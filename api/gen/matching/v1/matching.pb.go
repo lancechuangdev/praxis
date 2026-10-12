@@ -162,12 +162,13 @@ func (x *SubmitOrderRequest) GetTraceState() string {
 }
 
 type SubmitOrderResponse struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	OrderId        string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
-	Status         string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
-	EngineSequence int64                  `protobuf:"varint,3,opt,name=engine_sequence,json=engineSequence,proto3" json:"engine_sequence,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	OrderId          string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	Status           string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	EngineSequence   int64                  `protobuf:"varint,3,opt,name=engine_sequence,json=engineSequence,proto3" json:"engine_sequence,omitempty"`
+	IdempotentReplay bool                   `protobuf:"varint,4,opt,name=idempotent_replay,json=idempotentReplay,proto3" json:"idempotent_replay,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SubmitOrderResponse) Reset() {
@@ -221,6 +222,13 @@ func (x *SubmitOrderResponse) GetEngineSequence() int64 {
 	return 0
 }
 
+func (x *SubmitOrderResponse) GetIdempotentReplay() bool {
+	if x != nil {
+		return x.IdempotentReplay
+	}
+	return false
+}
+
 var File_matching_v1_matching_proto protoreflect.FileDescriptor
 
 const file_matching_v1_matching_proto_rawDesc = "" +
@@ -243,11 +251,12 @@ const file_matching_v1_matching_proto_rawDesc = "" +
 	"\ftrace_parent\x18\r \x01(\tR\vtraceParent\x12\x1f\n" +
 	"\vtrace_state\x18\x0e \x01(\tR\n" +
 	"traceStateJ\x04\b\n" +
-	"\x10\v\"q\n" +
+	"\x10\v\"\x9e\x01\n" +
 	"\x13SubmitOrderResponse\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12'\n" +
-	"\x0fengine_sequence\x18\x03 \x01(\x03R\x0eengineSequence2b\n" +
+	"\x0fengine_sequence\x18\x03 \x01(\x03R\x0eengineSequence\x12+\n" +
+	"\x11idempotent_replay\x18\x04 \x01(\bR\x10idempotentReplay2b\n" +
 	"\x0eMatchingEngine\x12P\n" +
 	"\vSubmitOrder\x12\x1f.matching.v1.SubmitOrderRequest\x1a .matching.v1.SubmitOrderResponseB'Z%praxis/api/gen/matching/v1;matchingv1b\x06proto3"
 

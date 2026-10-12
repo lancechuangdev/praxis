@@ -54,7 +54,7 @@ func (m *GRPCMatching) Submit(ctx context.Context, req order.Request, reservatio
 	if err != nil {
 		return order.MatchResult{}, err
 	}
-	return order.MatchResult{Status: response.Status, EngineSequence: response.EngineSequence}, nil
+	return order.MatchResult{Status: response.Status, EngineSequence: response.EngineSequence, Replay: response.IdempotentReplay}, nil
 }
 func (m *GRPCMatching) Close() error { return m.connection.Close() }
 

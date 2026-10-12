@@ -29,4 +29,5 @@ message SubmitOrderResponse {
   string order_id = 1;
   string status = 2;
   int64 engine_sequence = 3;
+  bool idempotent_replay = 4;
 }

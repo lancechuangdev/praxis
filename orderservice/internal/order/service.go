@@ -56,6 +56,7 @@ type Metrics struct {
 	Requests, Accepted, RiskRejected, Failed, DeadLettered, SagaRecoveryPanics    atomic.Uint64
 	SagaClaims, SagaRetryAttempts, SagaActiveClaims                               atomic.Uint64
 	SagaLeaseExpirations                                                          atomic.Uint64
+	SagaRecoveryReplays                                                           atomic.Uint64
 	SagaDue, SagaOldestDueAgeMillis                                               atomic.Int64
 	AdmissionRejected, AdmissionWouldReject, AdmissionOverloaded, AdmissionErrors atomic.Uint64
 	RiskNS, ReserveNS, MatchingNS, TotalNS                                        atomic.Uint64
@@ -234,7 +235,7 @@ func (s *Service) CompleteExecution(ctx context.Context, orderID string) error {
 func (s *Service) release(ctx context.Context, saga Saga) error {
 	callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_, err := s.Ledger.Release(callCtx, ReleaseRequest{CommandID: saga.Request.RequestID + ":release:" + saga.ReleaseReason, OrderID: saga.Request.OrderID, Reason: saga.ReleaseReason, CorrelationID: saga.Request.CorrelationID, CausationID: saga.Request.CausationID})
+	reservation, err := s.Ledger.Release(callCtx, ReleaseRequest{CommandID: saga.Request.RequestID + ":release:" + saga.ReleaseReason, OrderID: saga.Request.OrderID, Reason: saga.ReleaseReason, CorrelationID: saga.Request.CorrelationID, CausationID: saga.Request.CausationID})
 	if err != nil {
 		deadLettered, persistErr := s.Sagas.ReleaseFailed(context.Background(), saga.Request.RequestID, err, saga.ClaimOwner)
 		if deadLettered {
@@ -244,6 +245,9 @@ func (s *Service) release(ctx context.Context, saga Saga) error {
 			return errors.Join(err, fmt.Errorf("persist release failure: %w", persistErr))
 		}
 		return err
+	}
+	if saga.ClaimOwner != "" && reservation.Replay {
+		s.Metrics.SagaRecoveryReplays.Add(1)
 	}
 	return s.Sagas.Released(context.Background(), saga.Request.RequestID, saga.ClaimOwner)
 }
@@ -426,10 +430,13 @@ func (s *Service) resumeReservation(ctx context.Context, saga Saga) error {
 		}
 		return err
 	}
+	if reservation.Replay {
+		s.Metrics.SagaRecoveryReplays.Add(1)
+	}
 	if err = s.Sagas.Reserved(ctx, saga.Request.RequestID, reservation.ID, saga.ClaimOwner); err != nil {
 		return err
 	}
-	_, err = s.Matching.Submit(ctx, saga.Request, reservation)
+	match, err := s.Matching.Submit(ctx, saga.Request, reservation)
 	if err != nil {
 		pending, persistErr := s.Sagas.RequestRelease(context.Background(), saga.Request.OrderID, "matching_failed", saga.ClaimOwner)
 		if persistErr != nil {
@@ -437,6 +444,9 @@ func (s *Service) resumeReservation(ctx context.Context, saga Saga) error {
 		}
 		_ = s.release(context.Background(), pending)
 		return err
+	}
+	if match.Replay {
+		s.Metrics.SagaRecoveryReplays.Add(1)
 	}
 	return s.Sagas.Accepted(ctx, saga.Request.RequestID, saga.ClaimOwner)
 }

@@ -39,6 +39,7 @@ func TestReady(t *testing.T) {
 func TestMetricsExposeSagaBacklogAndExpiredLeases(t *testing.T) {
 	metrics := &order.Metrics{}
 	metrics.SagaLeaseExpirations.Store(2)
+	metrics.SagaRecoveryReplays.Store(3)
 	metrics.SagaDue.Store(7)
 	metrics.SagaOldestDueAgeMillis.Store(2500)
 	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
@@ -49,6 +50,7 @@ func TestMetricsExposeSagaBacklogAndExpiredLeases(t *testing.T) {
 	body := response.Body.String()
 	for _, metric := range []string{
 		"order_saga_lease_expirations_total 2\n",
+		"order_saga_recovery_replays_total 3\n",
 		"order_saga_due 7\n",
 		"order_saga_oldest_due_age_seconds 2.500\n",
 	} {

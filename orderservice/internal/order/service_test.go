@@ -23,6 +23,7 @@ type fakeLedger struct {
 	calls       int
 	releases    []ReleaseRequest
 	releaseErr  error
+	release     Reservation
 }
 
 func (f *fakeLedger) Reserve(context.Context, Request) (Reservation, error) {
@@ -31,18 +32,23 @@ func (f *fakeLedger) Reserve(context.Context, Request) (Reservation, error) {
 }
 func (f *fakeLedger) Release(_ context.Context, request ReleaseRequest) (Reservation, error) {
 	f.releases = append(f.releases, request)
-	return Reservation{}, f.releaseErr
+	return f.release, f.releaseErr
 }
 func (*fakeLedger) Close() error { return nil }
 
 type fakeMatching struct {
-	err   error
-	calls int
+	err      error
+	calls    int
+	response MatchResult
 }
 
 func (f *fakeMatching) Submit(context.Context, Request, Reservation) (MatchResult, error) {
 	f.calls++
-	return MatchResult{Status: "accepted", EngineSequence: 42}, f.err
+	response := f.response
+	if response.Status == "" {
+		response = MatchResult{Status: "accepted", EngineSequence: 42}
+	}
+	return response, f.err
 }
 func (*fakeMatching) Close() error { return nil }
 
@@ -338,6 +344,48 @@ func TestReservationRetryResumesMatching(t *testing.T) {
 	}
 	if ledger.calls != 1 || matching.calls != 1 || sagas.state != "accepted" {
 		t.Fatalf("ledger=%d matching=%d state=%s", ledger.calls, matching.calls, sagas.state)
+	}
+}
+
+func TestReservationRecoveryCountsLedgerReplay(t *testing.T) {
+	req := validRequest()
+	ledger := &fakeLedger{reservation: Reservation{ID: "reservation-1", Replay: true}}
+	sagas := &fakeSagas{saga: Saga{Request: req, ClaimOwner: "worker-a"}, state: "reservation_pending"}
+	service := &Service{Ledger: ledger, Matching: &fakeMatching{}, Sagas: sagas, Metrics: &Metrics{}}
+
+	if err := service.resumeReservation(context.Background(), sagas.saga); err != nil {
+		t.Fatal(err)
+	}
+	if got := service.Metrics.SagaRecoveryReplays.Load(); got != 1 {
+		t.Fatalf("recovery replays=%d, want 1", got)
+	}
+}
+
+func TestReservationRecoveryCountsMatchingReplay(t *testing.T) {
+	req := validRequest()
+	ledger := &fakeLedger{reservation: Reservation{ID: "reservation-1"}}
+	matching := &fakeMatching{response: MatchResult{Status: "accepted", EngineSequence: 42, Replay: true}}
+	sagas := &fakeSagas{saga: Saga{Request: req, ClaimOwner: "worker-a"}, state: "reservation_pending"}
+	service := &Service{Ledger: ledger, Matching: matching, Sagas: sagas, Metrics: &Metrics{}}
+
+	if err := service.resumeReservation(context.Background(), sagas.saga); err != nil {
+		t.Fatal(err)
+	}
+	if got := service.Metrics.SagaRecoveryReplays.Load(); got != 1 {
+		t.Fatalf("recovery replays=%d, want 1", got)
+	}
+}
+
+func TestReleaseRecoveryCountsLedgerReplay(t *testing.T) {
+	ledger := &fakeLedger{release: Reservation{Replay: true}}
+	sagas := &fakeSagas{saga: Saga{Request: Request{RequestID: "request-1", OrderID: "order-1"}, ClaimOwner: "worker-a", ReleaseReason: "execution_complete"}, state: "release_pending"}
+	service := &Service{Ledger: ledger, Sagas: sagas, Metrics: &Metrics{}}
+
+	if err := service.release(context.Background(), sagas.saga); err != nil {
+		t.Fatal(err)
+	}
+	if got := service.Metrics.SagaRecoveryReplays.Load(); got != 1 {
+		t.Fatalf("recovery replays=%d, want 1", got)
 	}
 }
 
