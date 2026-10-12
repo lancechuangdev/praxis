@@ -154,7 +154,8 @@ Primary documents:
 3. [x] Verify lease ownership during every claimed state transition.
 4. [x] Add full retry jitter, including worker-start jitter.
 5. [x] Bound reservation and release retry concurrency separately.
-6. Reserve downstream capacity for new requests.
+6. [x] Reserve downstream capacity for new requests by clamping recovery claim
+   concurrency to the configured downstream budget minus the admission reserve.
 7. [x] Add retry, lease, duplication, and backlog metrics. Claim, active-claim,
    retry-attempt, panic, dead-letter, database backlog age, lease-expiration,
    and downstream idempotent-replay metrics are implemented.

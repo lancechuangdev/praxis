@@ -619,3 +619,21 @@ func TestRecoveryStaysBoundedThroughDependencyOutageAndDrainsAfterward(t *testin
 		}
 	}
 }
+
+func TestRecoveryClaimsRespectAdmissionCapacityReserve(t *testing.T) {
+	ledger := &outageLedger{}
+	store := newRecoveryBacklogStore(10)
+	service := &Service{
+		Ledger: &outageLedger{}, Matching: &countingMatching{calls: make(map[string]int)},
+		Sagas: store, Metrics: &Metrics{}, RecoveryOwner: "worker-a",
+		ReservationRetryConcurrency: 10, ReleaseRetryConcurrency: 10,
+		DownstreamConcurrency: 5, DownstreamAdmissionReserve: 3,
+	}
+	service.Ledger = ledger
+
+	service.recoverSagas(context.Background())
+
+	if got := ledger.calls.Load(); got != 2 {
+		t.Fatalf("recovery calls=%d, want 2 available recovery slots", got)
+	}
+}

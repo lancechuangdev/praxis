@@ -57,6 +57,11 @@ lease defaults to `30s` (`ORDER_SAGA_CLAIM_LEASE`) and must exceed the combined
 Ledger and Matching timeouts. Reservation and release retries have separate
 concurrency limits (`ORDER_SAGA_RESERVATION_CONCURRENCY` and
 `ORDER_SAGA_RELEASE_CONCURRENCY`, both defaulting to `4`).
+Each replica also clamps those claim limits to
+`ORDER_DOWNSTREAM_CONCURRENCY - ORDER_DOWNSTREAM_ADMISSION_RESERVE`, leaving a
+configured portion of its downstream concurrency budget available to new
+orders. Production values must be set from measured Ledger and Matching
+capacity; this per-replica guard is not a distributed quota.
 
 Order admission enforces a per-process in-flight limit and bounded wait queue
 before any saga or financial side effect. Local global, account, and market
@@ -410,6 +415,8 @@ Key environment variables:
 | `ORDER_SAGA_CLAIM_LEASE` | `30s` |
 | `ORDER_SAGA_RESERVATION_CONCURRENCY` | `4` |
 | `ORDER_SAGA_RELEASE_CONCURRENCY` | `4` |
+| `ORDER_DOWNSTREAM_CONCURRENCY` | `16` |
+| `ORDER_DOWNSTREAM_ADMISSION_RESERVE` | `8` |
 | `ORDER_ADMISSION_MODE` | `observe` |
 | `ORDER_ADMISSION_MAX_IN_FLIGHT` | `128` |
 | `ORDER_ADMISSION_MAX_WAITING` | `256` |

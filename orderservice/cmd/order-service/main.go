@@ -102,7 +102,7 @@ func main() {
 	if cfg.AdmissionMode == "observe" {
 		admission = order.NewLocalTokenBuckets(float64(cfg.AdmissionBucketCapacity), float64(cfg.AdmissionRefillPerSecond), true)
 	}
-	service := &order.Service{Ledger: ledger, Matching: matching, RiskLatency: cfg.RiskLatency, RiskRejectBPS: cfg.RiskRejectBPS, Metrics: &order.Metrics{}, Sagas: &order.PostgresSagaStore{DB: sagaDB, MaxReleaseAttempts: cfg.SagaMaxReleaseAttempts, MaxReservationAttempts: cfg.SagaMaxReservationAttempts}, Admission: admission, Concurrency: order.NewConcurrencyGate(cfg.AdmissionMaxInFlight, cfg.AdmissionMaxWaiting), RecoveryOwner: recoveryOwner, RecoveryLease: cfg.SagaClaimLease, ReservationRetryConcurrency: cfg.SagaReservationConcurrency, ReleaseRetryConcurrency: cfg.SagaReleaseConcurrency}
+	service := &order.Service{Ledger: ledger, Matching: matching, RiskLatency: cfg.RiskLatency, RiskRejectBPS: cfg.RiskRejectBPS, Metrics: &order.Metrics{}, Sagas: &order.PostgresSagaStore{DB: sagaDB, MaxReleaseAttempts: cfg.SagaMaxReleaseAttempts, MaxReservationAttempts: cfg.SagaMaxReservationAttempts}, Admission: admission, Concurrency: order.NewConcurrencyGate(cfg.AdmissionMaxInFlight, cfg.AdmissionMaxWaiting), RecoveryOwner: recoveryOwner, RecoveryLease: cfg.SagaClaimLease, ReservationRetryConcurrency: cfg.SagaReservationConcurrency, ReleaseRetryConcurrency: cfg.SagaReleaseConcurrency, DownstreamConcurrency: cfg.DownstreamConcurrency, DownstreamAdmissionReserve: cfg.DownstreamAdmissionReserve}
 	go func() {
 		if recoveryErr := service.RunSagaRecoverySupervised(ctx, cfg.SagaRetryInterval, cfg.SagaRecoveryRestartDelay, cfg.SagaRecoveryMaxPanics, log); recoveryErr != nil {
 			log.Error("saga recovery worker stopped", "error", recoveryErr)

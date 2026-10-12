@@ -77,6 +77,8 @@ type Service struct {
 	RecoveryLease               time.Duration
 	ReservationRetryConcurrency int
 	ReleaseRetryConcurrency     int
+	DownstreamConcurrency       int
+	DownstreamAdmissionReserve  int
 	recoveryState               atomic.Uint32
 }
 
@@ -341,6 +343,11 @@ func (s *Service) recoverSagas(ctx context.Context) {
 	releaseLimit := s.ReleaseRetryConcurrency
 	if releaseLimit < 1 {
 		releaseLimit = 4
+	}
+	recoveryCapacity := s.DownstreamConcurrency - s.DownstreamAdmissionReserve
+	if recoveryCapacity > 0 {
+		reservationLimit = min(reservationLimit, recoveryCapacity)
+		releaseLimit = min(releaseLimit, recoveryCapacity)
 	}
 	reservations, reservationErr := s.Sagas.DueReservations(ctx, reservationLimit, s.RecoveryOwner, lease)
 	if reservationErr == nil {

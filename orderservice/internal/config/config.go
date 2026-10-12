@@ -20,6 +20,8 @@ type Config struct {
 	SagaClaimLease             time.Duration
 	SagaReservationConcurrency int
 	SagaReleaseConcurrency     int
+	DownstreamConcurrency      int
+	DownstreamAdmissionReserve int
 	AdmissionMode              string
 	AdmissionMaxInFlight       int
 	AdmissionMaxWaiting        int
@@ -49,6 +51,8 @@ func Load() (Config, error) {
 		SagaClaimLease:             duration("ORDER_SAGA_CLAIM_LEASE", 30*time.Second),
 		SagaReservationConcurrency: integer("ORDER_SAGA_RESERVATION_CONCURRENCY", 4),
 		SagaReleaseConcurrency:     integer("ORDER_SAGA_RELEASE_CONCURRENCY", 4),
+		DownstreamConcurrency:      integer("ORDER_DOWNSTREAM_CONCURRENCY", 16),
+		DownstreamAdmissionReserve: integer("ORDER_DOWNSTREAM_ADMISSION_RESERVE", 8),
 		AdmissionMode:              value("ORDER_ADMISSION_MODE", "observe"),
 		AdmissionMaxInFlight:       integer("ORDER_ADMISSION_MAX_IN_FLIGHT", 128),
 		AdmissionMaxWaiting:        integer("ORDER_ADMISSION_MAX_WAITING", 256),
@@ -94,6 +98,9 @@ func Load() (Config, error) {
 	}
 	if c.SagaReservationConcurrency < 1 || c.SagaReleaseConcurrency < 1 {
 		return c, errors.New("saga retry concurrency limits must be positive")
+	}
+	if c.DownstreamConcurrency < 2 || c.DownstreamAdmissionReserve < 1 || c.DownstreamAdmissionReserve >= c.DownstreamConcurrency {
+		return c, errors.New("downstream concurrency must exceed the positive admission reserve")
 	}
 	if c.AdmissionMode != "off" && c.AdmissionMode != "observe" {
 		return c, errors.New("ORDER_ADMISSION_MODE must be off or observe until a shared authoritative limiter is configured")
