@@ -3,8 +3,10 @@ package order
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +18,63 @@ import (
 	grpcCodes "google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+func TestRunBoundedLimitsRecoverySurge(t *testing.T) {
+	const (
+		limit = 3
+		count = 20
+	)
+	sagas := make([]Saga, count)
+	for i := range sagas {
+		sagas[i].Request.RequestID = fmt.Sprintf("request-%d", i)
+	}
+	service := &Service{Metrics: &Metrics{}}
+	started := make(chan struct{}, count)
+	release := make(chan struct{})
+	var active, peak atomic.Int64
+	done := make(chan struct{})
+
+	go func() {
+		service.runBounded(sagas, limit, func(Saga) {
+			current := active.Add(1)
+			// update peak safely among concurrent workers
+			for {
+				previous := peak.Load()
+				if current <= previous || peak.CompareAndSwap(previous, current) {
+					break
+				}
+			}
+			started <- struct{}{}
+			<-release
+			active.Add(-1)
+		})
+		close(done)
+	}()
+
+	for range limit {
+		<-started
+	}
+	select {
+	case <-started:
+		t.Fatal("recovery exceeded its concurrency limit")
+	case <-time.After(10 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("recovery surge did not drain")
+	}
+	if got := peak.Load(); got != limit {
+		t.Fatalf("peak concurrency=%d, want %d", got, limit)
+	}
+	if got := service.Metrics.SagaRetryAttempts.Load(); got != count {
+		t.Fatalf("retry attempts=%d, want %d", got, count)
+	}
+	if got := service.Metrics.SagaActiveClaims.Load(); got != 0 {
+		t.Fatalf("active claims after drain=%d, want 0", got)
+	}
+}
 
 type fakeLedger struct {
 	reservation Reservation

@@ -158,8 +158,9 @@ Primary documents:
 7. [x] Add retry, lease, duplication, and backlog metrics. Claim, active-claim,
    retry-attempt, panic, dead-letter, database backlog age, lease-expiration,
    and downstream idempotent-replay metrics are implemented.
-8. Test simultaneous workers, dependency outages, recovery surges, and expired
-   leases.
+8. [ ] Test simultaneous workers, dependency outages, recovery surges, and
+   expired leases. Bounded recovery-surge behavior is covered; database-backed
+   multi-worker, outage, and lease-expiry exercises remain.
 
 This is the highest-priority service change because several replicas can
 currently select the same due saga.
