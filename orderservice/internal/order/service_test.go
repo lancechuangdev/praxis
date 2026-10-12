@@ -100,7 +100,10 @@ type fakeSagas struct {
 	dueReservations       []Saga
 	reservedOwner         string
 	acceptedOwner         string
+	backlog               SagaBacklog
 }
+
+func (f *fakeSagas) Backlog(context.Context) (SagaBacklog, error) { return f.backlog, nil }
 
 func (f *fakeSagas) Start(_ context.Context, req Request) error {
 	f.state = "reservation_pending"
@@ -147,7 +150,7 @@ func (*fakeSagas) DueReleases(context.Context, int, string, time.Duration) ([]Sa
 
 func TestSagaRecoveryPropagatesClaimOwnership(t *testing.T) {
 	req := validRequest()
-	sagas := &fakeSagas{dueReservations: []Saga{{Request: req, ClaimOwner: "worker-a"}}}
+	sagas := &fakeSagas{dueReservations: []Saga{{Request: req, ClaimOwner: "worker-a", LeaseExpired: true}}, backlog: SagaBacklog{DueCount: 3, OldestAge: 2500 * time.Millisecond}}
 	service := &Service{Ledger: &fakeLedger{}, Matching: &fakeMatching{}, Sagas: sagas, Metrics: &Metrics{}, RecoveryOwner: "worker-a"}
 	service.recoverSagas(context.Background())
 	if sagas.reservedOwner != "worker-a" || sagas.acceptedOwner != "worker-a" {
@@ -155,6 +158,15 @@ func TestSagaRecoveryPropagatesClaimOwnership(t *testing.T) {
 	}
 	if got := service.Metrics.SagaClaims.Load(); got != 1 {
 		t.Fatalf("claims=%d, want 1", got)
+	}
+	if got := service.Metrics.SagaLeaseExpirations.Load(); got != 1 {
+		t.Fatalf("lease expirations=%d, want 1", got)
+	}
+	if got := service.Metrics.SagaDue.Load(); got != 3 {
+		t.Fatalf("due=%d, want 3", got)
+	}
+	if got := service.Metrics.SagaOldestDueAgeMillis.Load(); got != 2500 {
+		t.Fatalf("oldest due age=%dms, want 2500ms", got)
 	}
 }
 

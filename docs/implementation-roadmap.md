@@ -156,8 +156,8 @@ Primary documents:
 5. [x] Bound reservation and release retry concurrency separately.
 6. Reserve downstream capacity for new requests.
 7. [ ] Add retry, lease, duplication, and backlog metrics. Claim, active-claim,
-   retry-attempt, panic, and dead-letter metrics are implemented; database
-   backlog age, lease-expiration, and duplicate-window metrics remain.
+   retry-attempt, panic, dead-letter, database backlog age, and lease-expiration
+   metrics are implemented; the duplicate-window metric remains.
 8. Test simultaneous workers, dependency outages, recovery surges, and expired
    leases.
 

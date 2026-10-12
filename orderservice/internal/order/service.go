@@ -43,6 +43,10 @@ type SagaStore interface {
 	DueReservations(context.Context, int, string, time.Duration) ([]Saga, error)
 }
 
+type SagaBacklogStore interface {
+	Backlog(context.Context) (SagaBacklog, error)
+}
+
 type MatchingEngine interface {
 	Submit(context.Context, Request, Reservation) (MatchResult, error)
 	Close() error
@@ -51,6 +55,8 @@ type MatchingEngine interface {
 type Metrics struct {
 	Requests, Accepted, RiskRejected, Failed, DeadLettered, SagaRecoveryPanics    atomic.Uint64
 	SagaClaims, SagaRetryAttempts, SagaActiveClaims                               atomic.Uint64
+	SagaLeaseExpirations                                                          atomic.Uint64
+	SagaDue, SagaOldestDueAgeMillis                                               atomic.Int64
 	AdmissionRejected, AdmissionWouldReject, AdmissionOverloaded, AdmissionErrors atomic.Uint64
 	RiskNS, ReserveNS, MatchingNS, TotalNS                                        atomic.Uint64
 	RiskDuration, ReserveDuration                                                 DurationHistogram
@@ -314,6 +320,12 @@ func (s *Service) runSagaRecoveryCycle(ctx context.Context) (panicValue any, pan
 }
 
 func (s *Service) recoverSagas(ctx context.Context) {
+	if backlogStore, ok := s.Sagas.(SagaBacklogStore); ok {
+		if backlog, err := backlogStore.Backlog(ctx); err == nil {
+			s.Metrics.SagaDue.Store(backlog.DueCount)
+			s.Metrics.SagaOldestDueAgeMillis.Store(backlog.OldestAge.Milliseconds())
+		}
+	}
 	lease := s.RecoveryLease
 	if lease <= 0 {
 		lease = 30 * time.Second
@@ -329,6 +341,7 @@ func (s *Service) recoverSagas(ctx context.Context) {
 	reservations, reservationErr := s.Sagas.DueReservations(ctx, reservationLimit, s.RecoveryOwner, lease)
 	if reservationErr == nil {
 		s.Metrics.SagaClaims.Add(uint64(len(reservations)))
+		s.recordExpiredLeases(reservations)
 		s.runBounded(reservations, reservationLimit, func(saga Saga) {
 			recoveryCtx, span := s.startRecoverySpan(ctx, saga, "reservation")
 			defer span.End()
@@ -340,11 +353,20 @@ func (s *Service) recoverSagas(ctx context.Context) {
 		return
 	}
 	s.Metrics.SagaClaims.Add(uint64(len(sagas)))
+	s.recordExpiredLeases(sagas)
 	s.runBounded(sagas, releaseLimit, func(saga Saga) {
 		recoveryCtx, span := s.startRecoverySpan(ctx, saga, "release")
 		defer span.End()
 		_ = s.release(recoveryCtx, saga)
 	})
+}
+
+func (s *Service) recordExpiredLeases(sagas []Saga) {
+	for _, saga := range sagas {
+		if saga.LeaseExpired {
+			s.Metrics.SagaLeaseExpirations.Add(1)
+		}
+	}
 }
 
 // startRecoverySpan deliberately starts a new trace for delayed work and links

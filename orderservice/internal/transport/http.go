@@ -103,11 +103,14 @@ order_saga_recovery_panics_total %d
 order_saga_claims_total %d
 order_saga_retry_attempts_total %d
 order_saga_active_claims %d
+order_saga_lease_expirations_total %d
+order_saga_due %d
+order_saga_oldest_due_age_seconds %.3f
 order_admission_rejected_total %d
 order_admission_would_reject_total %d
 order_admission_overloaded_total %d
 order_admission_errors_total %d
-`, m.Requests.Load(), m.Accepted.Load(), m.RiskRejected.Load(), m.Failed.Load(), m.DeadLettered.Load(), m.SagaRecoveryPanics.Load(), m.SagaClaims.Load(), m.SagaRetryAttempts.Load(), m.SagaActiveClaims.Load(), m.AdmissionRejected.Load(), m.AdmissionWouldReject.Load(), m.AdmissionOverloaded.Load(), m.AdmissionErrors.Load())
+`, m.Requests.Load(), m.Accepted.Load(), m.RiskRejected.Load(), m.Failed.Load(), m.DeadLettered.Load(), m.SagaRecoveryPanics.Load(), m.SagaClaims.Load(), m.SagaRetryAttempts.Load(), m.SagaActiveClaims.Load(), m.SagaLeaseExpirations.Load(), m.SagaDue.Load(), float64(m.SagaOldestDueAgeMillis.Load())/1000, m.AdmissionRejected.Load(), m.AdmissionWouldReject.Load(), m.AdmissionOverloaded.Load(), m.AdmissionErrors.Load())
 	_, _ = fmt.Fprint(w, m.RiskDuration.Prometheus("order_risk_duration_seconds"), m.ReserveDuration.Prometheus("order_reserve_duration_seconds"), m.MatchingDuration.Prometheus("order_matching_duration_seconds"), m.TotalDuration.Prometheus("order_total_duration_seconds"))
 }
 

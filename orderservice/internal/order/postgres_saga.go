@@ -167,12 +167,12 @@ func (p *PostgresSagaStore) claim(ctx context.Context, state string, limit int, 
 		return nil, errors.New("claim owner and positive lease are required")
 	}
 	rows, err := p.DB.Query(ctx, `WITH due AS (
-		SELECT request_id FROM order_sagas WHERE state=$1 AND next_attempt_at<=now()
+		SELECT request_id, claim_expires_at IS NOT NULL AS lease_expired FROM order_sagas WHERE state=$1 AND next_attempt_at<=now()
 		AND (claim_expires_at IS NULL OR claim_expires_at<=now()) ORDER BY next_attempt_at
 		FOR UPDATE SKIP LOCKED LIMIT $2
 	) UPDATE order_sagas s SET claim_owner=$3,claim_expires_at=now()+$4::interval,updated_at=now()
 	FROM due WHERE s.request_id=due.request_id
-	RETURNING s.request_id,s.order_id,s.correlation_id,s.causation_id,COALESCE(s.reservation_id,''),s.state,COALESCE(s.release_reason,''),s.attempt_count,s.request_payload`,
+	RETURNING s.request_id,s.order_id,s.correlation_id,s.causation_id,COALESCE(s.reservation_id,''),s.state,COALESCE(s.release_reason,''),s.attempt_count,s.request_payload,due.lease_expired`,
 		state, limit, owner, fmt.Sprintf("%d microseconds", lease.Microseconds()))
 	if err != nil {
 		return nil, err
@@ -182,7 +182,7 @@ func (p *PostgresSagaStore) claim(ctx context.Context, state string, limit int, 
 	for rows.Next() {
 		var s Saga
 		var payload []byte
-		if err = rows.Scan(&s.Request.RequestID, &s.Request.OrderID, &s.Request.CorrelationID, &s.Request.CausationID, &s.ReservationID, &s.State, &s.ReleaseReason, &s.Attempts, &payload); err != nil {
+		if err = rows.Scan(&s.Request.RequestID, &s.Request.OrderID, &s.Request.CorrelationID, &s.Request.CausationID, &s.ReservationID, &s.State, &s.ReleaseReason, &s.Attempts, &payload, &s.LeaseExpired); err != nil {
 			return nil, err
 		}
 		requestID, orderID, correlationID, causationID := s.Request.RequestID, s.Request.OrderID, s.Request.CorrelationID, s.Request.CausationID
@@ -194,6 +194,19 @@ func (p *PostgresSagaStore) claim(ctx context.Context, state string, limit int, 
 		out = append(out, s)
 	}
 	return out, rows.Err()
+}
+
+func (p *PostgresSagaStore) Backlog(ctx context.Context) (SagaBacklog, error) {
+	var backlog SagaBacklog
+	var oldestAgeSeconds float64
+	err := p.DB.QueryRow(ctx, `SELECT count(*), COALESCE(EXTRACT(EPOCH FROM now()-min(next_attempt_at)),0)
+		FROM order_sagas WHERE state IN ('reservation_pending','release_pending') AND next_attempt_at<=now()`).
+		Scan(&backlog.DueCount, &oldestAgeSeconds)
+	if err != nil {
+		return SagaBacklog{}, err
+	}
+	backlog.OldestAge = time.Duration(oldestAgeSeconds * float64(time.Second))
+	return backlog, nil
 }
 
 func (p *PostgresSagaStore) DueReservations(ctx context.Context, limit int, owner string, lease time.Duration) ([]Saga, error) {

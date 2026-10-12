@@ -36,6 +36,28 @@ func TestReady(t *testing.T) {
 	}
 }
 
+func TestMetricsExposeSagaBacklogAndExpiredLeases(t *testing.T) {
+	metrics := &order.Metrics{}
+	metrics.SagaLeaseExpirations.Store(2)
+	metrics.SagaDue.Store(7)
+	metrics.SagaOldestDueAgeMillis.Store(2500)
+	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	response := httptest.NewRecorder()
+
+	HTTP{Service: &order.Service{Metrics: metrics}}.Handler().ServeHTTP(response, request)
+
+	body := response.Body.String()
+	for _, metric := range []string{
+		"order_saga_lease_expirations_total 2\n",
+		"order_saga_due 7\n",
+		"order_saga_oldest_due_age_seconds 2.500\n",
+	} {
+		if !strings.Contains(body, metric) {
+			t.Fatalf("metrics missing %q:\n%s", metric, body)
+		}
+	}
+}
+
 type captureLedger struct{ request order.Request }
 
 func (c *captureLedger) Reserve(_ context.Context, request order.Request) (order.Reservation, error) {

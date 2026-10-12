@@ -1,5 +1,7 @@
 package order
 
+import "time"
+
 type Request struct {
 	RequestID           string `json:"request_id"`
 	CorrelationID       string `json:"-"`
@@ -52,4 +54,10 @@ type Saga struct {
 	ReservationID, State, ReleaseReason string
 	ClaimOwner                          string
 	Attempts                            int
+	LeaseExpired                        bool
+}
+
+type SagaBacklog struct {
+	DueCount  int64
+	OldestAge time.Duration
 }
