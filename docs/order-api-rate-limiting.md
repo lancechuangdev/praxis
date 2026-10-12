@@ -1,6 +1,9 @@
 # Order API rate limiting
 
-This document describes a proposed rate-limiting strategy for the Praxis Order API. Rate limiting is not currently implemented by the Order service.
+Local concurrency and bounded queue protection are implemented. Local global,
+account, and market token buckets run in observe-only mode. Authoritative quota
+enforcement remains pending authenticated identity, shared limiter storage, and
+production-like capacity measurements.
 
 ## Goals
 

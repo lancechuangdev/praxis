@@ -20,6 +20,11 @@ type Config struct {
 	SagaClaimLease             time.Duration
 	SagaReservationConcurrency int
 	SagaReleaseConcurrency     int
+	AdmissionMode              string
+	AdmissionMaxInFlight       int
+	AdmissionMaxWaiting        int
+	AdmissionBucketCapacity    int
+	AdmissionRefillPerSecond   int
 	LedgerMode                 string
 	LedgerGRPCAddress          string
 	LedgerTimeout              time.Duration
@@ -44,6 +49,11 @@ func Load() (Config, error) {
 		SagaClaimLease:             duration("ORDER_SAGA_CLAIM_LEASE", 30*time.Second),
 		SagaReservationConcurrency: integer("ORDER_SAGA_RESERVATION_CONCURRENCY", 4),
 		SagaReleaseConcurrency:     integer("ORDER_SAGA_RELEASE_CONCURRENCY", 4),
+		AdmissionMode:              value("ORDER_ADMISSION_MODE", "observe"),
+		AdmissionMaxInFlight:       integer("ORDER_ADMISSION_MAX_IN_FLIGHT", 128),
+		AdmissionMaxWaiting:        integer("ORDER_ADMISSION_MAX_WAITING", 256),
+		AdmissionBucketCapacity:    integer("ORDER_ADMISSION_BUCKET_CAPACITY", 1000),
+		AdmissionRefillPerSecond:   integer("ORDER_ADMISSION_REFILL_PER_SECOND", 500),
 		LedgerMode:                 value("ORDER_LEDGER_MODE", "grpc"),
 		LedgerGRPCAddress:          value("ORDER_LEDGER_GRPC_ADDRESS", "localhost:9091"),
 		LedgerTimeout:              duration("ORDER_LEDGER_TIMEOUT", 2*time.Second),
@@ -84,6 +94,12 @@ func Load() (Config, error) {
 	}
 	if c.SagaReservationConcurrency < 1 || c.SagaReleaseConcurrency < 1 {
 		return c, errors.New("saga retry concurrency limits must be positive")
+	}
+	if c.AdmissionMode != "off" && c.AdmissionMode != "observe" {
+		return c, errors.New("ORDER_ADMISSION_MODE must be off or observe until a shared authoritative limiter is configured")
+	}
+	if c.AdmissionMaxInFlight < 1 || c.AdmissionMaxWaiting < 0 || c.AdmissionBucketCapacity < 1 || c.AdmissionRefillPerSecond < 1 {
+		return c, errors.New("admission limits must be positive and max waiting must not be negative")
 	}
 	return c, nil
 }

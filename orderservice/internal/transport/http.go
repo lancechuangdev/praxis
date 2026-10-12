@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"time"
 
 	"praxis/orderservice/internal/order"
 )
@@ -67,8 +69,18 @@ func (h HTTP) admit(w http.ResponseWriter, r *http.Request) {
 	response, err := h.Service.Admit(r.Context(), request)
 	if err != nil {
 		status := http.StatusServiceUnavailable
+		var rateLimit *order.RateLimitError
 		if errors.Is(err, order.ErrRiskRejected) {
 			status = http.StatusForbidden
+		} else if errors.As(err, &rateLimit) {
+			status = http.StatusTooManyRequests
+			retrySeconds := int64((rateLimit.RetryAfter + time.Second - 1) / time.Second)
+			if retrySeconds < 1 {
+				retrySeconds = 1
+			}
+			w.Header().Set("Retry-After", strconv.FormatInt(retrySeconds, 10))
+			writeJSON(w, status, map[string]any{"code": "rate_limit_exceeded", "message": "Order request rate limit exceeded", "retry_after_ms": rateLimit.RetryAfter.Milliseconds()})
+			return
 		} else if validation := order.Validate(request); validation != nil {
 			status = http.StatusBadRequest
 		}
@@ -91,7 +103,11 @@ order_saga_recovery_panics_total %d
 order_saga_claims_total %d
 order_saga_retry_attempts_total %d
 order_saga_active_claims %d
-`, m.Requests.Load(), m.Accepted.Load(), m.RiskRejected.Load(), m.Failed.Load(), m.DeadLettered.Load(), m.SagaRecoveryPanics.Load(), m.SagaClaims.Load(), m.SagaRetryAttempts.Load(), m.SagaActiveClaims.Load())
+order_admission_rejected_total %d
+order_admission_would_reject_total %d
+order_admission_overloaded_total %d
+order_admission_errors_total %d
+`, m.Requests.Load(), m.Accepted.Load(), m.RiskRejected.Load(), m.Failed.Load(), m.DeadLettered.Load(), m.SagaRecoveryPanics.Load(), m.SagaClaims.Load(), m.SagaRetryAttempts.Load(), m.SagaActiveClaims.Load(), m.AdmissionRejected.Load(), m.AdmissionWouldReject.Load(), m.AdmissionOverloaded.Load(), m.AdmissionErrors.Load())
 	_, _ = fmt.Fprint(w, m.RiskDuration.Prometheus("order_risk_duration_seconds"), m.ReserveDuration.Prometheus("order_reserve_duration_seconds"), m.MatchingDuration.Prometheus("order_matching_duration_seconds"), m.TotalDuration.Prometheus("order_total_duration_seconds"))
 }
 

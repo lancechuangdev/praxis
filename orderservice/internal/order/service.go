@@ -49,11 +49,12 @@ type MatchingEngine interface {
 }
 
 type Metrics struct {
-	Requests, Accepted, RiskRejected, Failed, DeadLettered, SagaRecoveryPanics atomic.Uint64
-	SagaClaims, SagaRetryAttempts, SagaActiveClaims                            atomic.Uint64
-	RiskNS, ReserveNS, MatchingNS, TotalNS                                     atomic.Uint64
-	RiskDuration, ReserveDuration                                              DurationHistogram
-	MatchingDuration, TotalDuration                                            DurationHistogram
+	Requests, Accepted, RiskRejected, Failed, DeadLettered, SagaRecoveryPanics    atomic.Uint64
+	SagaClaims, SagaRetryAttempts, SagaActiveClaims                               atomic.Uint64
+	AdmissionRejected, AdmissionWouldReject, AdmissionOverloaded, AdmissionErrors atomic.Uint64
+	RiskNS, ReserveNS, MatchingNS, TotalNS                                        atomic.Uint64
+	RiskDuration, ReserveDuration                                                 DurationHistogram
+	MatchingDuration, TotalDuration                                               DurationHistogram
 }
 
 type Service struct {
@@ -63,6 +64,8 @@ type Service struct {
 	RiskRejectBPS               int
 	Metrics                     *Metrics
 	Sagas                       SagaStore
+	Admission                   AdmissionController
+	Concurrency                 *ConcurrencyGate
 	RecoveryOwner               string
 	RecoveryLease               time.Duration
 	ReservationRetryConcurrency int
@@ -99,9 +102,32 @@ func Validate(v Request) error {
 func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	started := time.Now()
 	s.Metrics.Requests.Add(1)
+	release, err := s.Concurrency.Acquire(ctx)
+	if err != nil {
+		s.Metrics.AdmissionOverloaded.Add(1)
+		s.failed(started)
+		return Response{}, err
+	}
+	defer release()
 	if err := Validate(req); err != nil {
 		s.failed(started)
 		return Response{}, err
+	}
+	if s.Admission != nil {
+		decision, err := s.Admission.Check(ctx, req)
+		if err != nil {
+			s.Metrics.AdmissionErrors.Add(1)
+			s.failed(started)
+			return Response{}, err
+		}
+		if !decision.Allowed {
+			s.Metrics.AdmissionRejected.Add(1)
+			s.failed(started)
+			return Response{}, &RateLimitError{RetryAfter: decision.RetryAfter}
+		}
+		if decision.WouldReject {
+			s.Metrics.AdmissionWouldReject.Add(1)
+		}
 	}
 	riskStart := time.Now()
 	riskCtx, riskSpan := tracer.Start(ctx, "risk.check")

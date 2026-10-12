@@ -57,6 +57,13 @@ lease defaults to `30s` (`ORDER_SAGA_CLAIM_LEASE`) and must exceed the combined
 Ledger and Matching timeouts. Reservation and release retries have separate
 concurrency limits (`ORDER_SAGA_RESERVATION_CONCURRENCY` and
 `ORDER_SAGA_RELEASE_CONCURRENCY`, both defaulting to `4`).
+
+Order admission enforces a per-process in-flight limit and bounded wait queue
+before any saga or financial side effect. Local global, account, and market
+token buckets run in observe-only mode by default. They intentionally cannot be
+enabled for rejection until an authenticated identity and shared authoritative
+limiter store are configured, because per-pod quotas would multiply as replicas
+scale.
 After Ledger has booked every `TradeExecuted` event for a completed order, call
 `POST /v1/orders/{order_id}/execution-complete`; Ledger atomically returns only
 the reservation's unused remainder to available funds. The caller must emit
@@ -403,6 +410,11 @@ Key environment variables:
 | `ORDER_SAGA_CLAIM_LEASE` | `30s` |
 | `ORDER_SAGA_RESERVATION_CONCURRENCY` | `4` |
 | `ORDER_SAGA_RELEASE_CONCURRENCY` | `4` |
+| `ORDER_ADMISSION_MODE` | `observe` |
+| `ORDER_ADMISSION_MAX_IN_FLIGHT` | `128` |
+| `ORDER_ADMISSION_MAX_WAITING` | `256` |
+| `ORDER_ADMISSION_BUCKET_CAPACITY` | `1000` |
+| `ORDER_ADMISSION_REFILL_PER_SECOND` | `500` |
 
 ## Monitor a load test
 

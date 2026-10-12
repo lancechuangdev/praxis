@@ -137,8 +137,9 @@ deployment rollback has been rehearsed.
 ## Phase 2: harden the existing order path
 
 Status: Phase 2.1 lease-based saga recovery and Phase 2.2 trace propagation are
-implemented in the repository; deployment failure exercises and Phase 2.3
-remain pending.
+implemented in the repository. Phase 2.3 local concurrency protection and
+observe-only token buckets are implemented; capacity measurement, authenticated
+identity, and a shared authoritative limiter remain deployment prerequisites.
 
 Primary documents:
 
@@ -180,13 +181,15 @@ trace identifiers do not replace them.
 ### 2.3 Add admission control and rate limiting
 
 1. Measure the sustainable capacity of Order, Ledger, and Matching.
-2. Add bounded local concurrency and request queues.
+2. [x] Add bounded local concurrency and request queues.
 3. Introduce shared account, API-key, market, and global token buckets.
-4. Run the limiter in observe-only mode.
+4. [x] Run the limiter in observe-only mode. Local global, account, and market
+   decisions are measured; authoritative cross-replica enforcement remains
+   disabled.
 5. Enable generous limits and tune them using measured behavior.
-6. Return `429 Too Many Requests` for quota rejection and `503 Service
+6. [x] Return `429 Too Many Requests` for quota rejection and `503 Service
    Unavailable` when the authoritative limiter fails.
-7. Verify that rejection occurs before financial side effects.
+7. [x] Verify that rejection occurs before financial side effects.
 
 Exit gate: overload produces bounded rejection, retries do not synchronize into
 a storm, and only one worker owns a saga attempt.

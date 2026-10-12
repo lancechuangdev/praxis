@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"praxis/orderservice/internal/order"
 )
@@ -52,6 +53,31 @@ func (*acceptingMatching) Submit(context.Context, order.Request, order.Reservati
 	return order.MatchResult{Status: "accepted"}, nil
 }
 func (*acceptingMatching) Close() error { return nil }
+
+type rejectingAdmission struct{}
+
+func (rejectingAdmission) Check(context.Context, order.Request) (order.AdmissionDecision, error) {
+	return order.AdmissionDecision{RetryAfter: 1500 * time.Millisecond}, nil
+}
+
+func TestRateLimitReturns429BeforeLedgerCall(t *testing.T) {
+	ledger := &captureLedger{}
+	service := &order.Service{Ledger: ledger, Matching: &acceptingMatching{}, Metrics: &order.Metrics{}, Admission: rejectingAdmission{}}
+	request := httptest.NewRequest(http.MethodPost, "/v1/orders", strings.NewReader(`{"request_id":"command-1","order_id":"order-1","user_id":"alice","symbol":"BTC-USDT","side":"buy","order_type":"market","quantity":"1","reserve_asset_id":"asset_usdt","reserve_amount_atomic":"100"}`))
+	response := httptest.NewRecorder()
+
+	HTTP{Service: service}.Handler().ServeHTTP(response, request)
+
+	if response.Code != http.StatusTooManyRequests || response.Header().Get("Retry-After") != "2" {
+		t.Fatalf("status=%d retry-after=%q body=%s", response.Code, response.Header().Get("Retry-After"), response.Body.String())
+	}
+	if ledger.request.RequestID != "" {
+		t.Fatal("rate-limited request reached Ledger")
+	}
+	if !strings.Contains(response.Body.String(), `"code":"rate_limit_exceeded"`) {
+		t.Fatalf("body=%s", response.Body.String())
+	}
+}
 
 func TestRequestContextPropagatesIntoOrder(t *testing.T) {
 	ledger := &captureLedger{}

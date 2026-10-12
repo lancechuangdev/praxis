@@ -98,7 +98,11 @@ func main() {
 
 	hostname, _ := os.Hostname()
 	recoveryOwner := fmt.Sprintf("%s:%d", hostname, os.Getpid())
-	service := &order.Service{Ledger: ledger, Matching: matching, RiskLatency: cfg.RiskLatency, RiskRejectBPS: cfg.RiskRejectBPS, Metrics: &order.Metrics{}, Sagas: &order.PostgresSagaStore{DB: sagaDB, MaxReleaseAttempts: cfg.SagaMaxReleaseAttempts, MaxReservationAttempts: cfg.SagaMaxReservationAttempts}, RecoveryOwner: recoveryOwner, RecoveryLease: cfg.SagaClaimLease, ReservationRetryConcurrency: cfg.SagaReservationConcurrency, ReleaseRetryConcurrency: cfg.SagaReleaseConcurrency}
+	var admission order.AdmissionController
+	if cfg.AdmissionMode == "observe" {
+		admission = order.NewLocalTokenBuckets(float64(cfg.AdmissionBucketCapacity), float64(cfg.AdmissionRefillPerSecond), true)
+	}
+	service := &order.Service{Ledger: ledger, Matching: matching, RiskLatency: cfg.RiskLatency, RiskRejectBPS: cfg.RiskRejectBPS, Metrics: &order.Metrics{}, Sagas: &order.PostgresSagaStore{DB: sagaDB, MaxReleaseAttempts: cfg.SagaMaxReleaseAttempts, MaxReservationAttempts: cfg.SagaMaxReservationAttempts}, Admission: admission, Concurrency: order.NewConcurrencyGate(cfg.AdmissionMaxInFlight, cfg.AdmissionMaxWaiting), RecoveryOwner: recoveryOwner, RecoveryLease: cfg.SagaClaimLease, ReservationRetryConcurrency: cfg.SagaReservationConcurrency, ReleaseRetryConcurrency: cfg.SagaReleaseConcurrency}
 	go func() {
 		if recoveryErr := service.RunSagaRecoverySupervised(ctx, cfg.SagaRetryInterval, cfg.SagaRecoveryRestartDelay, cfg.SagaRecoveryMaxPanics, log); recoveryErr != nil {
 			log.Error("saga recovery worker stopped", "error", recoveryErr)
