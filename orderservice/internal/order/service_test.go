@@ -91,6 +91,9 @@ type fakeSagas struct {
 	deadLetterOnRelease   bool
 	deadLetterReservation bool
 	dueReservationPanics  int
+	dueReservations       []Saga
+	reservedOwner         string
+	acceptedOwner         string
 }
 
 func (f *fakeSagas) Start(_ context.Context, req Request) error {
@@ -98,14 +101,18 @@ func (f *fakeSagas) Start(_ context.Context, req Request) error {
 	f.saga.Request = req
 	return nil
 }
-func (f *fakeSagas) Reserved(_ context.Context, requestID, reservationID string) error {
+func (f *fakeSagas) Reserved(_ context.Context, requestID, reservationID, owner string) error {
 	f.state = "reserved"
+	f.reservedOwner = owner
 	f.saga.Request.RequestID = requestID
 	f.saga.ReservationID = reservationID
 	return nil
 }
-func (f *fakeSagas) Accepted(context.Context, string) error { f.state = "accepted"; return nil }
-func (f *fakeSagas) ReservationFailed(context.Context, string, error, bool) (bool, error) {
+func (f *fakeSagas) Accepted(_ context.Context, _ string, owner string) error {
+	f.state, f.acceptedOwner = "accepted", owner
+	return nil
+}
+func (f *fakeSagas) ReservationFailed(context.Context, string, error, bool, string) (bool, error) {
 	if f.deadLetterReservation {
 		f.state = "dead_letter"
 	} else {
@@ -113,27 +120,43 @@ func (f *fakeSagas) ReservationFailed(context.Context, string, error, bool) (boo
 	}
 	return f.deadLetterReservation, nil
 }
-func (f *fakeSagas) RequestRelease(_ context.Context, orderID, reason string) (Saga, error) {
+func (f *fakeSagas) RequestRelease(_ context.Context, orderID, reason, claimOwner string) (Saga, error) {
 	f.state = "release_pending"
 	f.saga.Request.OrderID = orderID
 	f.saga.ReleaseReason = reason
+	f.saga.ClaimOwner = claimOwner
 	return f.saga, nil
 }
-func (f *fakeSagas) Released(context.Context, string) error { f.state = "released"; return nil }
-func (f *fakeSagas) ReleaseFailed(context.Context, string, error) (bool, error) {
+func (f *fakeSagas) Released(context.Context, string, string) error { f.state = "released"; return nil }
+func (f *fakeSagas) ReleaseFailed(context.Context, string, error, string) (bool, error) {
 	f.failures++
 	if f.deadLetterOnRelease {
 		f.state = "dead_letter"
 	}
 	return f.deadLetterOnRelease, nil
 }
-func (*fakeSagas) DueReleases(context.Context, int) ([]Saga, error) { return nil, nil }
-func (f *fakeSagas) DueReservations(context.Context, int) ([]Saga, error) {
+func (*fakeSagas) DueReleases(context.Context, int, string, time.Duration) ([]Saga, error) {
+	return nil, nil
+}
+
+func TestSagaRecoveryPropagatesClaimOwnership(t *testing.T) {
+	req := validRequest()
+	sagas := &fakeSagas{dueReservations: []Saga{{Request: req, ClaimOwner: "worker-a"}}}
+	service := &Service{Ledger: &fakeLedger{}, Matching: &fakeMatching{}, Sagas: sagas, Metrics: &Metrics{}, RecoveryOwner: "worker-a"}
+	service.recoverSagas(context.Background())
+	if sagas.reservedOwner != "worker-a" || sagas.acceptedOwner != "worker-a" {
+		t.Fatalf("owners reserved=%q accepted=%q", sagas.reservedOwner, sagas.acceptedOwner)
+	}
+	if got := service.Metrics.SagaClaims.Load(); got != 1 {
+		t.Fatalf("claims=%d, want 1", got)
+	}
+}
+func (f *fakeSagas) DueReservations(context.Context, int, string, time.Duration) ([]Saga, error) {
 	if f.dueReservationPanics > 0 {
 		f.dueReservationPanics--
 		panic("corrupt saga")
 	}
-	return nil, nil
+	return f.dueReservations, nil
 }
 
 func TestSagaRecoveryStopsAndBecomesUnreadyAfterConsecutivePanics(t *testing.T) {
@@ -172,21 +195,23 @@ func TestSuccessfulSagaRecoveryCycleResetsConsecutivePanics(t *testing.T) {
 
 type alternatingPanicSagas struct{ calls int }
 
-func (*alternatingPanicSagas) Start(context.Context, Request) error           { return nil }
-func (*alternatingPanicSagas) Reserved(context.Context, string, string) error { return nil }
-func (*alternatingPanicSagas) Accepted(context.Context, string) error         { return nil }
-func (*alternatingPanicSagas) ReservationFailed(context.Context, string, error, bool) (bool, error) {
+func (*alternatingPanicSagas) Start(context.Context, Request) error                   { return nil }
+func (*alternatingPanicSagas) Reserved(context.Context, string, string, string) error { return nil }
+func (*alternatingPanicSagas) Accepted(context.Context, string, string) error         { return nil }
+func (*alternatingPanicSagas) ReservationFailed(context.Context, string, error, bool, string) (bool, error) {
 	return false, nil
 }
-func (*alternatingPanicSagas) RequestRelease(context.Context, string, string) (Saga, error) {
+func (*alternatingPanicSagas) RequestRelease(context.Context, string, string, string) (Saga, error) {
 	return Saga{}, nil
 }
-func (*alternatingPanicSagas) Released(context.Context, string) error { return nil }
-func (*alternatingPanicSagas) ReleaseFailed(context.Context, string, error) (bool, error) {
+func (*alternatingPanicSagas) Released(context.Context, string, string) error { return nil }
+func (*alternatingPanicSagas) ReleaseFailed(context.Context, string, error, string) (bool, error) {
 	return false, nil
 }
-func (*alternatingPanicSagas) DueReleases(context.Context, int) ([]Saga, error) { return nil, nil }
-func (s *alternatingPanicSagas) DueReservations(context.Context, int) ([]Saga, error) {
+func (*alternatingPanicSagas) DueReleases(context.Context, int, string, time.Duration) ([]Saga, error) {
+	return nil, nil
+}
+func (s *alternatingPanicSagas) DueReservations(context.Context, int, string, time.Duration) ([]Saga, error) {
 	s.calls++
 	if s.calls%2 == 1 {
 		panic("intermittent")

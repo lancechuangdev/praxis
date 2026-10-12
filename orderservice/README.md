@@ -52,6 +52,11 @@ them through `order_saga_recovery_panics_total`, and retries after
 the consecutive-panic count. After `ORDER_SAGA_RECOVERY_MAX_PANICS` consecutive
 panics (default `3`), the worker stops and `/readyz` reports the service as
 unavailable until the process is restarted.
+Recovery workers claim due rows with a lease before calling dependencies. The
+lease defaults to `30s` (`ORDER_SAGA_CLAIM_LEASE`) and must exceed the combined
+Ledger and Matching timeouts. Reservation and release retries have separate
+concurrency limits (`ORDER_SAGA_RESERVATION_CONCURRENCY` and
+`ORDER_SAGA_RELEASE_CONCURRENCY`, both defaulting to `4`).
 After Ledger has booked every `TradeExecuted` event for a completed order, call
 `POST /v1/orders/{order_id}/execution-complete`; Ledger atomically returns only
 the reservation's unused remainder to available funds. The caller must emit
@@ -395,6 +400,9 @@ Key environment variables:
 | `ORDER_MATCHING_GRPC_ADDRESS` | `localhost:9092` |
 | `ORDER_MATCHING_TIMEOUT` | `2s` |
 | `ORDER_MOCK_MATCHING_LATENCY` | `1ms` |
+| `ORDER_SAGA_CLAIM_LEASE` | `30s` |
+| `ORDER_SAGA_RESERVATION_CONCURRENCY` | `4` |
+| `ORDER_SAGA_RELEASE_CONCURRENCY` | `4` |
 
 ## Monitor a load test
 

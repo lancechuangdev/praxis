@@ -136,6 +136,9 @@ deployment rollback has been rehearsed.
 
 ## Phase 2: harden the existing order path
 
+Status: Phase 2.1 lease-based saga recovery is implemented in the repository;
+deployment failure exercises and Phases 2.2-2.3 remain pending.
+
 Primary documents:
 
 - [Order saga retry storms](order-saga-retry-storms.md)
@@ -144,13 +147,15 @@ Primary documents:
 
 ### 2.1 Make saga recovery safe across replicas
 
-1. Add claim-owner and lease-expiry fields to sagas.
-2. Claim due work transactionally with `FOR UPDATE SKIP LOCKED`.
-3. Verify lease ownership during every claimed state transition.
-4. Add full retry jitter, including worker-start jitter.
-5. Bound reservation and release retry concurrency separately.
+1. [x] Add claim-owner and lease-expiry fields to sagas.
+2. [x] Claim due work transactionally with `FOR UPDATE SKIP LOCKED`.
+3. [x] Verify lease ownership during every claimed state transition.
+4. [x] Add full retry jitter, including worker-start jitter.
+5. [x] Bound reservation and release retry concurrency separately.
 6. Reserve downstream capacity for new requests.
-7. Add retry, lease, duplication, and backlog metrics.
+7. [ ] Add retry, lease, duplication, and backlog metrics. Claim, active-claim,
+   retry-attempt, panic, and dead-letter metrics are implemented; database
+   backlog age, lease-expiration, and duplicate-window metrics remain.
 8. Test simultaneous workers, dependency outages, recovery surges, and expired
    leases.
 

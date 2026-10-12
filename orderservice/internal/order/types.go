@@ -50,5 +50,6 @@ type ReleaseRequest struct {
 type Saga struct {
 	Request                             Request
 	ReservationID, State, ReleaseReason string
+	ClaimOwner                          string
 	Attempts                            int
 }

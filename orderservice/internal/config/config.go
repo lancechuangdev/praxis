@@ -17,6 +17,9 @@ type Config struct {
 	SagaRecoveryMaxPanics      int
 	SagaMaxReleaseAttempts     int
 	SagaMaxReservationAttempts int
+	SagaClaimLease             time.Duration
+	SagaReservationConcurrency int
+	SagaReleaseConcurrency     int
 	LedgerMode                 string
 	LedgerGRPCAddress          string
 	LedgerTimeout              time.Duration
@@ -38,6 +41,9 @@ func Load() (Config, error) {
 		SagaRecoveryMaxPanics:      integer("ORDER_SAGA_RECOVERY_MAX_PANICS", 3),
 		SagaMaxReleaseAttempts:     integer("ORDER_SAGA_MAX_RELEASE_ATTEMPTS", 10),
 		SagaMaxReservationAttempts: integer("ORDER_SAGA_MAX_RESERVATION_ATTEMPTS", 10),
+		SagaClaimLease:             duration("ORDER_SAGA_CLAIM_LEASE", 30*time.Second),
+		SagaReservationConcurrency: integer("ORDER_SAGA_RESERVATION_CONCURRENCY", 4),
+		SagaReleaseConcurrency:     integer("ORDER_SAGA_RELEASE_CONCURRENCY", 4),
 		LedgerMode:                 value("ORDER_LEDGER_MODE", "grpc"),
 		LedgerGRPCAddress:          value("ORDER_LEDGER_GRPC_ADDRESS", "localhost:9091"),
 		LedgerTimeout:              duration("ORDER_LEDGER_TIMEOUT", 2*time.Second),
@@ -72,6 +78,12 @@ func Load() (Config, error) {
 	}
 	if c.SagaMaxReservationAttempts < 1 {
 		return c, errors.New("ORDER_SAGA_MAX_RESERVATION_ATTEMPTS must be positive")
+	}
+	if c.SagaClaimLease <= c.LedgerTimeout+c.MatchingTimeout {
+		return c, errors.New("ORDER_SAGA_CLAIM_LEASE must exceed the combined Ledger and Matching timeouts")
+	}
+	if c.SagaReservationConcurrency < 1 || c.SagaReleaseConcurrency < 1 {
+		return c, errors.New("saga retry concurrency limits must be positive")
 	}
 	return c, nil
 }

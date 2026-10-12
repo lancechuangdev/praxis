@@ -11,14 +11,23 @@ CREATE TABLE order_sagas (
     attempt_count INTEGER NOT NULL DEFAULT 0,
     next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_error TEXT,
+    claim_owner TEXT,
+    claim_expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT order_sagas_claim_pair_check CHECK (
+        (claim_owner IS NULL AND claim_expires_at IS NULL) OR
+        (claim_owner IS NOT NULL AND claim_expires_at IS NOT NULL)
+    )
 );
 
 CREATE INDEX order_sagas_release_due_idx ON order_sagas(next_attempt_at) WHERE state='release_pending';
 
 CREATE INDEX order_sagas_reservation_due_idx
     ON order_sagas(next_attempt_at) WHERE state='reservation_pending';
+
+CREATE INDEX order_sagas_claim_expiry_idx
+    ON order_sagas(claim_expires_at) WHERE claim_owner IS NOT NULL;
 
 CREATE TABLE order_saga_dead_letters (
     request_id TEXT PRIMARY KEY REFERENCES order_sagas(request_id),

@@ -7,6 +7,7 @@ import (
 	"hash/fnv"
 	"log/slog"
 	"math/big"
+	"math/rand"
 	"runtime/debug"
 	"strings"
 	"sync/atomic"
@@ -30,14 +31,14 @@ type Ledger interface {
 
 type SagaStore interface {
 	Start(context.Context, Request) error
-	Reserved(context.Context, string, string) error
-	Accepted(context.Context, string) error
-	ReservationFailed(context.Context, string, error, bool) (bool, error)
-	RequestRelease(context.Context, string, string) (Saga, error)
-	Released(context.Context, string) error
-	ReleaseFailed(context.Context, string, error) (bool, error)
-	DueReleases(context.Context, int) ([]Saga, error)
-	DueReservations(context.Context, int) ([]Saga, error)
+	Reserved(context.Context, string, string, string) error
+	Accepted(context.Context, string, string) error
+	ReservationFailed(context.Context, string, error, bool, string) (bool, error)
+	RequestRelease(context.Context, string, string, string) (Saga, error)
+	Released(context.Context, string, string) error
+	ReleaseFailed(context.Context, string, error, string) (bool, error)
+	DueReleases(context.Context, int, string, time.Duration) ([]Saga, error)
+	DueReservations(context.Context, int, string, time.Duration) ([]Saga, error)
 }
 
 type MatchingEngine interface {
@@ -47,19 +48,24 @@ type MatchingEngine interface {
 
 type Metrics struct {
 	Requests, Accepted, RiskRejected, Failed, DeadLettered, SagaRecoveryPanics atomic.Uint64
+	SagaClaims, SagaRetryAttempts, SagaActiveClaims                            atomic.Uint64
 	RiskNS, ReserveNS, MatchingNS, TotalNS                                     atomic.Uint64
 	RiskDuration, ReserveDuration                                              DurationHistogram
 	MatchingDuration, TotalDuration                                            DurationHistogram
 }
 
 type Service struct {
-	Ledger        Ledger
-	Matching      MatchingEngine
-	RiskLatency   time.Duration
-	RiskRejectBPS int
-	Metrics       *Metrics
-	Sagas         SagaStore
-	recoveryState atomic.Uint32
+	Ledger                      Ledger
+	Matching                    MatchingEngine
+	RiskLatency                 time.Duration
+	RiskRejectBPS               int
+	Metrics                     *Metrics
+	Sagas                       SagaStore
+	RecoveryOwner               string
+	RecoveryLease               time.Duration
+	ReservationRetryConcurrency int
+	ReleaseRetryConcurrency     int
+	recoveryState               atomic.Uint32
 }
 
 const recoveryUnhealthy = 2
@@ -132,7 +138,7 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	s.Metrics.ReserveDuration.Observe(reserveDuration)
 	if err != nil {
 		if s.Sagas != nil {
-			deadLettered, deadLetterErr := s.Sagas.ReservationFailed(context.Background(), req.RequestID, err, retryableReservationError(err))
+			deadLettered, deadLetterErr := s.Sagas.ReservationFailed(context.Background(), req.RequestID, err, retryableReservationError(err), "")
 			if deadLetterErr != nil {
 				err = errors.Join(err, fmt.Errorf("persist reservation failure: %w", deadLetterErr))
 			} else if deadLettered {
@@ -143,7 +149,7 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 		return Response{}, fmt.Errorf("reserve funds: %w", err)
 	}
 	if s.Sagas != nil {
-		if err := s.Sagas.Reserved(ctx, req.RequestID, reservation.ID); err != nil {
+		if err := s.Sagas.Reserved(ctx, req.RequestID, reservation.ID, ""); err != nil {
 			s.failed(started)
 			return Response{}, fmt.Errorf("persist reservation step: %w", err)
 		}
@@ -156,7 +162,7 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	s.Metrics.MatchingDuration.Observe(matchingDuration)
 	if err != nil {
 		if s.Sagas != nil {
-			saga, persistErr := s.Sagas.RequestRelease(context.Background(), req.OrderID, "matching_failed")
+			saga, persistErr := s.Sagas.RequestRelease(context.Background(), req.OrderID, "matching_failed", "")
 			if persistErr == nil {
 				_ = s.release(context.Background(), saga)
 			}
@@ -165,7 +171,7 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 		return Response{}, fmt.Errorf("matching admission: %w", err)
 	}
 	if s.Sagas != nil {
-		if err := s.Sagas.Accepted(ctx, req.RequestID); err != nil {
+		if err := s.Sagas.Accepted(ctx, req.RequestID, ""); err != nil {
 			s.failed(started)
 			return Response{}, fmt.Errorf("persist matching step: %w", err)
 		}
@@ -184,7 +190,7 @@ func (s *Service) CompleteExecution(ctx context.Context, orderID string) error {
 	if s.Sagas == nil {
 		return errors.New("persistent saga store is not configured")
 	}
-	saga, err := s.Sagas.RequestRelease(ctx, orderID, "execution_complete")
+	saga, err := s.Sagas.RequestRelease(ctx, orderID, "execution_complete", "")
 	if err != nil {
 		return err
 	}
@@ -196,7 +202,7 @@ func (s *Service) release(ctx context.Context, saga Saga) error {
 	defer cancel()
 	_, err := s.Ledger.Release(callCtx, ReleaseRequest{CommandID: saga.Request.RequestID + ":release:" + saga.ReleaseReason, OrderID: saga.Request.OrderID, Reason: saga.ReleaseReason, CorrelationID: saga.Request.CorrelationID, CausationID: saga.Request.CausationID})
 	if err != nil {
-		deadLettered, persistErr := s.Sagas.ReleaseFailed(context.Background(), saga.Request.RequestID, err)
+		deadLettered, persistErr := s.Sagas.ReleaseFailed(context.Background(), saga.Request.RequestID, err, saga.ClaimOwner)
 		if deadLettered {
 			s.Metrics.DeadLettered.Add(1)
 		}
@@ -205,7 +211,7 @@ func (s *Service) release(ctx context.Context, saga Saga) error {
 		}
 		return err
 	}
-	return s.Sagas.Released(context.Background(), saga.Request.RequestID)
+	return s.Sagas.Released(context.Background(), saga.Request.RequestID, saga.ClaimOwner)
 }
 
 func (s *Service) RunSagaRecovery(ctx context.Context, interval time.Duration) {
@@ -230,7 +236,8 @@ func (s *Service) RunSagaRecoverySupervised(ctx context.Context, interval, resta
 		return errors.New("invalid saga recovery supervisor configuration")
 	}
 	s.recoveryState.Store(1)
-	timer := time.NewTimer(interval)
+	// Full startup jitter keeps replicas deployed together from polling in lockstep.
+	timer := time.NewTimer(time.Duration(rand.Int63n(int64(interval))))
 	defer timer.Stop()
 	consecutivePanics := 0
 	for {
@@ -279,25 +286,65 @@ func (s *Service) runSagaRecoveryCycle(ctx context.Context) (panicValue any, pan
 }
 
 func (s *Service) recoverSagas(ctx context.Context) {
-	reservations, reservationErr := s.Sagas.DueReservations(ctx, 100)
-	if reservationErr == nil {
-		for _, saga := range reservations {
-			_ = s.resumeReservation(ctx, saga)
-		}
+	lease := s.RecoveryLease
+	if lease <= 0 {
+		lease = 30 * time.Second
 	}
-	sagas, err := s.Sagas.DueReleases(ctx, 100)
+	reservationLimit := s.ReservationRetryConcurrency
+	if reservationLimit < 1 {
+		reservationLimit = 4
+	}
+	releaseLimit := s.ReleaseRetryConcurrency
+	if releaseLimit < 1 {
+		releaseLimit = 4
+	}
+	reservations, reservationErr := s.Sagas.DueReservations(ctx, reservationLimit, s.RecoveryOwner, lease)
+	if reservationErr == nil {
+		s.Metrics.SagaClaims.Add(uint64(len(reservations)))
+		s.runBounded(reservations, reservationLimit, func(saga Saga) { _ = s.resumeReservation(ctx, saga) })
+	}
+	sagas, err := s.Sagas.DueReleases(ctx, releaseLimit, s.RecoveryOwner, lease)
 	if err != nil {
 		return
 	}
+	s.Metrics.SagaClaims.Add(uint64(len(sagas)))
+	s.runBounded(sagas, releaseLimit, func(saga Saga) { _ = s.release(ctx, saga) })
+}
+
+func (s *Service) runBounded(sagas []Saga, limit int, work func(Saga)) {
+	sem := make(chan struct{}, limit)
+	done := make(chan struct{}, len(sagas))
+	panics := make(chan any, len(sagas))
 	for _, saga := range sagas {
-		_ = s.release(ctx, saga)
+		sem <- struct{}{}
+		go func(v Saga) {
+			s.Metrics.SagaActiveClaims.Add(1)
+			s.Metrics.SagaRetryAttempts.Add(1)
+			defer func() {
+				if value := recover(); value != nil {
+					panics <- value
+				}
+				s.Metrics.SagaActiveClaims.Add(^uint64(0))
+				<-sem
+				done <- struct{}{}
+			}()
+			work(v)
+		}(saga)
+	}
+	for range sagas {
+		<-done
+	}
+	select {
+	case value := <-panics:
+		panic(value)
+	default:
 	}
 }
 
 func (s *Service) resumeReservation(ctx context.Context, saga Saga) error {
 	reservation, err := s.Ledger.Reserve(ctx, saga.Request)
 	if err != nil {
-		deadLettered, persistErr := s.Sagas.ReservationFailed(context.Background(), saga.Request.RequestID, err, retryableReservationError(err))
+		deadLettered, persistErr := s.Sagas.ReservationFailed(context.Background(), saga.Request.RequestID, err, retryableReservationError(err), saga.ClaimOwner)
 		if deadLettered {
 			s.Metrics.DeadLettered.Add(1)
 		}
@@ -306,19 +353,19 @@ func (s *Service) resumeReservation(ctx context.Context, saga Saga) error {
 		}
 		return err
 	}
-	if err = s.Sagas.Reserved(ctx, saga.Request.RequestID, reservation.ID); err != nil {
+	if err = s.Sagas.Reserved(ctx, saga.Request.RequestID, reservation.ID, saga.ClaimOwner); err != nil {
 		return err
 	}
 	_, err = s.Matching.Submit(ctx, saga.Request, reservation)
 	if err != nil {
-		pending, persistErr := s.Sagas.RequestRelease(context.Background(), saga.Request.OrderID, "matching_failed")
+		pending, persistErr := s.Sagas.RequestRelease(context.Background(), saga.Request.OrderID, "matching_failed", saga.ClaimOwner)
 		if persistErr != nil {
 			return errors.Join(err, persistErr)
 		}
 		_ = s.release(context.Background(), pending)
 		return err
 	}
-	return s.Sagas.Accepted(ctx, saga.Request.RequestID)
+	return s.Sagas.Accepted(ctx, saga.Request.RequestID, saga.ClaimOwner)
 }
 
 func retryableReservationError(err error) bool {
