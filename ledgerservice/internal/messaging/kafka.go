@@ -3,24 +3,16 @@ package messaging
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/segmentio/kafka-go"
+	eventsv1 "praxis/api/events/v1"
 	"praxis/ledgerservice/internal/kafkaauth"
 	"praxis/ledgerservice/internal/ledger"
 )
 
-type envelope struct {
-	ID          string          `json:"id"`
-	Type        string          `json:"type"`
-	AggregateID string          `json:"aggregate_id"`
-	OccurredAt  time.Time       `json:"occurred_at"`
-	Data        json.RawMessage `json:"data"`
-}
 type tradeData struct {
 	TradeID             string `json:"trade_id"`
 	EngineID            string `json:"engine_id"`
@@ -87,12 +79,9 @@ func (c *Consumer) Run(ctx context.Context) error {
 	}
 }
 func (c *Consumer) handle(ctx context.Context, raw []byte) error {
-	var e envelope
-	if err := json.Unmarshal(raw, &e); err != nil {
-		return fmt.Errorf("decode envelope: %w", err)
-	}
-	if e.ID == "" || e.Type == "" {
-		return errors.New("event id and type are required")
+	e, err := eventsv1.Decode(raw)
+	if err != nil {
+		return err
 	}
 	var seen bool
 	if err := c.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM inbox_events WHERE consumer_name=$1 AND event_id=$2)`, c.Name, e.ID).Scan(&seen); err != nil {
@@ -101,7 +90,6 @@ func (c *Consumer) handle(ctx context.Context, raw []byte) error {
 	if seen {
 		return nil
 	}
-	var err error
 	switch e.Type {
 	case "PostDeposit":
 		var d depositData

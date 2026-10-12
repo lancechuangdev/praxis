@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	eventsv1 "praxis/api/events/v1"
 	matchingv1 "praxis/api/gen/matching/v1"
 )
 
@@ -103,7 +104,12 @@ func (s *PostgresStore) Submit(ctx context.Context, req *matchingv1.SubmitOrderR
 		return nil, err
 	}
 	traceParent, traceState := durableTraceContext(ctx)
-	payload, err := json.Marshal(map[string]any{"id": req.RequestId, "type": "OrderAccepted", "aggregate_id": req.OrderId, "correlation_id": req.CorrelationId, "causation_id": req.CausationId, "trace_parent": traceParent, "trace_state": traceState, "occurred_at": time.Now().UTC(), "data": map[string]any{"order": req, "engine_sequence": sequence}})
+	e, err := eventsv1.New(req.RequestId, "OrderAccepted", req.OrderId, time.Now(), map[string]any{"order": req, "engine_sequence": sequence})
+	if err != nil {
+		return nil, err
+	}
+	e.CorrelationID, e.CausationID, e.TraceParent, e.TraceState = req.CorrelationId, req.CausationId, traceParent, traceState
+	payload, err := json.Marshal(e)
 	if err != nil {
 		return nil, err
 	}

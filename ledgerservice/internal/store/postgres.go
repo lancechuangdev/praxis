@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	eventsv1 "praxis/api/events/v1"
 	"praxis/ledgerservice/internal/ledger"
 )
 
@@ -107,7 +108,12 @@ func outbox(ctx context.Context, tx pgx.Tx, id, eventType, aggregate, key, corre
 }
 
 func makeOutboxPayload(id, eventType, aggregate, correlationID, causationID, traceParent, traceState string, occurredAt time.Time, data any) ([]byte, error) {
-	return json.Marshal(map[string]any{"id": id, "type": eventType, "aggregate_id": aggregate, "correlation_id": correlationID, "causation_id": causationID, "trace_parent": traceParent, "trace_state": traceState, "occurred_at": occurredAt, "data": data})
+	e, err := eventsv1.New(id, eventType, aggregate, occurredAt, data)
+	if err != nil {
+		return nil, err
+	}
+	e.CorrelationID, e.CausationID, e.TraceParent, e.TraceState = correlationID, causationID, traceParent, traceState
+	return json.Marshal(e)
 }
 
 func insertOutbox(ctx context.Context, tx pgx.Tx, id, eventType, aggregate, key string, payload []byte) error {

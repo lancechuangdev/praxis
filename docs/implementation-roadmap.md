@@ -201,6 +201,7 @@ a storm, and only one worker owns a saga attempt.
 
 Primary documents:
 
+- [Kafka topology inventory](kafka-topology-inventory.md)
 - [Kafka dead-letter queues](kafka-dead-letter-queues.md)
 - [Event replay and projections](event-replay-and-projections.md)
 - [Kafka partition expansion](kafka-partition-expansion.md)
@@ -208,9 +209,10 @@ Primary documents:
 
 Work:
 
-1. Inventory every topic, producer, consumer group, partition key, schema, and
+1. [x] Inventory every topic, producer, consumer group, partition key, schema, and
    ordering guarantee.
-2. Define versioned event and DLQ envelopes.
+2. [x] Define versioned event and DLQ envelopes, with legacy unversioned event
+   decoding retained for the compatibility window.
 3. Add transactional outboxes wherever domain state and event publication are
    not yet atomic.
 4. Add transactional inbox deduplication to consumers.
