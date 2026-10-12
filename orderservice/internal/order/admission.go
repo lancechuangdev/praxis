@@ -32,8 +32,8 @@ type AdmissionController interface {
 // number of callers waiting for that capacity.
 type ConcurrencyGate struct {
 	slots   chan struct{}
-	maxWait int64
-	waiting atomic.Int64
+	maxWait int64 // maximum number of requests allowed to wait for a concurrency slot
+	waiting atomic.Int64 // current number of requests waiting for an execution slot
 }
 
 func NewConcurrencyGate(maxInFlight, maxWaiting int) *ConcurrencyGate {
@@ -47,16 +47,20 @@ func (g *ConcurrencyGate) Acquire(ctx context.Context) (func(), error) {
 	if g == nil {
 		return func() {}, nil
 	}
+	// First attempts to get a slot without waiting
+	// non-blocking because a default case exists
 	select {
 	case g.slots <- struct{}{}:
 		return func() { <-g.slots }, nil
 	default:
 	}
+	// If every slot is occupied, the request may wait
 	if g.maxWait <= 0 || g.waiting.Add(1) > g.maxWait {
 		g.waiting.Add(-1)
 		return nil, ErrOverloaded
 	}
 	defer g.waiting.Add(-1)
+	// It blocks and waits for either a free slot or request cancellation
 	select {
 	case g.slots <- struct{}{}:
 		return func() { <-g.slots }, nil
@@ -105,6 +109,7 @@ func (l *LocalTokenBuckets) Check(_ context.Context, req Request) (AdmissionDeci
 		if !ok {
 			b = bucket{tokens: l.capacity, at: now}
 		}
+		// token refill
 		b.tokens += now.Sub(b.at).Seconds() * l.refill
 		if b.tokens > l.capacity {
 			b.tokens = l.capacity
@@ -112,6 +117,7 @@ func (l *LocalTokenBuckets) Check(_ context.Context, req Request) (AdmissionDeci
 		b.at = now
 		if b.tokens < 1 {
 			allowed = false
+			// the limiter estimates how long it needs to refill
 			wait := time.Duration((1 - b.tokens) / l.refill * float64(time.Second))
 			if wait > retryAfter {
 				retryAfter = wait
