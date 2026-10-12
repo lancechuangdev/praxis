@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -457,5 +458,164 @@ func TestExhaustedReleaseRetriesIncrementDeadLetterMetric(t *testing.T) {
 	}
 	if sagas.state != "dead_letter" || service.Metrics.DeadLettered.Load() != 1 {
 		t.Fatalf("state=%s dead letters=%d", sagas.state, service.Metrics.DeadLettered.Load())
+	}
+}
+
+type outageLedger struct {
+	available atomic.Bool
+	calls     atomic.Int64
+}
+
+func (l *outageLedger) Reserve(_ context.Context, req Request) (Reservation, error) {
+	l.calls.Add(1)
+	if !l.available.Load() {
+		return Reservation{}, errors.New("ledger unavailable")
+	}
+	return Reservation{ID: req.OrderID + "-reservation"}, nil
+}
+func (*outageLedger) Release(context.Context, ReleaseRequest) (Reservation, error) {
+	return Reservation{}, nil
+}
+func (*outageLedger) Close() error { return nil }
+
+type recoveryBacklogStore struct {
+	mu       sync.Mutex
+	sagas    []Saga
+	states   map[string]string
+	owners   map[string]string
+	attempts map[string]int
+}
+
+func newRecoveryBacklogStore(count int) *recoveryBacklogStore {
+	store := &recoveryBacklogStore{states: make(map[string]string, count), owners: make(map[string]string, count), attempts: make(map[string]int, count)}
+	for i := range count {
+		requestID := fmt.Sprintf("outage-request-%d", i)
+		store.sagas = append(store.sagas, Saga{Request: Request{RequestID: requestID, OrderID: fmt.Sprintf("outage-order-%d", i), UserID: "alice", Symbol: "BTC-USDT", Side: "buy", OrderType: "market", Quantity: "1", ReserveAssetID: "asset_usdt", ReserveAmountAtomic: "1"}})
+		store.states[requestID] = "reservation_pending"
+	}
+	return store
+}
+
+func (*recoveryBacklogStore) Start(context.Context, Request) error { return nil }
+func (s *recoveryBacklogStore) Reserved(_ context.Context, requestID, _ string, owner string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.owners[requestID] != owner {
+		return errors.New("stale reservation owner")
+	}
+	s.states[requestID] = "reserved"
+	return nil
+}
+func (s *recoveryBacklogStore) Accepted(_ context.Context, requestID, owner string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.owners[requestID] != owner || s.states[requestID] != "reserved" {
+		return errors.New("stale acceptance owner")
+	}
+	s.states[requestID] = "accepted"
+	delete(s.owners, requestID)
+	return nil
+}
+func (s *recoveryBacklogStore) ReservationFailed(_ context.Context, requestID string, _ error, _ bool, owner string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.owners[requestID] != owner {
+		return false, errors.New("stale failure owner")
+	}
+	s.attempts[requestID]++
+	delete(s.owners, requestID)
+	return false, nil
+}
+func (*recoveryBacklogStore) RequestRelease(context.Context, string, string, string) (Saga, error) {
+	return Saga{}, errors.New("unexpected release")
+}
+func (*recoveryBacklogStore) Released(context.Context, string, string) error { return nil }
+func (*recoveryBacklogStore) ReleaseFailed(context.Context, string, error, string) (bool, error) {
+	return false, nil
+}
+func (*recoveryBacklogStore) DueReleases(context.Context, int, string, time.Duration) ([]Saga, error) {
+	return nil, nil
+}
+func (s *recoveryBacklogStore) DueReservations(_ context.Context, limit int, owner string, _ time.Duration) ([]Saga, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	claimed := make([]Saga, 0, limit)
+	for _, saga := range s.sagas {
+		if len(claimed) == limit {
+			break
+		}
+		if s.states[saga.Request.RequestID] != "reservation_pending" || s.owners[saga.Request.RequestID] != "" {
+			continue
+		}
+		saga.ClaimOwner = owner
+		s.owners[saga.Request.RequestID] = owner
+		claimed = append(claimed, saga)
+	}
+	return claimed, nil
+}
+func (s *recoveryBacklogStore) accepted() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	accepted := 0
+	for _, state := range s.states {
+		if state == "accepted" {
+			accepted++
+		}
+	}
+	return accepted
+}
+
+type countingMatching struct {
+	mu    sync.Mutex
+	calls map[string]int
+}
+
+func (m *countingMatching) Submit(_ context.Context, req Request, _ Reservation) (MatchResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls[req.RequestID]++
+	return MatchResult{Status: "accepted"}, nil
+}
+func (*countingMatching) Close() error { return nil }
+
+func TestRecoveryStaysBoundedThroughDependencyOutageAndDrainsAfterward(t *testing.T) {
+	const backlog = 9
+	const limit = 3
+	ledger := &outageLedger{}
+	store := newRecoveryBacklogStore(backlog)
+	matching := &countingMatching{calls: make(map[string]int, backlog)}
+	service := &Service{Ledger: ledger, Matching: matching, Sagas: store, Metrics: &Metrics{}, RecoveryOwner: "worker-a", ReservationRetryConcurrency: limit}
+
+	for range 3 {
+		before := ledger.calls.Load()
+		service.recoverSagas(context.Background())
+		if cycleCalls := ledger.calls.Load() - before; cycleCalls > limit {
+			t.Fatalf("outage cycle made %d calls, limit %d", cycleCalls, limit)
+		}
+	}
+	if accepted := store.accepted(); accepted != 0 {
+		t.Fatalf("accepted during outage=%d", accepted)
+	}
+	if service.Metrics.DeadLettered.Load() != 0 {
+		t.Fatal("bounded transient outage unexpectedly dead-lettered work")
+	}
+
+	ledger.available.Store(true)
+	for cycle := 0; cycle < backlog/limit; cycle++ {
+		before := ledger.calls.Load()
+		service.recoverSagas(context.Background())
+		if cycleCalls := ledger.calls.Load() - before; cycleCalls > limit {
+			t.Fatalf("recovery cycle made %d calls, limit %d", cycleCalls, limit)
+		}
+	}
+	if accepted := store.accepted(); accepted != backlog {
+		t.Fatalf("accepted after recovery=%d, want %d", accepted, backlog)
+	}
+	matching.mu.Lock()
+	defer matching.mu.Unlock()
+	for requestID, calls := range matching.calls {
+		if calls != 1 {
+			t.Fatalf("matching calls for %s=%d, want 1", requestID, calls)
+		}
 	}
 }
