@@ -60,22 +60,31 @@ func (e Envelope) Validate() error {
 }
 
 type DLQEnvelope struct {
-	Version         int       `json:"version"`
-	ID              string    `json:"id"`
-	SourceTopic     string    `json:"source_topic"`
-	SourcePartition int       `json:"source_partition"`
-	SourceOffset    int64     `json:"source_offset"`
-	SourceKey       string    `json:"source_key,omitempty"`
-	ConsumerGroup   string    `json:"consumer_group"`
-	FailureClass    string    `json:"failure_class"`
-	FailureReason   string    `json:"failure_reason"`
-	FailedAt        time.Time `json:"failed_at"`
-	ReplayCount     int       `json:"replay_count"`
-	Original        []byte    `json:"original"`
+	Version         int         `json:"version"`
+	ID              string      `json:"id"`
+	SourceTopic     string      `json:"source_topic"`
+	SourcePartition int         `json:"source_partition"`
+	SourceOffset    int64       `json:"source_offset"`
+	SourceTimestamp time.Time   `json:"source_timestamp,omitempty"`
+	SourceKey       []byte      `json:"source_key,omitempty"`
+	SourceHeaders   []DLQHeader `json:"source_headers,omitempty"`
+	ConsumerGroup   string      `json:"consumer_group"`
+	FailureClass    string      `json:"failure_class"`
+	FailureCode     string      `json:"failure_code"`
+	FailureReason   string      `json:"failure_reason"`
+	FailedAt        time.Time   `json:"failed_at"`
+	AttemptCount    int         `json:"attempt_count"`
+	ReplayCount     int         `json:"replay_count"`
+	Original        []byte      `json:"original"`
+}
+
+type DLQHeader struct {
+	Key   string `json:"key"`
+	Value []byte `json:"value"`
 }
 
 func (d DLQEnvelope) Validate() error {
-	if d.Version != Version || d.ID == "" || d.SourceTopic == "" || d.SourcePartition < 0 || d.SourceOffset < 0 || d.ConsumerGroup == "" || d.FailureClass == "" || d.FailureReason == "" || d.FailedAt.IsZero() || len(d.Original) == 0 {
+	if d.Version != Version || d.ID == "" || d.SourceTopic == "" || d.SourcePartition < 0 || d.SourceOffset < 0 || d.ConsumerGroup == "" || d.FailureClass == "" || d.FailureCode == "" || d.FailureReason == "" || d.FailedAt.IsZero() || d.AttemptCount < 1 || len(d.Original) == 0 {
 		return errors.New("invalid DLQ envelope")
 	}
 	if d.ReplayCount < 0 {

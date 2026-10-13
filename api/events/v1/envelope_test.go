@@ -21,7 +21,7 @@ func TestDecodeRejectsUnsupportedVersion(t *testing.T) {
 }
 
 func TestDLQEnvelopeValidation(t *testing.T) {
-	d := DLQEnvelope{Version: Version, ID: "dlq-1", SourceTopic: "ledger.commands.v1", SourcePartition: 1, SourceOffset: 2, ConsumerGroup: "ledger", FailureClass: "deterministic", FailureReason: "invalid schema", FailedAt: time.Now(), Original: []byte(`not-json`)}
+	d := DLQEnvelope{Version: Version, ID: "dlq-1", SourceTopic: "ledger.commands.v1", SourcePartition: 1, SourceOffset: 2, ConsumerGroup: "ledger", FailureClass: "deterministic", FailureCode: "invalid_envelope", FailureReason: "invalid schema", FailedAt: time.Now(), AttemptCount: 1, Original: []byte(`not-json`)}
 	if err := d.Validate(); err != nil {
 		t.Fatal(err)
 	}

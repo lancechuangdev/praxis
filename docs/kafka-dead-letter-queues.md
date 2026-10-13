@@ -92,28 +92,33 @@ the failure without depending on short-lived application logs:
 
 ```json
 {
-  "dlq_schema_version": 1,
+  "version": 1,
+  "id": "dlq:ledger.commands.v1:3:4812",
   "source_topic": "ledger.commands.v1",
   "source_partition": 3,
   "source_offset": 4812,
   "source_timestamp": "2026-10-07T18:30:00Z",
+  "source_key": "YWNjdF8x",
+  "source_headers": [
+    {"key": "traceparent", "value": "MDAtLi4u"}
+  ],
   "consumer_group": "cex-ledger-service",
+  "failure_class": "deterministic",
+  "failure_code": "unsupported_event_type",
+  "failure_reason": "unsupported event type",
   "failed_at": "2026-10-07T18:31:05Z",
-  "attempt_count": 5,
-  "error_code": "unsupported_schema_version",
-  "error_message": "schema version 4 is not supported",
-  "event_id": "evt_123",
-  "correlation_id": "corr_456",
-  "original_key_base64": "YWNjdF8x",
-  "original_value_base64": "ey4uLn0=",
-  "original_headers": []
+  "attempt_count": 1,
+  "replay_count": 0,
+  "original": "ey4uLn0="
 }
 ```
 
-Preserve the original bytes and headers exactly. Add normalized error codes for
-automation; treat free-form error messages as diagnostic text. Payloads may
-contain personal or financial data, so DLQ access, encryption, log redaction,
-and retention must be at least as restrictive as for the source topic.
+JSON represents the binary source key, header values, and original value as
+base64 strings. Preserve those bytes and the header order exactly. Normalized
+failure codes support automation; free-form failure reasons are diagnostic
+text. Payloads may contain personal or financial data, so DLQ access,
+encryption, log redaction, and retention must be at least as restrictive as
+for the source topic.
 
 ## Replay
 
@@ -162,9 +167,6 @@ The following work remains:
 
 - add authenticated, authorized, audited, and rate-limited inspection and
   selective replay tooling;
-- preserve and replay Kafka headers in addition to the current source key and
-  original value;
-- add normalized failure codes and bounded attempt metadata;
 - add DLQ metrics, alerts, and a tested replay runbook;
 - test crashes before and after handoff and offset commit; and
 - add corresponding DLQs if future source consumers are implemented.
