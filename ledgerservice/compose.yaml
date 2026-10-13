@@ -120,6 +120,18 @@ services:
       OTEL_TRACE_SAMPLE_RATIO: ${OTEL_TRACE_SAMPLE_RATIO:-1}
     ports: ["8084:8084", "9094:9092"]
 
+  risk-service:
+    build:
+      context: ..
+      dockerfile: riskservice/Dockerfile
+    environment:
+      RISK_GRPC_ADDRESS: :9095
+      RISK_HTTP_ADDRESS: :8085
+      RISK_POLICY_VERSION: embedded-v1
+      RISK_REJECT_BPS: ${ORDER_RISK_REJECT_BPS:-0}
+      RISK_DECISION_LATENCY: ${ORDER_RISK_LATENCY:-1ms}
+    ports: ["8085:8085", "9095:9095"]
+
   prometheus:
     image: prom/prometheus:v3.7.3
     profiles: ["observability"]
