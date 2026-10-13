@@ -10,6 +10,7 @@ const EmbeddedRiskPolicyVersion = "embedded-v1"
 
 type RiskDecision struct {
 	Approved      bool
+	DecisionID    string
 	ReasonCode    string
 	PolicyVersion string
 }

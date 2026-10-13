@@ -272,11 +272,14 @@ Work:
    now contains an independently runnable Risk service and container with
    service-owned immutable policy configuration, health/readiness endpoints,
    bounded decision metrics, and a private digest-pinned EKS deployment
-   definition with zone spreading, disruption protection, and autoscaling. Persistent
-   policy/audit state, a non-production apply, and live telemetry evidence
-   remain before this item is complete.
+   definition with zone spreading, disruption protection, and autoscaling.
+   Persistent policy/audit state, a non-production apply, and live telemetry
+   evidence remain before this item is complete.
 4. Run the service in shadow mode and compare its decisions with the embedded
-   calculation.
+   calculation. Order now supports bounded asynchronous shadow calls with
+   strict per-call timeouts and match, mismatch, error, and dropped-work
+   metrics; the embedded checker remains authoritative. Production-like
+   comparison evidence and resolution of every mismatch remain required.
 5. Cut over through a feature flag with a strict deadline and explicit
    fail-closed behavior.
 6. Retain immediate rollback until the independent service is proven.

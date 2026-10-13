@@ -18,3 +18,8 @@ bounded labels only. The policy version and deterministic decision ID make
 shadow comparisons auditable without using account or order IDs as metric
 labels. Persistent rule management and decision-audit storage remain future
 work; this slice owns immutable startup policy configuration.
+
+Local Compose and the EKS workload definition run this service as a shadow of
+Order's embedded policy. It is not on the authoritative admission path: Order
+continues when a shadow call fails and records matches, mismatches, errors, and
+bounded-concurrency drops for rollout evaluation.

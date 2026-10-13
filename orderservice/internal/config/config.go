@@ -33,6 +33,10 @@ type Config struct {
 	MockLedgerLatency          time.Duration
 	RiskLatency                time.Duration
 	RiskRejectBPS              int
+	RiskRemoteMode             string
+	RiskGRPCAddress            string
+	RiskTimeout                time.Duration
+	RiskShadowMaxInFlight      int
 	MatchingMode               string
 	MatchingGRPCAddress        string
 	MatchingTimeout            time.Duration
@@ -64,6 +68,10 @@ func Load() (Config, error) {
 		MockLedgerLatency:          duration("ORDER_MOCK_LEDGER_LATENCY", 3*time.Millisecond),
 		RiskLatency:                duration("ORDER_RISK_LATENCY", time.Millisecond),
 		RiskRejectBPS:              integer("ORDER_RISK_REJECT_BPS", 0),
+		RiskRemoteMode:             value("ORDER_RISK_REMOTE_MODE", "off"),
+		RiskGRPCAddress:            value("ORDER_RISK_GRPC_ADDRESS", "localhost:9095"),
+		RiskTimeout:                duration("ORDER_RISK_TIMEOUT", 100*time.Millisecond),
+		RiskShadowMaxInFlight:      integer("ORDER_RISK_SHADOW_MAX_IN_FLIGHT", 32),
 		MatchingMode:               value("ORDER_MATCHING_MODE", "grpc"),
 		MatchingGRPCAddress:        value("ORDER_MATCHING_GRPC_ADDRESS", "localhost:9092"),
 		MatchingTimeout:            duration("ORDER_MATCHING_TIMEOUT", 2*time.Second),
@@ -74,6 +82,12 @@ func Load() (Config, error) {
 	}
 	if c.RiskRejectBPS < 0 || c.RiskRejectBPS > 10000 {
 		return c, errors.New("ORDER_RISK_REJECT_BPS must be between 0 and 10000")
+	}
+	if c.RiskRemoteMode != "off" && c.RiskRemoteMode != "shadow" {
+		return c, errors.New("ORDER_RISK_REMOTE_MODE must be off or shadow")
+	}
+	if c.RiskTimeout <= 0 || c.RiskShadowMaxInFlight < 1 {
+		return c, errors.New("risk timeout and shadow max in-flight must be positive")
 	}
 	if c.MatchingMode != "grpc" && c.MatchingMode != "mock" {
 		return c, errors.New("ORDER_MATCHING_MODE must be grpc or mock")

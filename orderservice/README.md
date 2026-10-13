@@ -11,8 +11,14 @@ Order calls the internal `RiskChecker` contract before creating saga state or
 calling Ledger. The current `EmbeddedRiskChecker` preserves the deterministic
 development policy configured by `ORDER_RISK_LATENCY` and
 `ORDER_RISK_REJECT_BPS`. A checker error fails admission closed. This interface
-is the rollback seam for the planned shadowed Risk service; no remote Risk
-traffic is enabled yet.
+is the rollback seam for the shadowed Risk service.
+
+Set `ORDER_RISK_REMOTE_MODE=shadow` to compare the embedded decision with
+`risk.v1.RiskService` at `ORDER_RISK_GRPC_ADDRESS`. Shadow calls use
+`ORDER_RISK_TIMEOUT` and are capped by `ORDER_RISK_SHADOW_MAX_IN_FLIGHT`.
+Remote latency, failure, overload, or disagreement never changes the embedded
+decision. Metrics expose attempts, matches, mismatches, errors, and dropped
+comparisons; detailed identifiers appear only in structured mismatch logs.
 
 It is a benchmark fixture, not a production order service. It persists the
 order-admission saga in PostgreSQL and retries an idempotent Ledger release when

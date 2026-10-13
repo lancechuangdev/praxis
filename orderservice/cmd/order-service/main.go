@@ -102,7 +102,18 @@ func main() {
 	if cfg.AdmissionMode == "observe" {
 		admission = order.NewLocalTokenBuckets(float64(cfg.AdmissionBucketCapacity), float64(cfg.AdmissionRefillPerSecond), true)
 	}
-	service := &order.Service{Ledger: ledger, Matching: matching, Risk: order.EmbeddedRiskChecker{Latency: cfg.RiskLatency, RejectBPS: cfg.RiskRejectBPS}, Metrics: &order.Metrics{}, Sagas: &order.PostgresSagaStore{DB: sagaDB, MaxReleaseAttempts: cfg.SagaMaxReleaseAttempts, MaxReservationAttempts: cfg.SagaMaxReservationAttempts}, Admission: admission, Concurrency: order.NewConcurrencyGate(cfg.AdmissionMaxInFlight, cfg.AdmissionMaxWaiting), RecoveryOwner: recoveryOwner, RecoveryLease: cfg.SagaClaimLease, ReservationRetryConcurrency: cfg.SagaReservationConcurrency, ReleaseRetryConcurrency: cfg.SagaReleaseConcurrency, DownstreamConcurrency: cfg.DownstreamConcurrency, DownstreamAdmissionReserve: cfg.DownstreamAdmissionReserve}
+	metrics := &order.Metrics{}
+	var riskChecker order.RiskChecker = order.EmbeddedRiskChecker{Latency: cfg.RiskLatency, RejectBPS: cfg.RiskRejectBPS}
+	if cfg.RiskRemoteMode == "shadow" {
+		riskClient, clientErr := adapters.NewGRPCRisk(cfg.RiskGRPCAddress, cfg.RiskTimeout)
+		if clientErr != nil {
+			log.Error("risk client", "error", clientErr)
+			os.Exit(1)
+		}
+		defer riskClient.Close()
+		riskChecker = order.NewShadowRiskChecker(riskChecker, riskClient, cfg.RiskShadowMaxInFlight, metrics, log)
+	}
+	service := &order.Service{Ledger: ledger, Matching: matching, Risk: riskChecker, Metrics: metrics, Sagas: &order.PostgresSagaStore{DB: sagaDB, MaxReleaseAttempts: cfg.SagaMaxReleaseAttempts, MaxReservationAttempts: cfg.SagaMaxReservationAttempts}, Admission: admission, Concurrency: order.NewConcurrencyGate(cfg.AdmissionMaxInFlight, cfg.AdmissionMaxWaiting), RecoveryOwner: recoveryOwner, RecoveryLease: cfg.SagaClaimLease, ReservationRetryConcurrency: cfg.SagaReservationConcurrency, ReleaseRetryConcurrency: cfg.SagaReleaseConcurrency, DownstreamConcurrency: cfg.DownstreamConcurrency, DownstreamAdmissionReserve: cfg.DownstreamAdmissionReserve}
 	go func() {
 		if recoveryErr := service.RunSagaRecoverySupervised(ctx, cfg.SagaRetryInterval, cfg.SagaRecoveryRestartDelay, cfg.SagaRecoveryMaxPanics, log); recoveryErr != nil {
 			log.Error("saga recovery worker stopped", "error", recoveryErr)
@@ -133,7 +144,7 @@ func main() {
 	server := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Service: service, Ready: ready}.Handler(), "order.http"), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.ListenAndServe() }()
-	log.Info("order service started", "http", cfg.HTTPAddress, "ledger_mode", cfg.LedgerMode, "matching_mode", cfg.MatchingMode)
+	log.Info("order service started", "http", cfg.HTTPAddress, "ledger_mode", cfg.LedgerMode, "matching_mode", cfg.MatchingMode, "risk_remote_mode", cfg.RiskRemoteMode)
 	select {
 	case <-ctx.Done():
 	case err = <-errCh:

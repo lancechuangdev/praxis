@@ -111,7 +111,12 @@ order_admission_rejected_total %d
 order_admission_would_reject_total %d
 order_admission_overloaded_total %d
 order_admission_errors_total %d
-`, m.Requests.Load(), m.Accepted.Load(), m.RiskRejected.Load(), m.Failed.Load(), m.DeadLettered.Load(), m.SagaRecoveryPanics.Load(), m.SagaClaims.Load(), m.SagaRetryAttempts.Load(), m.SagaActiveClaims.Load(), m.SagaLeaseExpirations.Load(), m.SagaRecoveryReplays.Load(), m.SagaDue.Load(), float64(m.SagaOldestDueAgeMillis.Load())/1000, m.AdmissionRejected.Load(), m.AdmissionWouldReject.Load(), m.AdmissionOverloaded.Load(), m.AdmissionErrors.Load())
+order_risk_shadow_attempts_total %d
+order_risk_shadow_matches_total %d
+order_risk_shadow_mismatches_total %d
+order_risk_shadow_errors_total %d
+order_risk_shadow_dropped_total %d
+`, m.Requests.Load(), m.Accepted.Load(), m.RiskRejected.Load(), m.Failed.Load(), m.DeadLettered.Load(), m.SagaRecoveryPanics.Load(), m.SagaClaims.Load(), m.SagaRetryAttempts.Load(), m.SagaActiveClaims.Load(), m.SagaLeaseExpirations.Load(), m.SagaRecoveryReplays.Load(), m.SagaDue.Load(), float64(m.SagaOldestDueAgeMillis.Load())/1000, m.AdmissionRejected.Load(), m.AdmissionWouldReject.Load(), m.AdmissionOverloaded.Load(), m.AdmissionErrors.Load(), m.RiskShadowAttempts.Load(), m.RiskShadowMatches.Load(), m.RiskShadowMismatches.Load(), m.RiskShadowErrors.Load(), m.RiskShadowDropped.Load())
 	_, _ = fmt.Fprint(w, m.RiskDuration.Prometheus("order_risk_duration_seconds"), m.ReserveDuration.Prometheus("order_reserve_duration_seconds"), m.MatchingDuration.Prometheus("order_matching_duration_seconds"), m.TotalDuration.Prometheus("order_total_duration_seconds"))
 }
 

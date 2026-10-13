@@ -449,6 +449,14 @@ spec:
               value: grpc
             - name: ORDER_MATCHING_GRPC_ADDRESS
               value: "matching.praxis.svc.cluster.local:9092"
+            - name: ORDER_RISK_REMOTE_MODE
+              value: shadow
+            - name: ORDER_RISK_GRPC_ADDRESS
+              value: "risk.praxis.svc.cluster.local:9095"
+            - name: ORDER_RISK_TIMEOUT
+              value: 100ms
+            - name: ORDER_RISK_SHADOW_MAX_IN_FLIGHT
+              value: "32"
           resources:
             requests: {cpu: 500m, memory: 1Gi}
             limits: {cpu: "1", memory: 2Gi}

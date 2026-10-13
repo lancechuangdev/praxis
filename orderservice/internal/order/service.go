@@ -58,6 +58,8 @@ type Metrics struct {
 	SagaRecoveryReplays                                                           atomic.Uint64
 	SagaDue, SagaOldestDueAgeMillis                                               atomic.Int64
 	AdmissionRejected, AdmissionWouldReject, AdmissionOverloaded, AdmissionErrors atomic.Uint64
+	RiskShadowAttempts, RiskShadowMatches, RiskShadowMismatches                   atomic.Uint64
+	RiskShadowErrors, RiskShadowDropped                                           atomic.Uint64
 	RiskNS, ReserveNS, MatchingNS, TotalNS                                        atomic.Uint64
 	RiskDuration, ReserveDuration                                                 DurationHistogram
 	MatchingDuration, TotalDuration                                               DurationHistogram

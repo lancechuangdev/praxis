@@ -83,6 +83,7 @@ services:
     depends_on:
       ledger-service: {condition: service_started}
       matching-engine: {condition: service_started}
+      risk-service: {condition: service_started}
     environment:
       ORDER_HTTP_ADDRESS: :8083
       ORDER_DATABASE_URL: postgres://ledger:ledger@postgres:5432/cex_ledger?sslmode=disable
@@ -95,6 +96,9 @@ services:
       ORDER_MATCHING_MODE: grpc
       ORDER_MATCHING_GRPC_ADDRESS: matching-engine:9092
       ORDER_RISK_LATENCY: 1ms
+      ORDER_RISK_REMOTE_MODE: shadow
+      ORDER_RISK_GRPC_ADDRESS: risk-service:9095
+      ORDER_RISK_TIMEOUT: 100ms
       OTEL_TRACES_ENABLED: ${OTEL_TRACES_ENABLED:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       OTEL_EXPORTER_OTLP_INSECURE: "true"

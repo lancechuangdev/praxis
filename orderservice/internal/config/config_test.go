@@ -21,3 +21,15 @@ func TestLoadAcceptsDedicatedRecoveryAndAdmissionCapacity(t *testing.T) {
 		t.Fatalf("recovery capacity=%d, want 5", cfg.DownstreamConcurrency-cfg.DownstreamAdmissionReserve)
 	}
 }
+
+func TestLoadValidatesRiskShadowConfiguration(t *testing.T) {
+	t.Setenv("ORDER_RISK_REMOTE_MODE", "authoritative")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected unsupported risk mode")
+	}
+	t.Setenv("ORDER_RISK_REMOTE_MODE", "shadow")
+	t.Setenv("ORDER_RISK_SHADOW_MAX_IN_FLIGHT", "0")
+	if _, err := Load(); err == nil {
+		t.Fatal("expected invalid shadow concurrency")
+	}
+}
