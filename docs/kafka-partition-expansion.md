@@ -2,10 +2,11 @@
 
 ## Status
 
-This document records the production risks of increasing the partition count
-of an active Kafka topic whose records use hash-based keys. It is a design note
-for future work; no migration mechanism described here is currently
-implemented.
+The repository freezes order-sensitive partition counts and includes a
+deterministic migration rehearsal using the production hash balancer. The
+rehearsal covers dominant-market skew and old-topic backlog; live broker,
+consumer-rebalance, and downstream-reconciliation acceptance remain required
+before a migration.
 
 ## Summary
 
@@ -292,6 +293,35 @@ plans fail if one of those counts changes. The
 override, not a routine scaling control; it should only be enabled for an
 approved and rehearsed migration, then immediately disabled. A new versioned
 topic remains the default migration path.
+
+## Repository rehearsal
+
+Run the accepted 60%, 80%, and 95% dominant-market scenarios with:
+
+```bash
+make partition-migration-check
+```
+
+The checker uses `kafka.Hash`, the same balancer configured by the implemented
+producers. It deterministically generates a configurable record set, retains a
+backlog on the old mapping, and then admits records using the proposed mapping.
+It fails unless at least one supplied key remaps, the unsafe online transition
+demonstrates overtaking risk, and the stop-and-drain model has no overlap.
+
+For a proposed topology, run a specific scenario from `outboxrelay`:
+
+```bash
+go run ./cmd/partition-migration-check \
+  --old-partitions 24 --new-partitions 48 \
+  --records 100000 --backlog 10000 --hot-percent 80 \
+  --hot-key BTC-USDT --seed 42
+```
+
+The output records the old and new dominant-key partitions, remapped-key
+count, generated hot records, backlog size, unsafe overtakes, and drain-barrier
+overtakes. Save all scenario output with the migration review. This offline
+proof does not satisfy the live checks for consumer rebalancing, sequence-gap
+quarantine, authoritative reconciliation, or retained-topic replay.
 
 ## Verification scenarios
 

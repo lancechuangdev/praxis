@@ -234,7 +234,12 @@ Work:
 10. [x] Prohibit casual in-place partition-count changes for order-sensitive
     topics. Terraform freezes the accepted counts unless an explicit migration
     override is enabled; versioned-topic migration remains the default.
-11. Test partition migration using realistic backlog and dominant-market skew.
+11. [x] Test partition migration using realistic backlog and dominant-market
+    skew. The deterministic repository rehearsal uses the production hash
+    balancer at 60%, 80%, and 95% dominant-market traffic, proves that an
+    online remap can overtake old backlog, and verifies that a drain barrier
+    eliminates cross-mapping overlap. Broker rebalance and downstream
+    reconciliation remain deployment acceptance exercises.
 
 Replay tooling follows idempotency and side-effect isolation. Otherwise a
 replay could repeat financial or external effects.
