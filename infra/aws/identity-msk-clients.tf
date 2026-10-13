@@ -15,7 +15,7 @@ locals {
     }
     outbox_relay = {
       read_topics  = []
-      write_topics = [aws_msk_topic.this["ledger_events"].name]
+      write_topics = [aws_msk_topic.this["ledger_events"].name, aws_msk_topic.this["ledger_commands_dlq"].name]
       groups       = []
     }
   }

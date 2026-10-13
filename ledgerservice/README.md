@@ -26,6 +26,12 @@ HTTP listens on `:8081`, gRPC on `:9091`, and commands are consumed from
 independent [`../outboxrelay`](../outboxrelay) service to batch-publish them to
 Kafka topic `ledger-events`.
 
+Deterministically invalid command envelopes are atomically recorded in the
+inbox and written to the transactional outbox for
+`LEDGER_COMMANDS_DLQ_TOPIC` (default `ledger.commands.dlq.v1`) before the source
+offset is committed. Database, dependency, cancellation, and sequence-gap
+errors remain transient and stop consumption without committing the offset.
+
 The PostgreSQL writer pool is capped at 32 connections and the reader pool at 16
 connections by default. Override them independently with
 `LEDGER_DB_WRITER_MAX_CONNS` and `LEDGER_DB_READER_MAX_CONNS`; `/metrics` reports

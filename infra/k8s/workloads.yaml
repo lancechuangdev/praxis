@@ -147,6 +147,9 @@ spec:
             - name: LEDGER_COMMANDS_TOPIC
               valueFrom:
                 configMapKeyRef: {name: praxis-runtime, key: LEDGER_COMMANDS_TOPIC}
+            - name: LEDGER_COMMANDS_DLQ_TOPIC
+              valueFrom:
+                configMapKeyRef: {name: praxis-runtime, key: LEDGER_COMMANDS_DLQ_TOPIC}
             - name: LEDGER_CONSUMER_GROUP
               valueFrom:
                 configMapKeyRef: {name: praxis-runtime, key: LEDGER_CONSUMER_GROUP}

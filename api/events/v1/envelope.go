@@ -60,26 +60,26 @@ func (e Envelope) Validate() error {
 }
 
 type DLQEnvelope struct {
-	Version         int             `json:"version"`
-	ID              string          `json:"id"`
-	SourceTopic     string          `json:"source_topic"`
-	SourcePartition int             `json:"source_partition"`
-	SourceOffset    int64           `json:"source_offset"`
-	SourceKey       string          `json:"source_key,omitempty"`
-	ConsumerGroup   string          `json:"consumer_group"`
-	FailureClass    string          `json:"failure_class"`
-	FailureReason   string          `json:"failure_reason"`
-	FailedAt        time.Time       `json:"failed_at"`
-	ReplayCount     int             `json:"replay_count"`
-	Original        json.RawMessage `json:"original"`
+	Version         int       `json:"version"`
+	ID              string    `json:"id"`
+	SourceTopic     string    `json:"source_topic"`
+	SourcePartition int       `json:"source_partition"`
+	SourceOffset    int64     `json:"source_offset"`
+	SourceKey       string    `json:"source_key,omitempty"`
+	ConsumerGroup   string    `json:"consumer_group"`
+	FailureClass    string    `json:"failure_class"`
+	FailureReason   string    `json:"failure_reason"`
+	FailedAt        time.Time `json:"failed_at"`
+	ReplayCount     int       `json:"replay_count"`
+	Original        []byte    `json:"original"`
 }
 
 func (d DLQEnvelope) Validate() error {
 	if d.Version != Version || d.ID == "" || d.SourceTopic == "" || d.SourcePartition < 0 || d.SourceOffset < 0 || d.ConsumerGroup == "" || d.FailureClass == "" || d.FailureReason == "" || d.FailedAt.IsZero() || len(d.Original) == 0 {
 		return errors.New("invalid DLQ envelope")
 	}
-	if d.ReplayCount < 0 || !json.Valid(d.Original) {
-		return errors.New("invalid DLQ replay count or original payload")
+	if d.ReplayCount < 0 {
+		return errors.New("invalid DLQ replay count")
 	}
 	return nil
 }

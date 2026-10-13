@@ -13,15 +13,15 @@ import (
 )
 
 type Config struct {
-	DatabaseURL, ReaderDatabaseURL     string
-	DBWriterMaxConns, DBReaderMaxConns int32
-	DBStatementCacheCapacity           int
-	DBQueryExecMode                    pgx.QueryExecMode
-	MigrateOnStartup                   bool
-	HTTPAddress, GRPCAddress           string
-	KafkaBrokers                       []string
-	KafkaAuth                          kafkaauth.Config
-	CommandsTopic, ConsumerGroup       string
+	DatabaseURL, ReaderDatabaseURL                 string
+	DBWriterMaxConns, DBReaderMaxConns             int32
+	DBStatementCacheCapacity                       int
+	DBQueryExecMode                                pgx.QueryExecMode
+	MigrateOnStartup                               bool
+	HTTPAddress, GRPCAddress                       string
+	KafkaBrokers                                   []string
+	KafkaAuth                                      kafkaauth.Config
+	CommandsTopic, CommandsDLQTopic, ConsumerGroup string
 }
 
 func Load() (Config, error) {
@@ -57,7 +57,7 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("LEDGER_MIGRATE_ON_STARTUP must be true or false: %w", err)
 	}
-	c := Config{DatabaseURL: writerDatabaseURL, ReaderDatabaseURL: readerDatabaseURL, DBWriterMaxConns: writerMaxConns, DBReaderMaxConns: readerMaxConns, DBStatementCacheCapacity: statementCacheCapacity, DBQueryExecMode: queryExecMode, MigrateOnStartup: migrateOnStartup, HTTPAddress: value("LEDGER_HTTP_ADDRESS", ":8081"), GRPCAddress: value("LEDGER_GRPC_ADDRESS", ":9091"), KafkaBrokers: strings.Split(value("LEDGER_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: kafkaAuth, CommandsTopic: value("LEDGER_COMMANDS_TOPIC", "ledger-commands"), ConsumerGroup: value("LEDGER_CONSUMER_GROUP", "cex-ledger-service")}
+	c := Config{DatabaseURL: writerDatabaseURL, ReaderDatabaseURL: readerDatabaseURL, DBWriterMaxConns: writerMaxConns, DBReaderMaxConns: readerMaxConns, DBStatementCacheCapacity: statementCacheCapacity, DBQueryExecMode: queryExecMode, MigrateOnStartup: migrateOnStartup, HTTPAddress: value("LEDGER_HTTP_ADDRESS", ":8081"), GRPCAddress: value("LEDGER_GRPC_ADDRESS", ":9091"), KafkaBrokers: strings.Split(value("LEDGER_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: kafkaAuth, CommandsTopic: value("LEDGER_COMMANDS_TOPIC", "ledger-commands"), CommandsDLQTopic: value("LEDGER_COMMANDS_DLQ_TOPIC", "ledger.commands.dlq.v1"), ConsumerGroup: value("LEDGER_CONSUMER_GROUP", "cex-ledger-service")}
 	return c, nil
 }
 

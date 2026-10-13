@@ -16,6 +16,7 @@ locals {
     LEDGER_DB_SECRET_ARN        = local.runtime.ledger_runtime_secret_arn
     MSK_BROKERS                 = local.runtime.bootstrap_brokers_iam
     LEDGER_COMMANDS_TOPIC       = local.runtime.ledger_commands_topic
+    LEDGER_COMMANDS_DLQ_TOPIC   = "ledger.commands.dlq.v1"
     LEDGER_CONSUMER_GROUP       = local.runtime.ledger_consumer_group
     MATCHING_EVENTS_TOPIC       = local.runtime.matching_events_topic
     MATCHING_DB_WRITER_HOST     = local.runtime.matching_db_writer_host

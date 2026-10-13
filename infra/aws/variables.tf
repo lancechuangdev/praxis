@@ -552,6 +552,16 @@ variable "topics" {
         "min.insync.replicas" = "2"
       }
     }
+    ledger_commands_dlq = {
+      name               = "ledger.commands.dlq.v1"
+      partitions         = 6
+      replication_factor = 3
+      configs = {
+        "cleanup.policy"      = "delete"
+        "retention.ms"        = "2592000000"
+        "min.insync.replicas" = "2"
+      }
+    }
   }
 
   validation {

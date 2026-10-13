@@ -1,7 +1,6 @@
 package eventsv1
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 )
@@ -22,7 +21,7 @@ func TestDecodeRejectsUnsupportedVersion(t *testing.T) {
 }
 
 func TestDLQEnvelopeValidation(t *testing.T) {
-	d := DLQEnvelope{Version: Version, ID: "dlq-1", SourceTopic: "ledger.commands.v1", SourcePartition: 1, SourceOffset: 2, ConsumerGroup: "ledger", FailureClass: "deterministic", FailureReason: "invalid schema", FailedAt: time.Now(), Original: json.RawMessage(`{"bad":true}`)}
+	d := DLQEnvelope{Version: Version, ID: "dlq-1", SourceTopic: "ledger.commands.v1", SourcePartition: 1, SourceOffset: 2, ConsumerGroup: "ledger", FailureClass: "deterministic", FailureReason: "invalid schema", FailedAt: time.Now(), Original: []byte(`not-json`)}
 	if err := d.Validate(); err != nil {
 		t.Fatal(err)
 	}

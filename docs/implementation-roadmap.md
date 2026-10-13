@@ -217,10 +217,14 @@ Work:
    are not yet atomic. All implemented producers use a domain-local outbox.
 4. [x] Add transactional inbox deduplication to consumers. Ledger command
    mutations and their inbox record now share one PostgreSQL transaction.
-5. Create a DLQ for each implemented source consumer, beginning with
+5. [x] Create a DLQ for each implemented source consumer, beginning with
    `ledger.commands.dlq.v1`.
-6. Implement atomic DLQ publication and source-offset commit.
-7. Define deterministic and transient failure classes.
+6. [x] Implement atomic DLQ handoff and source-offset commit. Ledger commits
+   the DLQ outbox row and inbox marker together before committing the Kafka
+   source offset; deterministic IDs make crash-window redelivery harmless.
+7. [x] Define deterministic and transient failure classes. Envelope, schema,
+   and unsupported-type failures are deterministic; runtime, database,
+   cancellation, and ordering failures remain transient.
 8. Add audited, authorized, rate-limited DLQ inspection and selective replay.
 9. Add projection rebuild tooling that uses new consumer groups and new tables.
 10. Prohibit casual in-place partition-count increases for order-sensitive
