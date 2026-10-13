@@ -264,7 +264,10 @@ Work:
    now depends on `RiskChecker`; the embedded deterministic policy implements
    that contract and preserves fail-closed evaluation before saga or financial
    side effects.
-2. Define a versioned `CheckOrder` gRPC contract.
+2. [x] Define a versioned `CheckOrder` gRPC contract. `risk.v1` carries exact
+   decision inputs, an explicit non-default approval decision, stable decision
+   and policy identifiers, and durable business correlation while trace
+   context remains in standard gRPC metadata.
 3. Deploy Risk with independent state ownership and telemetry.
 4. Run the service in shadow mode and compare its decisions with the embedded
    calculation.

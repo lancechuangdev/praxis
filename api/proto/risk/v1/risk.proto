@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package risk.v1;
+
+option go_package = "praxis/api/gen/risk/v1;riskv1";
+
+// RiskService makes a side-effect-free admission decision. Callers must use a
+// strict deadline and fail closed when no authoritative decision is returned.
+service RiskService {
+  rpc CheckOrder(CheckOrderRequest) returns (CheckOrderResponse);
+}
+
+message CheckOrderRequest {
+  string request_id = 1;
+  string order_id = 2;
+  string user_id = 3;
+  string symbol = 4;
+  string side = 5;
+  string order_type = 6;
+  string quantity = 7;
+  string price = 8;
+  string reserve_asset_id = 9;
+  string reserve_amount_atomic = 10;
+  string correlation_id = 11;
+  string causation_id = 12;
+}
+
+message CheckOrderResponse {
+  RiskDecision decision = 1;
+  string decision_id = 2;
+  string reason_code = 3;
+  string policy_version = 4;
+}
+
+enum RiskDecision {
+  RISK_DECISION_UNSPECIFIED = 0;
+  RISK_DECISION_APPROVED = 1;
+  RISK_DECISION_REJECTED = 2;
+}

@@ -18,3 +18,13 @@ buf lint api
 
 Keep domain models, persistence types, and business logic in their owning
 services. This module contains only wire contracts and generated transport code.
+
+## Risk v1
+
+`risk.v1.RiskService/CheckOrder` is the versioned internal admission contract.
+Its request carries the complete order and reservation inputs needed for a
+deterministic decision; quantities and atomic amounts remain strings to avoid
+precision loss. Its response uses an explicit decision enum and includes
+stable decision and policy identifiers for comparison and audit. An
+unspecified decision is not approval. Trace context is transported as standard
+gRPC metadata rather than protobuf fields.
