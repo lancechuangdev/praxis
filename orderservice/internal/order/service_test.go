@@ -112,6 +112,17 @@ func (f *fakeMatching) Submit(context.Context, Request, Reservation) (MatchResul
 }
 func (*fakeMatching) Close() error { return nil }
 
+type fakeRisk struct {
+	decision RiskDecision
+	err      error
+	calls    int
+}
+
+func (f *fakeRisk) CheckOrder(context.Context, Request) (RiskDecision, error) {
+	f.calls++
+	return f.decision, f.err
+}
+
 func validRequest() Request {
 	return Request{RequestID: "request-1", OrderID: "order-1", UserID: "alice", Symbol: "BTC-USDT", Side: "buy", OrderType: "limit", Quantity: "1000", Price: "70000", ReserveAssetID: "asset_usdt", ReserveAmountAtomic: "70000000"}
 }
@@ -138,13 +149,31 @@ func TestAdmitRunsReservationBeforeMatching(t *testing.T) {
 func TestAdmitStopsAfterRiskRejection(t *testing.T) {
 	ledger := &fakeLedger{}
 	matching := &fakeMatching{}
-	service := &Service{Ledger: ledger, Matching: matching, RiskRejectBPS: 10000, Metrics: &Metrics{}}
+	risk := &fakeRisk{decision: RiskDecision{Approved: false, ReasonCode: "account_limit", PolicyVersion: "test-v1"}}
+	service := &Service{Ledger: ledger, Matching: matching, Risk: risk, Metrics: &Metrics{}}
 	_, err := service.Admit(context.Background(), validRequest())
 	if !errors.Is(err, ErrRiskRejected) {
 		t.Fatalf("error=%v", err)
 	}
 	if ledger.calls != 0 || matching.calls != 0 {
 		t.Fatalf("downstream called after rejection")
+	}
+	if risk.calls != 1 {
+		t.Fatalf("risk calls=%d", risk.calls)
+	}
+}
+
+func TestAdmitFailsClosedWhenRiskCheckFails(t *testing.T) {
+	ledger := &fakeLedger{}
+	matching := &fakeMatching{}
+	riskErr := errors.New("risk unavailable")
+	service := &Service{Ledger: ledger, Matching: matching, Risk: &fakeRisk{err: riskErr}, Metrics: &Metrics{}}
+	_, err := service.Admit(context.Background(), validRequest())
+	if !errors.Is(err, riskErr) {
+		t.Fatalf("error=%v", err)
+	}
+	if ledger.calls != 0 || matching.calls != 0 {
+		t.Fatal("financial side effect occurred after risk failure")
 	}
 }
 

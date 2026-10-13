@@ -7,6 +7,13 @@ testing:
 HTTP client → Risk check → ledger ReserveForOrder gRPC → matching engine gRPC
 ```
 
+Order calls the internal `RiskChecker` contract before creating saga state or
+calling Ledger. The current `EmbeddedRiskChecker` preserves the deterministic
+development policy configured by `ORDER_RISK_LATENCY` and
+`ORDER_RISK_REJECT_BPS`. A checker error fails admission closed. This interface
+is the rollback seam for the planned shadowed Risk service; no remote Risk
+traffic is enabled yet.
+
 It is a benchmark fixture, not a production order service. It persists the
 order-admission saga in PostgreSQL and retries an idempotent Ledger release when
 matching fails after funds were reserved.

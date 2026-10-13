@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"log/slog"
 	"math/big"
 	"math/rand"
@@ -67,8 +66,7 @@ type Metrics struct {
 type Service struct {
 	Ledger                      Ledger
 	Matching                    MatchingEngine
-	RiskLatency                 time.Duration
-	RiskRejectBPS               int
+	Risk                        RiskChecker
 	Metrics                     *Metrics
 	Sagas                       SagaStore
 	Admission                   AdmissionController
@@ -140,7 +138,12 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	}
 	riskStart := time.Now()
 	riskCtx, riskSpan := tracer.Start(ctx, "risk.check")
-	if err := wait(riskCtx, s.RiskLatency); err != nil {
+	risk := s.Risk
+	if risk == nil {
+		risk = EmbeddedRiskChecker{}
+	}
+	decision, err := risk.CheckOrder(riskCtx, req)
+	if err != nil {
 		riskSpan.RecordError(err)
 		riskSpan.SetStatus(codes.Error, err.Error())
 		riskSpan.End()
@@ -150,8 +153,8 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 	riskDuration := time.Since(riskStart)
 	s.Metrics.RiskNS.Add(uint64(riskDuration))
 	s.Metrics.RiskDuration.Observe(riskDuration)
-	if rejected(req.RequestID, s.RiskRejectBPS) {
-		riskSpan.SetAttributes(attribute.Bool("risk.rejected", true))
+	if !decision.Approved {
+		riskSpan.SetAttributes(attribute.Bool("risk.rejected", true), attribute.String("risk.reason_code", decision.ReasonCode), attribute.String("risk.policy_version", decision.PolicyVersion))
 		riskSpan.End()
 		s.Metrics.RiskRejected.Add(1)
 		total := time.Since(started)
@@ -159,7 +162,7 @@ func (s *Service) Admit(ctx context.Context, req Request) (Response, error) {
 		s.Metrics.TotalDuration.Observe(total)
 		return Response{}, ErrRiskRejected
 	}
-	riskSpan.SetAttributes(attribute.Bool("risk.rejected", false))
+	riskSpan.SetAttributes(attribute.Bool("risk.rejected", false), attribute.String("risk.policy_version", decision.PolicyVersion))
 	riskSpan.End()
 	if s.Sagas != nil {
 		if err := s.Sagas.Start(ctx, req); err != nil {
@@ -474,21 +477,3 @@ func (s *Service) failed(started time.Time) {
 	s.Metrics.TotalDuration.Observe(total)
 }
 func milliseconds(v time.Duration) float64 { return float64(v) / float64(time.Millisecond) }
-func rejected(key string, bps int) bool {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(key))
-	return int(h.Sum32()%10000) < bps
-}
-func wait(ctx context.Context, d time.Duration) error {
-	if d <= 0 {
-		return nil
-	}
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
-}

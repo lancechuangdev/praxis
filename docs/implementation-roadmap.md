@@ -231,6 +231,10 @@ Work:
    durable PostgreSQL audit records, explicit replay approval, and paced
    publication that preserves original record bytes and headers.
 9. Add projection rebuild tooling that uses new consumer groups and new tables.
+   Implementation begins with the first Phase 6 projection so its event,
+   storage-generation, validation, and cutover contracts are concrete; Praxis
+   does not add a storage-agnostic replay command that could accidentally run
+   side-effecting consumers.
 10. [x] Prohibit casual in-place partition-count changes for order-sensitive
     topics. Terraform freezes the accepted counts unless an explicit migration
     override is enabled; versioned-topic migration remains the default.
@@ -256,7 +260,10 @@ Primary document:
 
 Work:
 
-1. Put the existing risk calculation behind an internal interface.
+1. [x] Put the existing risk calculation behind an internal interface. Order
+   now depends on `RiskChecker`; the embedded deterministic policy implements
+   that contract and preserves fail-closed evaluation before saga or financial
+   side effects.
 2. Define a versioned `CheckOrder` gRPC contract.
 3. Deploy Risk with independent state ownership and telemetry.
 4. Run the service in shadow mode and compare its decisions with the embedded
