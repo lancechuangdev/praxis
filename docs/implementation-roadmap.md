@@ -227,8 +227,9 @@ Work:
    cancellation, and ordering failures remain transient.
 8. Add audited, authorized, rate-limited DLQ inspection and selective replay.
 9. Add projection rebuild tooling that uses new consumer groups and new tables.
-10. Prohibit casual in-place partition-count increases for order-sensitive
-    topics.
+10. [x] Prohibit casual in-place partition-count changes for order-sensitive
+    topics. Terraform freezes the accepted counts unless an explicit migration
+    override is enabled; versioned-topic migration remains the default.
 11. Test partition migration using realistic backlog and dominant-market skew.
 
 Replay tooling follows idempotency and side-effect isolation. Otherwise a

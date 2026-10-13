@@ -285,6 +285,14 @@ An in-place online increase should be prohibited for a topic with an
 order-sensitive consumer unless a reviewed migration design proves how
 cross-partition overlap is prevented.
 
+Terraform enforces that policy for `matching.events.v1`, `ledger.commands.v1`,
+and `ledger.events.v1` by freezing their accepted partition counts. Normal
+plans fail if one of those counts changes. The
+`allow_order_sensitive_partition_change` variable is an emergency migration
+override, not a routine scaling control; it should only be enabled for an
+approved and rehearsed migration, then immediately disabled. A new versioned
+topic remains the default migration path.
+
 ## Verification scenarios
 
 The future migration tooling and runbook should demonstrate:
@@ -315,7 +323,10 @@ The future migration tooling and runbook should demonstrate:
 - `ledgerservice/internal/store/postgres.go` selects account and
   engine-symbol message keys.
 - `matchingengine/internal/engine/engine.go` selects the symbol key.
-- `infra/aws/variables.tf` defines current production topic partition counts.
+- `infra/aws/variables.tf` defines current production topic partition counts
+  and the explicit migration override.
+- `infra/aws/messaging-topics.tf` rejects unapproved partition-count changes
+  for the order-sensitive topics.
 - `docs/dominant-market-hotspots.md` describes the `BTC-USDT` hot-key and
   sequencing problem.
 

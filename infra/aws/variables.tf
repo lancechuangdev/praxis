@@ -573,6 +573,12 @@ variable "topics" {
   }
 }
 
+variable "allow_order_sensitive_partition_change" {
+  description = "Emergency migration override for frozen order-sensitive topic partition counts. Prefer a new versioned topic; enable only during an approved and rehearsed migration."
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Additional tags applied to supported AWS resources."
   type        = map(string)

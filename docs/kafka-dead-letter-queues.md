@@ -1,6 +1,10 @@
 # Kafka dead-letter queues
 
-Status: planned; the Kafka DLQ processing described here is not implemented.
+Status: partially implemented. The Ledger command consumer has a versioned DLQ
+envelope, deterministic failure classification, a provisioned
+`ledger.commands.dlq.v1` topic, and transactional PostgreSQL inbox/outbox
+handoff. Operator inspection, replay, and the remaining future consumers are
+not yet implemented.
 
 Praxis may use a Kafka topic as the only dead-letter store for failures caused
 by consuming Kafka records. A database dead-letter table is not required for
@@ -144,25 +148,23 @@ At minimum, expose and alert on:
 Logs and traces should include the stable event ID, correlation ID, source
 topic/partition/offset, and resulting DLQ topic/partition/offset.
 
-## Current Praxis gap
+## Current Praxis implementation and gaps
 
-Terraform currently provisions `ledger.events.dlq.v1`, but no Praxis consumer
-publishes to it and current service IAM policies grant no writer access to it.
-The Ledger command consumer returns on its first handling error, so a poison
-record can repeatedly stop progress. Also, the existing DLQ topic corresponds
-to `ledger.events.v1`, while the implemented Ledger consumer reads
-`ledger.commands.v1`.
+The Ledger command consumer classifies malformed envelopes, invalid command
+payloads, and unsupported event types as deterministic failures. It inserts a
+deterministic inbox marker and a `ledger.commands.dlq.v1` outbox event in one
+PostgreSQL transaction before committing the source offset. A redelivery in
+the crash window reuses the same DLQ ID and cannot create another outbox row.
+Infrastructure provisions the topic and grants Ledger narrowly scoped write
+access.
 
-Before enabling Kafka DLQs:
+The following work remains:
 
-- create the DLQ topic corresponding to each implemented source consumer,
-  beginning with `ledger.commands.dlq.v1`;
-- grant narrowly scoped write access to the responsible consumer and read
-  access to replay tooling;
-- choose a Kafka client and configuration that support transactional DLQ
-  publishing plus offset commits;
-- define retry limits, error classification, partition-ordering behavior, and
-  the versioned DLQ envelope;
-- add metrics, alerts, replay audit, and a tested replay runbook; and
-- test crashes before and after DLQ publication to prove no record is silently
-  lost.
+- add authenticated, authorized, audited, and rate-limited inspection and
+  selective replay tooling;
+- preserve and replay Kafka headers in addition to the current source key and
+  original value;
+- add normalized failure codes and bounded attempt metadata;
+- add DLQ metrics, alerts, and a tested replay runbook;
+- test crashes before and after handoff and offset commit; and
+- add corresponding DLQs if future source consumers are implemented.

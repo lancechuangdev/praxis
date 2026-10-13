@@ -71,6 +71,9 @@ ledger_image_digest           = null
 ledger_runtime_secret_arn     = ""
 
 # Alarm when Ledger falls this many records behind ledger.commands.v1.
+# Keep false during normal operation. Partition changes for order-sensitive
+# topics require a versioned-topic migration and explicit approval.
+allow_order_sensitive_partition_change = false
 ledger_consumer_max_offset_lag = 1000
 
 # Outbox migration also creates the restricted runtime roles; then deploy the relay.
