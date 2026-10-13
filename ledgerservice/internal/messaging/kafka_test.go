@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
+	"praxis/ledgerservice/internal/observability"
 )
 
 func TestMalformedEnvelopeIsDeterministic(t *testing.T) {
@@ -61,5 +62,17 @@ func TestBuildDLQEnvelopePreservesSourceRecord(t *testing.T) {
 	}
 	if len(d.SourceHeaders) != 2 || d.SourceHeaders[1].Key != "binary" || !bytes.Equal(d.SourceHeaders[1].Value, []byte{0xff}) {
 		t.Fatalf("source headers were not preserved: %+v", d.SourceHeaders)
+	}
+}
+
+func TestDeadLetterCountsHandoffFailure(t *testing.T) {
+	metrics := &observability.Metrics{}
+	consumer := &Consumer{Metrics: metrics}
+	err := consumer.deadLetter(context.Background(), kafka.Message{Topic: "ledger.commands.v1"}, errors.New("unclassified"))
+	if err == nil {
+		t.Fatal("expected unclassified failure")
+	}
+	if metrics.DLQHandoffFailures.Load() != 1 {
+		t.Fatalf("handoff failures=%d, want 1", metrics.DLQHandoffFailures.Load())
 	}
 }

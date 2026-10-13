@@ -41,6 +41,20 @@ resource "aws_prometheus_rule_group_namespace" "application" {
             for         = "5m"
             labels      = { severity = "page", service = "outbox" }
             annotations = { summary = "Outbox publishing has failed for five minutes", runbook = "${local.resource_name}: inspect broker connectivity and relay leases" }
+          },
+          {
+            alert       = "LedgerCommandDeadLettered"
+            expr        = "sum(increase(ledger_dlq_handoffs_total[5m])) > 0"
+            for         = "0m"
+            labels      = { severity = "warning", service = "ledger" }
+            annotations = { summary = "A Ledger command was moved to the DLQ", runbook = "${local.resource_name}: inspect the Ledger command DLQ and failure code before replay" }
+          },
+          {
+            alert       = "LedgerDLQHandoffFailures"
+            expr        = "sum(rate(ledger_dlq_handoff_failures_total[5m])) > 0"
+            for         = "5m"
+            labels      = { severity = "page", service = "ledger" }
+            annotations = { summary = "Ledger cannot durably hand off poison commands", runbook = "${local.resource_name}: inspect Ledger database, outbox, and consumer logs" }
           }
         ]
       }

@@ -201,3 +201,31 @@ destinations outside the VPC. Grafana queries metrics from AMP; the collectors
 send traces to X-Ray. CloudWatch receives the configured ECS, MSK, and
 PostgreSQL logs and hosts infrastructure alarms. The Outbox ADOT sidecar is
 created only when its image is configured.
+
+# Infrastructure TODOs
+
+## PostgreSQL Sharding
+
+The currently documented BloFin database architecture uses an RDS PostgreSQL primary for transactional writes and read replicas for read-heavy workloads. It does not yet describe a complete sharded database architecture.
+
+TODO: Design and document PostgreSQL sharding before describing the infrastructure as sharding-capable.
+
+- [ ] Define the workload and capacity thresholds that justify sharding.
+- [ ] Select and document the shard key based on access patterns, data distribution, tenant isolation, and hotspot risk.
+- [ ] Define the number and topology of RDS PostgreSQL shards.
+- [ ] Decide where shard routing lives: application services, a routing service, or another supported layer.
+- [ ] Define shard metadata, configuration distribution, caching, and failure behavior.
+- [ ] Define transaction boundaries and behavior for operations that would otherwise span shards.
+- [ ] Define cross-shard query, reporting, reconciliation, and aggregation patterns.
+- [ ] Design the migration from the current primary/read-replica topology, including backfill, validation, cutover, and rollback.
+- [ ] Define idempotent dual-write or change-capture behavior if required during migration.
+- [ ] Define shard rebalancing and resharding procedures.
+- [ ] Add per-shard backup, point-in-time recovery, failover, and disaster-recovery procedures.
+- [ ] Add per-shard connection-pool limits, health checks, metrics, logs, traces, and alerts.
+- [ ] Define how Kafka consumers, outbox/inbox processing, settlement, and reconciliation locate the correct shard.
+- [ ] Add Terraform modules and environment configuration for provisioning and operating multiple shards.
+- [ ] Add safeguards preventing accidental shard destruction or cross-environment changes.
+- [ ] Load-test normal traffic, hotspot scenarios, shard failure, failover, and migration behavior.
+- [ ] Update `context/profile/experience/blofin.md` only with implementation details that are confirmed as completed.
+
+Until these items are implemented and verified, describe the database architecture as primary plus read replicas, with sharding under design or migration.

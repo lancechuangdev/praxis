@@ -40,6 +40,11 @@ func (h HTTP) metrics(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	_, _ = fmt.Fprintf(w, `ledger_reserve_requests_total %d
 ledger_reserve_failures_total %d
+ledger_dlq_handoffs_total{failure_code="invalid_envelope"} %d
+ledger_dlq_handoffs_total{failure_code="invalid_event_payload"} %d
+ledger_dlq_handoffs_total{failure_code="unsupported_event_type"} %d
+ledger_dlq_handoffs_total{failure_code="unknown"} %d
+ledger_dlq_handoff_failures_total %d
 ledger_db_pool_acquired_connections %d
 ledger_db_pool_idle_connections %d
 ledger_db_pool_total_connections %d
@@ -52,7 +57,7 @@ ledger_db_reader_pool_acquired_connections %d
 ledger_db_reader_pool_idle_connections %d
 ledger_db_reader_pool_total_connections %d
 ledger_db_reader_pool_max_connections %d
-`, h.Metrics.ReserveRequests.Load(), h.Metrics.ReserveFailures.Load(), writerPool.AcquiredConns(), writerPool.IdleConns(), writerPool.TotalConns(), writerPool.MaxConns(), writerPool.AcquireCount(), writerPool.EmptyAcquireCount(), writerPool.CanceledAcquireCount(), writerPool.AcquireDuration().Seconds(), readerPool.AcquiredConns(), readerPool.IdleConns(), readerPool.TotalConns(), readerPool.MaxConns())
+`, h.Metrics.ReserveRequests.Load(), h.Metrics.ReserveFailures.Load(), h.Metrics.DLQInvalidEnvelopes.Load(), h.Metrics.DLQInvalidEventPayloads.Load(), h.Metrics.DLQUnsupportedEventTypes.Load(), h.Metrics.DLQUnknownDeterministicFailure.Load(), h.Metrics.DLQHandoffFailures.Load(), writerPool.AcquiredConns(), writerPool.IdleConns(), writerPool.TotalConns(), writerPool.MaxConns(), writerPool.AcquireCount(), writerPool.EmptyAcquireCount(), writerPool.CanceledAcquireCount(), writerPool.AcquireDuration().Seconds(), readerPool.AcquiredConns(), readerPool.IdleConns(), readerPool.TotalConns(), readerPool.MaxConns())
 	_, _ = fmt.Fprint(w, h.Metrics.ReserveDuration.Prometheus("ledger_reserve_duration_seconds"))
 }
 

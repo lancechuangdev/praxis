@@ -167,6 +167,12 @@ The following work remains:
 
 - add authenticated, authorized, audited, and rate-limited inspection and
   selective replay tooling;
-- add DLQ metrics, alerts, and a tested replay runbook;
+- add broker-side DLQ size and oldest-record-age metrics, replay metrics, and a
+  tested replay runbook;
 - test crashes before and after handoff and offset commit; and
 - add corresponding DLQs if future source consumers are implemented.
+
+Ledger currently exposes `ledger_dlq_handoffs_total` with a bounded
+`failure_code` label and `ledger_dlq_handoff_failures_total`. Managed
+Prometheus warns on any new Ledger command dead letter and pages when durable
+handoff failures persist.

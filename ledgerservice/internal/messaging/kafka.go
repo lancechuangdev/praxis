@@ -13,6 +13,7 @@ import (
 	eventsv1 "praxis/api/events/v1"
 	"praxis/ledgerservice/internal/kafkaauth"
 	"praxis/ledgerservice/internal/ledger"
+	"praxis/ledgerservice/internal/observability"
 )
 
 type tradeData struct {
@@ -60,10 +61,11 @@ type Consumer struct {
 	Name     string
 	DLQTopic string
 	Log      *slog.Logger
+	Metrics  *observability.Metrics
 }
 
-func NewConsumer(brokers []string, topic, dlqTopic, group string, auth kafkaauth.Config, db *pgxpool.Pool, s ledger.Store, log *slog.Logger) *Consumer {
-	return &Consumer{Reader: kafka.NewReader(kafka.ReaderConfig{Brokers: brokers, Topic: topic, GroupID: group, CommitInterval: 0, MinBytes: 1, MaxBytes: 10e6, Dialer: auth.Dialer()}), DB: db, Store: s, Name: group, DLQTopic: dlqTopic, Log: log}
+func NewConsumer(brokers []string, topic, dlqTopic, group string, auth kafkaauth.Config, db *pgxpool.Pool, s ledger.Store, log *slog.Logger, metrics *observability.Metrics) *Consumer {
+	return &Consumer{Reader: kafka.NewReader(kafka.ReaderConfig{Brokers: brokers, Topic: topic, GroupID: group, CommitInterval: 0, MinBytes: 1, MaxBytes: 10e6, Dialer: auth.Dialer()}), DB: db, Store: s, Name: group, DLQTopic: dlqTopic, Log: log, Metrics: metrics}
 }
 func (c *Consumer) Close() error { return c.Reader.Close() }
 func (c *Consumer) Run(ctx context.Context) error {
@@ -97,7 +99,12 @@ func deterministic(code string, err error) error {
 	return deterministicError{code: code, error: err}
 }
 
-func (c *Consumer) deadLetter(ctx context.Context, message kafka.Message, cause error) error {
+func (c *Consumer) deadLetter(ctx context.Context, message kafka.Message, cause error) (err error) {
+	defer func() {
+		if err != nil && c.Metrics != nil {
+			c.Metrics.DLQHandoffFailures.Add(1)
+		}
+	}()
 	d, err := buildDLQEnvelope(c.Name, message, cause, time.Now().UTC())
 	if err != nil {
 		return err
@@ -114,10 +121,17 @@ func (c *Consumer) deadLetter(ctx context.Context, message kafka.Message, cause 
 	if _, err = tx.Exec(ctx, `INSERT INTO inbox_events(consumer_name,event_id,event_type) VALUES($1,$2,'DeadLettered') ON CONFLICT DO NOTHING`, c.Name, d.ID); err != nil {
 		return err
 	}
-	if _, err = tx.Exec(ctx, `INSERT INTO outbox_events(id,topic,event_type,aggregate_id,message_key,payload,occurred_at) VALUES($1,$2,'DeadLettered',$1,$3,$4,now()) ON CONFLICT(id) DO NOTHING`, d.ID, c.DLQTopic, string(message.Key), payload); err != nil {
+	inserted, err := tx.Exec(ctx, `INSERT INTO outbox_events(id,topic,event_type,aggregate_id,message_key,payload,occurred_at) VALUES($1,$2,'DeadLettered',$1,$3,$4,now()) ON CONFLICT(id) DO NOTHING`, d.ID, c.DLQTopic, string(message.Key), payload)
+	if err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err = tx.Commit(ctx); err != nil {
+		return err
+	}
+	if c.Metrics != nil && inserted.RowsAffected() == 1 {
+		c.Metrics.RecordDLQHandoff(d.FailureCode)
+	}
+	return nil
 }
 
 func buildDLQEnvelope(consumerGroup string, message kafka.Message, cause error, failedAt time.Time) (eventsv1.DLQEnvelope, error) {
