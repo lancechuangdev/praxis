@@ -302,6 +302,7 @@ variable "ecr_repositories" {
     matching_engine = "matching-engine"
     order_service   = "order-service"
     outbox_relay    = "outbox-relay"
+    risk_service    = "risk-service"
   }
 
   validation {
@@ -309,10 +310,10 @@ variable "ecr_repositories" {
       for name in values(var.ecr_repositories) :
       can(regex("^[a-z0-9]+(?:[._/-][a-z0-9]+)*$", name))
       ]) && length(distinct(values(var.ecr_repositories))) == length(var.ecr_repositories) && alltrue([
-      for key in ["ledger_service", "matching_engine", "order_service", "outbox_relay"] :
+      for key in ["ledger_service", "matching_engine", "order_service", "outbox_relay", "risk_service"] :
       contains(keys(var.ecr_repositories), key)
     ])
-    error_message = "ecr_repositories must contain all four current service keys with unique, valid lowercase suffixes."
+    error_message = "ecr_repositories must contain all five current service keys with unique, valid lowercase suffixes."
   }
 }
 
@@ -442,6 +443,18 @@ variable "order_image_digest" {
   validation {
     condition     = var.order_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.order_image_digest))
     error_message = "order_image_digest must be null or a lowercase sha256 digest with 64 hexadecimal characters."
+  }
+}
+
+variable "risk_image_digest" {
+  description = "Risk image digest (sha256:...) already pushed to ECR for the Kubernetes workload."
+  type        = string
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.risk_image_digest == null || can(regex("^sha256:[0-9a-f]{64}$", var.risk_image_digest))
+    error_message = "risk_image_digest must be null or a lowercase sha256 digest with 64 hexadecimal characters."
   }
 }
 

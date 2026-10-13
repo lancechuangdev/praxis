@@ -30,6 +30,7 @@ locals {
       ORDER_IMAGE         = coalesce(local.images.order, "missing-order-image")
       LEDGER_IMAGE        = coalesce(local.images.ledger, "missing-ledger-image")
       MATCHING_IMAGE      = coalesce(local.images.matching, "missing-matching-image")
+      RISK_IMAGE          = coalesce(local.images.risk, "missing-risk-image")
       RUNTIME_CONFIG_HASH = sha256(jsonencode(local.runtime_config_data))
     })) : yamldecode(document)
   ]
@@ -71,13 +72,13 @@ resource "kubernetes_namespace_v1" "praxis" {
 }
 
 resource "kubernetes_service_account_v1" "workloads" {
-  for_each = toset(["order", "ledger", "matching", "ledger-migration"])
+  for_each = toset(["order", "ledger", "matching", "risk", "ledger-migration"])
 
   metadata {
     name      = each.key
     namespace = kubernetes_namespace_v1.praxis.metadata[0].name
   }
-  automount_service_account_token = each.key == "order" ? false : true
+  automount_service_account_token = contains(["order", "risk"], each.key) ? false : true
 }
 
 resource "kubernetes_config_map_v1" "runtime" {
@@ -198,10 +199,10 @@ resource "kubernetes_manifest" "deployments" {
   lifecycle {
     precondition {
       condition = alltrue([
-        for image in [local.images.order, local.images.ledger, local.images.matching] :
+        for image in [local.images.order, local.images.ledger, local.images.matching, local.images.risk] :
         can(regex("@sha256:[0-9a-f]{64}$", image))
       ])
-      error_message = "Set digest-pinned Order, Ledger, and Matching images in infra/aws before deploying Kubernetes workloads."
+      error_message = "Set digest-pinned Order, Ledger, Matching, and Risk images in infra/aws before deploying Kubernetes workloads."
     }
   }
 }

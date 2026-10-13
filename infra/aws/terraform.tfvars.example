@@ -62,6 +62,7 @@ ecs_log_retention_days       = 30
 # Set after building and pushing the matching-engine image to ECR. This mock
 # remains single-replica and is not production matching.
 matching_image_digest = null
+risk_image_digest     = null
 
 # Create distinct Ledger and Outbox runtime password secrets first, and set
 # their ARNs before the Outbox migration task. Only migration jobs/tasks use

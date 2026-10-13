@@ -70,8 +70,8 @@ manage topics through the Terraform `topics` variable. Use the
 
 Terraform creates immutable, scan-on-push ECR repositories for all four
 services. Publish images with unique tags, resolve their digests, and set
-`order_image_digest`, `ledger_image_digest`, `matching_image_digest`, and
-`outbox_image_digest` as appropriate. The three hot-path digests are consumed
+`order_image_digest`, `ledger_image_digest`, `matching_image_digest`, `risk_image_digest`, and
+`outbox_image_digest` as appropriate. The four EKS workload digests are consumed
 by the `infra/k8s` Terraform stack, not ECS task definitions.
 
 ## Database migrations and credentials

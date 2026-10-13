@@ -211,11 +211,12 @@ output "eks_pod_role_arns" {
 }
 
 output "eks_image_refs" {
-  description = "Digest-pinned ECR images for Kubernetes workloads. All three digests must be set before deployment."
+  description = "Digest-pinned ECR images for Kubernetes workloads. All four digests must be set before deployment."
   value = {
     order    = var.order_image_digest == null ? null : "${aws_ecr_repository.service["order_service"].repository_url}@${var.order_image_digest}"
     ledger   = var.ledger_image_digest == null ? null : "${aws_ecr_repository.service["ledger_service"].repository_url}@${var.ledger_image_digest}"
     matching = var.matching_image_digest == null ? null : "${aws_ecr_repository.service["matching_engine"].repository_url}@${var.matching_image_digest}"
+    risk     = var.risk_image_digest == null ? null : "${aws_ecr_repository.service["risk_service"].repository_url}@${var.risk_image_digest}"
   }
 }
 

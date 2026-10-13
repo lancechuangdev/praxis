@@ -23,17 +23,17 @@ aws eks update-kubeconfig --name "${cluster_name}" --region "${aws_region}" >/de
 kubectl auth can-i get pods -n "${namespace}" | grep -qx yes
 kubectl get --raw /apis/metrics.k8s.io/v1beta1/nodes >/dev/null
 
-for workload in order ledger matching matching-outbox; do
+for workload in order ledger matching matching-outbox risk; do
   kubectl rollout status "deployment/${workload}" -n "${namespace}" --timeout=5m
 done
 kubectl rollout status daemonset/otel-collector -n "${observability_namespace}" --timeout=5m
 
-kubectl wait --for=condition=Available deployment/order deployment/ledger deployment/matching \
+kubectl wait --for=condition=Available deployment/order deployment/ledger deployment/matching deployment/risk \
   -n "${namespace}" --timeout=5m
-kubectl get hpa order ledger matching -n "${namespace}"
-kubectl get pdb order ledger matching -n "${namespace}"
+kubectl get hpa order ledger matching risk -n "${namespace}"
+kubectl get pdb order ledger matching risk -n "${namespace}"
 
-for hpa in order ledger matching; do
+for hpa in order ledger matching risk; do
   target=$(kubectl get hpa "${hpa}" -n "${namespace}" -o jsonpath='{.status.currentMetrics[0].resource.current.averageUtilization}')
   test -n "${target}" || {
     printf 'HPA %s has no CPU utilization; verify metrics-server and pod requests.\n' "${hpa}" >&2

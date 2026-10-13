@@ -31,6 +31,21 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
+  name: risk
+  namespace: praxis
+spec:
+  type: ClusterIP
+  trafficDistribution: PreferSameZone
+  selector:
+    app: risk
+  ports:
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: order
   namespace: praxis
 spec:
@@ -275,6 +290,85 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: risk
+  namespace: praxis
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: risk
+  template:
+    metadata:
+      labels:
+        app: risk
+      annotations:
+        checksum/runtime: ${RUNTIME_CONFIG_HASH}
+    spec:
+      serviceAccountName: risk
+      automountServiceAccountToken: false
+      nodeSelector:
+        praxis.io/workload: hot-path
+      topologySpreadConstraints:
+        - maxSkew: 1
+          minDomains: 3
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: risk
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: risk
+          image: ${RISK_IMAGE}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          ports:
+            - name: grpc
+              containerPort: 9095
+            - name: http
+              containerPort: 8085
+          env:
+            - name: RISK_GRPC_ADDRESS
+              value: ":9095"
+            - name: RISK_HTTP_ADDRESS
+              value: ":8085"
+            - name: RISK_POLICY_VERSION
+              value: embedded-v1
+            - name: RISK_REJECT_BPS
+              value: "0"
+            - name: RISK_DECISION_LATENCY
+              value: 1ms
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          startupProbe:
+            httpGet: {path: /readyz, port: http}
+            failureThreshold: 12
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
   name: order
   namespace: praxis
 spec:
@@ -455,6 +549,16 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
+  name: risk
+  namespace: praxis
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: {app: risk}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
   name: matching
   namespace: praxis
 spec:
@@ -513,6 +617,32 @@ spec:
         name: cpu
         target: {type: Utilization, averageUtilization: 65}
   scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: ledger}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: risk
+  namespace: praxis
+spec:
+  minReplicas: 3
+  maxReplicas: 9
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - {type: Percent, value: 100, periodSeconds: 60}
+        - {type: Pods, value: 2, periodSeconds: 60}
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - {type: Percent, value: 25, periodSeconds: 60}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 65}
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: risk}
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

@@ -271,8 +271,10 @@ Work:
 3. Deploy Risk with independent state ownership and telemetry. The repository
    now contains an independently runnable Risk service and container with
    service-owned immutable policy configuration, health/readiness endpoints,
-   and bounded decision metrics. EKS deployment, persistent policy/audit state,
-   and live telemetry evidence remain before this item is complete.
+   bounded decision metrics, and a private digest-pinned EKS deployment
+   definition with zone spreading, disruption protection, and autoscaling. Persistent
+   policy/audit state, a non-production apply, and live telemetry evidence
+   remain before this item is complete.
 4. Run the service in shadow mode and compare its decisions with the embedded
    calculation.
 5. Cut over through a feature flag with a strict deadline and explicit

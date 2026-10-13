@@ -1,7 +1,7 @@
 # Praxis workloads on EKS
 
-This Terraform stack deploys Order, Ledger, the mock Matching Engine, and a
-shared metrics/traces Collector to the EC2-backed EKS cluster created by
+This Terraform stack deploys Order, Ledger, the mock Matching Engine, Risk, and
+a shared metrics/traces Collector to the EC2-backed EKS cluster created by
 `infra/aws`. The AWS stack also owns MSK, PostgreSQL, ECR, IAM, and the ECS
 Fargate Outbox Relay. Reporting and Notification are not implemented.
 
@@ -31,7 +31,7 @@ terraform -chdir=infra/k8s apply -var='deploy_workloads=false'
 
 After the Job completes, run the Outbox ECS migration. It applies the Outbox
 schema and creates the restricted Ledger and Outbox runtime roles using the
-pre-created secrets. Then set the pinned Order, Ledger, Matching, and ADOT
+pre-created secrets. Then set the pinned Order, Ledger, Matching, Risk, and ADOT
 collector image digests in `infra/aws/terraform.tfvars` and apply that stack again.
 Finally, deploy the workloads with the Kubernetes stack's default setting:
 
@@ -46,7 +46,7 @@ or `deploy.sh` is required. Terraform creates the restricted `praxis` and
 `observability` Namespaces and ServiceAccounts, then runs a one-off Ledger
 migration Job and waits for success. With `deploy_workloads=true` (the
 default), it also creates the non-secret ConfigMaps, private Services, shared
-Collector Deployment, and three application Deployments after the Job. The
+Collector Deployment, and four application Deployments after the Job. The
 Job name changes with its pinned image, so a new migration image runs again.
 Ledger's database advisory lock serializes migrations with Outbox's
 independent ECS migration task.
@@ -72,7 +72,7 @@ The ALB terminates TLS and requires OIDC authentication before forwarding. Its
 callback URL is `https://<order-alb-dns>/oauth2/idpresponse`. Protect the OIDC
 client secret and the Terraform state that contains it.
 
-Order, Ledger, and Matching use CPU HPAs backed by the pinned EKS metrics-server
+Order, Ledger, Matching, and Risk use CPU HPAs backed by the pinned EKS metrics-server
 add-on and disruption budgets for voluntary maintenance. CloudWatch application
 logs and Container Insights use the pinned CloudWatch Observability add-on and
 Pod Identity. Scaling limits are initial safety bounds, not production capacity
@@ -97,6 +97,12 @@ cannot be guaranteed AZ-local. RDS cluster endpoints are role-aware rather than
 zone-aware; Ledger-to-PostgreSQL traffic can also cross zones when the selected
 database writer or reader is elsewhere. These settings reduce avoidable
 cross-zone hops but do not guarantee an entirely single-AZ order path.
+
+Risk runs three replicas spread across the three Availability Zones behind the
+private `risk.praxis.svc.cluster.local:9095` Service. Order does not call it
+yet; the deployment exists for direct contract verification and the next
+shadow-comparison phase. Its immutable startup policy is deliberately aligned
+with the embedded `embedded-v1` policy.
 
 ## Verify and operate
 
