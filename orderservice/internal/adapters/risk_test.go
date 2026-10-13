@@ -2,7 +2,9 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	riskv1 "praxis/api/gen/risk/v1"
@@ -35,5 +37,20 @@ func TestGRPCRiskRejectsUnspecifiedDecision(t *testing.T) {
 	risk := &GRPCRisk{client: &fakeRiskClient{response: &riskv1.CheckOrderResponse{}}}
 	if _, err := risk.CheckOrder(context.Background(), order.Request{}); err == nil {
 		t.Fatal("expected unspecified decision error")
+	}
+}
+
+type deadlineRiskClient struct{}
+
+func (deadlineRiskClient) CheckOrder(ctx context.Context, _ *riskv1.CheckOrderRequest, _ ...grpc.CallOption) (*riskv1.CheckOrderResponse, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestGRPCRiskAppliesStrictDeadline(t *testing.T) {
+	risk := &GRPCRisk{client: deadlineRiskClient{}, timeout: time.Millisecond}
+	_, err := risk.CheckOrder(context.Background(), order.Request{})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error=%v", err)
 	}
 }

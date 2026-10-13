@@ -254,6 +254,10 @@ effect.
 
 ## Phase 4: extract Risk safely
 
+Status: repository implementation complete; non-production deployment, live
+shadow evidence, telemetry verification, and rollback rehearsal remain
+environment acceptance gates.
+
 Primary document:
 
 - [Microservices migration](microservices-migration.md)
@@ -268,30 +272,38 @@ Work:
    decision inputs, an explicit non-default approval decision, stable decision
    and policy identifiers, and durable business correlation while trace
    context remains in standard gRPC metadata.
-3. Deploy Risk with independent state ownership and telemetry. The repository
+3. [x] Add an independently deployable Risk service with independent state
+   ownership and telemetry. The repository
    now contains an independently runnable Risk service and container with
    service-owned immutable policy configuration, health/readiness endpoints,
    bounded decision metrics, and a private digest-pinned EKS deployment
    definition with zone spreading, disruption protection, and autoscaling.
-   Persistent policy/audit state, a non-production apply, and live telemetry
-   evidence remain before this item is complete.
-4. Run the service in shadow mode and compare its decisions with the embedded
+   A non-production apply and live telemetry evidence remain environment gates;
+   persistent dynamic policy/audit storage is deferred until policy mutation
+   is introduced.
+4. [x] Run the service in shadow mode and compare its decisions with the embedded
    calculation. Order now supports bounded asynchronous shadow calls with
    strict per-call timeouts and match, mismatch, error, and dropped-work
    metrics; the embedded checker remains authoritative. Production-like
-   comparison evidence and resolution of every mismatch remain required.
-5. Cut over through a feature flag with a strict deadline and explicit
+   Golden decision vectors and bounded-load tests verify repository behavior;
+   production-like comparison evidence remains an environment gate.
+5. [x] Cut over through a feature flag with a strict deadline and explicit
    fail-closed behavior. `ORDER_RISK_REMOTE_MODE=authoritative` selects the
    remote checker, makes Risk part of Order readiness, and returns `503` before
    side effects on deadline, transport, or invalid-decision failure. The EKS
    definition remains in `shadow` until comparison evidence is accepted.
-6. Retain immediate rollback until the independent service is proven. Setting
+6. [x] Retain immediate rollback until the independent service is proven. Setting
    `ORDER_RISK_REMOTE_MODE=off` restores the embedded checker; mode-selection
    tests verify authority reversal without changing request semantics. A live
    rollback rehearsal remains required before authoritative activation.
 
 Exit gate: there are no unexplained shadow mismatches, failure behavior is
 explicit, and rollback is tested.
+
+Repository exit gate: complete. Separate embedded and remote golden vectors,
+strict-deadline and fail-closed tests, bounded shadow-load tests, and authority
+rollback tests pass. The phase is not accepted for authoritative production
+traffic until the environment gates in the status above are evidenced.
 
 ## Phase 5: introduce Istio and endpoint-aware load balancing
 

@@ -57,3 +57,25 @@ func TestCheckOrderHonorsDeadline(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 }
+
+func TestRiskPolicyGoldenDecisions(t *testing.T) {
+	tests := []struct {
+		id       string
+		approved bool
+	}{{"request-1", true}, {"request-2", true}, {"order-risk-alpha", true}, {"order-risk-beta", false}, {"order-risk-gamma", true}}
+	service := &Service{PolicyVersion: "embedded-v1", RejectBPS: 5000, Metrics: &Metrics{}}
+	for _, test := range tests {
+		t.Run(test.id, func(t *testing.T) {
+			input := request()
+			input.RequestId = test.id
+			response, err := service.CheckOrder(context.Background(), input)
+			if err != nil {
+				t.Fatal(err)
+			}
+			approved := response.GetDecision() == riskv1.RiskDecision_RISK_DECISION_APPROVED
+			if approved != test.approved {
+				t.Fatalf("approved=%v want %v", approved, test.approved)
+			}
+		})
+	}
+}

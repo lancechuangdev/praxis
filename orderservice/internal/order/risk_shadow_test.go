@@ -68,6 +68,23 @@ func TestRiskModeSelectionSupportsImmediateRollback(t *testing.T) {
 	}
 }
 
+func TestShadowRiskLoadIsBounded(t *testing.T) {
+	metrics := &Metrics{}
+	block := make(chan struct{})
+	checker := NewShadowRiskChecker(stubRisk{decision: RiskDecision{Approved: true}}, stubRisk{decision: RiskDecision{Approved: true}, block: block}, 1, metrics, nil)
+	const requests = 1000
+	for range requests {
+		if _, err := checker.CheckOrder(context.Background(), Request{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if metrics.RiskShadowAttempts.Load() != 1 || metrics.RiskShadowDropped.Load() != requests-1 {
+		t.Fatalf("attempts=%d dropped=%d", metrics.RiskShadowAttempts.Load(), metrics.RiskShadowDropped.Load())
+	}
+	close(block)
+	eventually(t, func() bool { return metrics.RiskShadowMatches.Load() == 1 })
+}
+
 func eventually(t *testing.T, condition func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)

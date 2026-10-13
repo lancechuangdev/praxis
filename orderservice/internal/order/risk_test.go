@@ -27,3 +27,22 @@ func TestEmbeddedRiskCheckerHonorsCancellation(t *testing.T) {
 		t.Fatalf("error=%v", err)
 	}
 }
+
+func TestEmbeddedRiskPolicyGoldenDecisions(t *testing.T) {
+	tests := []struct {
+		id       string
+		approved bool
+	}{{"request-1", true}, {"request-2", true}, {"order-risk-alpha", true}, {"order-risk-beta", false}, {"order-risk-gamma", true}}
+	checker := EmbeddedRiskChecker{RejectBPS: 5000}
+	for _, test := range tests {
+		t.Run(test.id, func(t *testing.T) {
+			decision, err := checker.CheckOrder(context.Background(), Request{RequestID: test.id})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.Approved != test.approved {
+				t.Fatalf("approved=%v want %v", decision.Approved, test.approved)
+			}
+		})
+	}
+}
