@@ -2,8 +2,28 @@ package order
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 )
+
+func SelectRiskChecker(mode string, embedded, remote RiskChecker, maxInFlight int, metrics *Metrics, log *slog.Logger) (RiskChecker, error) {
+	switch mode {
+	case "off":
+		return embedded, nil
+	case "shadow":
+		if remote == nil {
+			return nil, errors.New("remote Risk checker is required in shadow mode")
+		}
+		return NewShadowRiskChecker(embedded, remote, maxInFlight, metrics, log), nil
+	case "authoritative":
+		if remote == nil {
+			return nil, errors.New("remote Risk checker is required in authoritative mode")
+		}
+		return remote, nil
+	default:
+		return nil, errors.New("unsupported Risk mode")
+	}
+}
 
 // ShadowRiskChecker always returns the primary decision. Shadow failures,
 // latency, and disagreement are observed asynchronously and cannot affect

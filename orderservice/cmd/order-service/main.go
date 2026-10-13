@@ -104,14 +104,23 @@ func main() {
 	}
 	metrics := &order.Metrics{}
 	var riskChecker order.RiskChecker = order.EmbeddedRiskChecker{Latency: cfg.RiskLatency, RejectBPS: cfg.RiskRejectBPS}
-	if cfg.RiskRemoteMode == "shadow" {
+	var riskReady func(context.Context) error
+	if cfg.RiskRemoteMode == "shadow" || cfg.RiskRemoteMode == "authoritative" {
 		riskClient, clientErr := adapters.NewGRPCRisk(cfg.RiskGRPCAddress, cfg.RiskTimeout)
 		if clientErr != nil {
 			log.Error("risk client", "error", clientErr)
 			os.Exit(1)
 		}
 		defer riskClient.Close()
-		riskChecker = order.NewShadowRiskChecker(riskChecker, riskClient, cfg.RiskShadowMaxInFlight, metrics, log)
+		selected, selectErr := order.SelectRiskChecker(cfg.RiskRemoteMode, riskChecker, riskClient, cfg.RiskShadowMaxInFlight, metrics, log)
+		if selectErr != nil {
+			log.Error("risk mode", "error", selectErr)
+			os.Exit(1)
+		}
+		riskChecker = selected
+		if cfg.RiskRemoteMode == "authoritative" {
+			riskReady = riskClient.Ready
+		}
 	}
 	service := &order.Service{Ledger: ledger, Matching: matching, Risk: riskChecker, Metrics: metrics, Sagas: &order.PostgresSagaStore{DB: sagaDB, MaxReleaseAttempts: cfg.SagaMaxReleaseAttempts, MaxReservationAttempts: cfg.SagaMaxReservationAttempts}, Admission: admission, Concurrency: order.NewConcurrencyGate(cfg.AdmissionMaxInFlight, cfg.AdmissionMaxWaiting), RecoveryOwner: recoveryOwner, RecoveryLease: cfg.SagaClaimLease, ReservationRetryConcurrency: cfg.SagaReservationConcurrency, ReleaseRetryConcurrency: cfg.SagaReleaseConcurrency, DownstreamConcurrency: cfg.DownstreamConcurrency, DownstreamAdmissionReserve: cfg.DownstreamAdmissionReserve}
 	go func() {
@@ -123,23 +132,38 @@ func main() {
 		if readyErr := service.SagaRecoveryReady(); readyErr != nil {
 			return readyErr
 		}
-		results := make(chan error, 3)
-		go func() { results <- sagaDB.Ping(ctx) }()
-		go func() {
-			if readyErr := ledgerReady(ctx); readyErr != nil {
-				results <- fmt.Errorf("ledger: %w", readyErr)
-				return
-			}
-			results <- nil
-		}()
-		go func() {
-			if readyErr := matchingReady(ctx); readyErr != nil {
-				results <- fmt.Errorf("matching: %w", readyErr)
-				return
-			}
-			results <- nil
-		}()
-		return errors.Join(<-results, <-results, <-results)
+		checks := []func() error{
+			func() error { return sagaDB.Ping(ctx) },
+			func() error {
+				if readyErr := ledgerReady(ctx); readyErr != nil {
+					return fmt.Errorf("ledger: %w", readyErr)
+				}
+				return nil
+			},
+			func() error {
+				if readyErr := matchingReady(ctx); readyErr != nil {
+					return fmt.Errorf("matching: %w", readyErr)
+				}
+				return nil
+			},
+		}
+		if riskReady != nil {
+			checks = append(checks, func() error {
+				if readyErr := riskReady(ctx); readyErr != nil {
+					return fmt.Errorf("risk: %w", readyErr)
+				}
+				return nil
+			})
+		}
+		results := make(chan error, len(checks))
+		for _, check := range checks {
+			go func(check func() error) { results <- check() }(check)
+		}
+		var readinessErr error
+		for range checks {
+			readinessErr = errors.Join(readinessErr, <-results)
+		}
+		return readinessErr
 	}
 	server := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Service: service, Ready: ready}.Handler(), "order.http"), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	errCh := make(chan error, 1)

@@ -281,8 +281,14 @@ Work:
    metrics; the embedded checker remains authoritative. Production-like
    comparison evidence and resolution of every mismatch remain required.
 5. Cut over through a feature flag with a strict deadline and explicit
-   fail-closed behavior.
-6. Retain immediate rollback until the independent service is proven.
+   fail-closed behavior. `ORDER_RISK_REMOTE_MODE=authoritative` selects the
+   remote checker, makes Risk part of Order readiness, and returns `503` before
+   side effects on deadline, transport, or invalid-decision failure. The EKS
+   definition remains in `shadow` until comparison evidence is accepted.
+6. Retain immediate rollback until the independent service is proven. Setting
+   `ORDER_RISK_REMOTE_MODE=off` restores the embedded checker; mode-selection
+   tests verify authority reversal without changing request semantics. A live
+   rollback rehearsal remains required before authoritative activation.
 
 Exit gate: there are no unexplained shadow mismatches, failure behavior is
 explicit, and rollback is tested.

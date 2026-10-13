@@ -47,6 +47,27 @@ func TestShadowRiskFailureAndSaturationDoNotAffectPrimary(t *testing.T) {
 	eventually(t, func() bool { return metrics.RiskShadowErrors.Load() == 1 })
 }
 
+func TestRiskModeSelectionSupportsImmediateRollback(t *testing.T) {
+	embedded := stubRisk{decision: RiskDecision{Approved: true, PolicyVersion: "embedded"}}
+	remote := stubRisk{decision: RiskDecision{Approved: false, PolicyVersion: "remote"}}
+	authoritative, err := SelectRiskChecker("authoritative", embedded, remote, 1, &Metrics{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, err := authoritative.CheckOrder(context.Background(), Request{})
+	if err != nil || decision.Approved {
+		t.Fatalf("authoritative=%+v err=%v", decision, err)
+	}
+	rolledBack, err := SelectRiskChecker("off", embedded, nil, 1, &Metrics{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, err = rolledBack.CheckOrder(context.Background(), Request{})
+	if err != nil || !decision.Approved || decision.PolicyVersion != "embedded" {
+		t.Fatalf("rollback=%+v err=%v", decision, err)
+	}
+}
+
 func eventually(t *testing.T, condition func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)

@@ -20,6 +20,14 @@ Remote latency, failure, overload, or disagreement never changes the embedded
 decision. Metrics expose attempts, matches, mismatches, errors, and dropped
 comparisons; detailed identifiers appear only in structured mismatch logs.
 
+After shadow acceptance, `ORDER_RISK_REMOTE_MODE=authoritative` makes the
+remote service the admission authority. Every call is bounded by
+`ORDER_RISK_TIMEOUT`; timeout, transport failure, or an unspecified response
+fails closed with `503` before saga or Ledger state. In authoritative mode,
+Order readiness also requires Risk readiness. Roll back immediately by setting
+the mode to `off`, which restores `EmbeddedRiskChecker`; `shadow` and `off`
+never make Risk availability part of Order readiness.
+
 It is a benchmark fixture, not a production order service. It persists the
 order-admission saga in PostgreSQL and retries an idempotent Ledger release when
 matching fails after funds were reserved.

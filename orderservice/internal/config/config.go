@@ -83,8 +83,8 @@ func Load() (Config, error) {
 	if c.RiskRejectBPS < 0 || c.RiskRejectBPS > 10000 {
 		return c, errors.New("ORDER_RISK_REJECT_BPS must be between 0 and 10000")
 	}
-	if c.RiskRemoteMode != "off" && c.RiskRemoteMode != "shadow" {
-		return c, errors.New("ORDER_RISK_REMOTE_MODE must be off or shadow")
+	if c.RiskRemoteMode != "off" && c.RiskRemoteMode != "shadow" && c.RiskRemoteMode != "authoritative" {
+		return c, errors.New("ORDER_RISK_REMOTE_MODE must be off, shadow, or authoritative")
 	}
 	if c.RiskTimeout <= 0 || c.RiskShadowMaxInFlight < 1 {
 		return c, errors.New("risk timeout and shadow max in-flight must be positive")

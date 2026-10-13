@@ -23,7 +23,7 @@ func TestLoadAcceptsDedicatedRecoveryAndAdmissionCapacity(t *testing.T) {
 }
 
 func TestLoadValidatesRiskShadowConfiguration(t *testing.T) {
-	t.Setenv("ORDER_RISK_REMOTE_MODE", "authoritative")
+	t.Setenv("ORDER_RISK_REMOTE_MODE", "invalid")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected unsupported risk mode")
 	}
@@ -31,5 +31,16 @@ func TestLoadValidatesRiskShadowConfiguration(t *testing.T) {
 	t.Setenv("ORDER_RISK_SHADOW_MAX_IN_FLIGHT", "0")
 	if _, err := Load(); err == nil {
 		t.Fatal("expected invalid shadow concurrency")
+	}
+}
+
+func TestLoadAcceptsAuthoritativeRiskMode(t *testing.T) {
+	t.Setenv("ORDER_RISK_REMOTE_MODE", "authoritative")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RiskRemoteMode != "authoritative" {
+		t.Fatalf("mode=%q", cfg.RiskRemoteMode)
 	}
 }

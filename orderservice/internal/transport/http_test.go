@@ -84,6 +84,26 @@ func (rejectingAdmission) Check(context.Context, order.Request) (order.Admission
 	return order.AdmissionDecision{RetryAfter: 1500 * time.Millisecond}, nil
 }
 
+type failingRisk struct{}
+
+func (failingRisk) CheckOrder(context.Context, order.Request) (order.RiskDecision, error) {
+	return order.RiskDecision{}, errors.New("risk unavailable")
+}
+
+func TestAuthoritativeRiskFailureReturns503BeforeLedger(t *testing.T) {
+	ledger := &captureLedger{}
+	service := &order.Service{Ledger: ledger, Matching: &acceptingMatching{}, Risk: failingRisk{}, Metrics: &order.Metrics{}}
+	request := httptest.NewRequest(http.MethodPost, "/v1/orders", strings.NewReader(`{"request_id":"command-1","order_id":"order-1","user_id":"alice","symbol":"BTC-USDT","side":"buy","order_type":"market","quantity":"1","reserve_asset_id":"asset_usdt","reserve_amount_atomic":"100"}`))
+	response := httptest.NewRecorder()
+	HTTP{Service: service}.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if ledger.request.RequestID != "" {
+		t.Fatal("risk failure reached Ledger")
+	}
+}
+
 func TestRateLimitReturns429BeforeLedgerCall(t *testing.T) {
 	ledger := &captureLedger{}
 	service := &order.Service{Ledger: ledger, Matching: &acceptingMatching{}, Metrics: &order.Metrics{}, Admission: rejectingAdmission{}}
