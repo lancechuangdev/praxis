@@ -26,10 +26,10 @@ the Terraform-managed names; local aliases are noted where they differ.
   Kafka offset afterward.
 - Ledger business operations use stable command or event identifiers and are
   idempotent at their domain tables.
-- The Ledger consumer has an `inbox_events` table, but its current existence
-  check and final insert are not in the same transaction as the financial
-  mutation. It therefore records useful history but is not yet an atomic inbox
-  boundary.
+- The Ledger consumer passes inbox metadata into the Ledger store. The
+  financial mutation, its outbox events, and the `inbox_events` record commit
+  in the same PostgreSQL transaction. The pre-check avoids unnecessary replay
+  work, while the transactional insert closes the crash window.
 
 ## Compatibility and schema gaps
 
@@ -42,10 +42,9 @@ types.
 Phase 3 must therefore add:
 
 1. a versioned event envelope and a versioned DLQ envelope;
-2. atomic inbox deduplication with the Ledger financial transaction;
-3. `ledger.commands.dlq.v1` and an atomic publish-plus-offset strategy;
-4. deterministic versus transient failure classification; and
-5. compatibility tests that cover old and new envelope versions.
+2. `ledger.commands.dlq.v1` and an atomic publish-plus-offset strategy;
+3. deterministic versus transient failure classification; and
+4. compatibility tests that cover old and new envelope versions.
 
 ## Partition changes
 

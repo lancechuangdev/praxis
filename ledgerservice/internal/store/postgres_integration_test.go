@@ -52,8 +52,13 @@ func TestDepositReservationTradeAndCancellation(t *testing.T) {
 	if _, err = s.ReserveForOrder(ctx, ledger.ReserveOrder{CommandID: "it-reserve-sell", OrderID: "it-sell", UserID: "bob-it", AssetID: "asset_eth", AmountAtomic: "1000000000000000000", OccurredAt: now}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = s.BookTrade(ctx, ledger.TradeExecuted{EventID: "it-trade-event", TradeID: "it-trade", EngineID: "it-engine", Symbol: "ETH-USDT", SequenceNumber: 1, BuyerOrderID: "it-buy", SellerOrderID: "it-sell", BuyerUserID: "alice-it", SellerUserID: "bob-it", BaseAssetID: "asset_eth", QuoteAssetID: "asset_usdt", BaseAmountAtomic: "400000000000000000", QuoteAmountAtomic: "960000000", BuyerFeeQuoteAtomic: "960000", SellerFeeBaseAtomic: "1000000000000000", OccurredAt: now}); err != nil {
+	consumerCtx := ledger.WithInboxMetadata(ctx, ledger.InboxMetadata{ConsumerName: "integration-ledger", EventID: "it-trade-event", EventType: "TradeExecuted"})
+	if _, err = s.BookTrade(consumerCtx, ledger.TradeExecuted{EventID: "it-trade-event", TradeID: "it-trade", EngineID: "it-engine", Symbol: "ETH-USDT", SequenceNumber: 1, BuyerOrderID: "it-buy", SellerOrderID: "it-sell", BuyerUserID: "alice-it", SellerUserID: "bob-it", BaseAssetID: "asset_eth", QuoteAssetID: "asset_usdt", BaseAmountAtomic: "400000000000000000", QuoteAmountAtomic: "960000000", BuyerFeeQuoteAtomic: "960000", SellerFeeBaseAtomic: "1000000000000000", OccurredAt: now}); err != nil {
 		t.Fatal(err)
+	}
+	var inboxRecorded bool
+	if err = db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM inbox_events WHERE consumer_name='integration-ledger' AND event_id='it-trade-event')`).Scan(&inboxRecorded); err != nil || !inboxRecorded {
+		t.Fatalf("transactional inbox recorded=%v error=%v", inboxRecorded, err)
 	}
 	if _, err = s.CancelOrder(ctx, ledger.CancelOrder{EventID: "it-cancel-buy", OrderID: "it-buy", EngineID: "it-engine", Symbol: "ETH-USDT", SequenceNumber: 2, OccurredAt: now}); err != nil {
 		t.Fatal(err)

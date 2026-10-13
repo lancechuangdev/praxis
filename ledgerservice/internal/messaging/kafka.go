@@ -90,24 +90,25 @@ func (c *Consumer) handle(ctx context.Context, raw []byte) error {
 	if seen {
 		return nil
 	}
+	commandCtx := ledger.WithInboxMetadata(ctx, ledger.InboxMetadata{ConsumerName: c.Name, EventID: e.ID, EventType: e.Type})
 	switch e.Type {
 	case "PostDeposit":
 		var d depositData
 		err = json.Unmarshal(e.Data, &d)
 		if err == nil {
-			_, err = c.Store.PostDeposit(ctx, ledger.PostDeposit{CommandID: e.ID, DepositID: d.DepositID, UserID: d.UserID, AssetID: d.AssetID, CustodyPositionID: d.CustodyPositionID, AmountAtomic: d.AmountAtomic, TargetBucket: d.TargetBucket, SourceSystem: d.SourceSystem, CorrelationID: d.CorrelationID, CausationID: d.CausationID, OccurredAt: e.OccurredAt})
+			_, err = c.Store.PostDeposit(commandCtx, ledger.PostDeposit{CommandID: e.ID, DepositID: d.DepositID, UserID: d.UserID, AssetID: d.AssetID, CustodyPositionID: d.CustodyPositionID, AmountAtomic: d.AmountAtomic, TargetBucket: d.TargetBucket, SourceSystem: d.SourceSystem, CorrelationID: d.CorrelationID, CausationID: d.CausationID, OccurredAt: e.OccurredAt})
 		}
 	case "TradeExecuted":
 		var d tradeData
 		err = json.Unmarshal(e.Data, &d)
 		if err == nil {
-			_, err = c.Store.BookTrade(ctx, ledger.TradeExecuted{EventID: e.ID, TradeID: d.TradeID, EngineID: d.EngineID, Symbol: d.Symbol, SequenceNumber: d.SequenceNumber, BuyerOrderID: d.BuyerOrderID, SellerOrderID: d.SellerOrderID, BuyerUserID: d.BuyerUserID, SellerUserID: d.SellerUserID, BaseAssetID: d.BaseAssetID, QuoteAssetID: d.QuoteAssetID, BaseAmountAtomic: d.BaseAmountAtomic, QuoteAmountAtomic: d.QuoteAmountAtomic, BuyerFeeQuoteAtomic: d.BuyerFeeQuoteAtomic, SellerFeeBaseAtomic: d.SellerFeeBaseAtomic, CorrelationID: d.CorrelationID, CausationID: d.CausationID, OccurredAt: e.OccurredAt})
+			_, err = c.Store.BookTrade(commandCtx, ledger.TradeExecuted{EventID: e.ID, TradeID: d.TradeID, EngineID: d.EngineID, Symbol: d.Symbol, SequenceNumber: d.SequenceNumber, BuyerOrderID: d.BuyerOrderID, SellerOrderID: d.SellerOrderID, BuyerUserID: d.BuyerUserID, SellerUserID: d.SellerUserID, BaseAssetID: d.BaseAssetID, QuoteAssetID: d.QuoteAssetID, BaseAmountAtomic: d.BaseAmountAtomic, QuoteAmountAtomic: d.QuoteAmountAtomic, BuyerFeeQuoteAtomic: d.BuyerFeeQuoteAtomic, SellerFeeBaseAtomic: d.SellerFeeBaseAtomic, CorrelationID: d.CorrelationID, CausationID: d.CausationID, OccurredAt: e.OccurredAt})
 		}
 	case "OrderCancelled":
 		var d cancelData
 		err = json.Unmarshal(e.Data, &d)
 		if err == nil {
-			_, err = c.Store.CancelOrder(ctx, ledger.CancelOrder{EventID: e.ID, OrderID: d.OrderID, EngineID: d.EngineID, Symbol: d.Symbol, SequenceNumber: d.SequenceNumber, CorrelationID: d.CorrelationID, CausationID: d.CausationID, OccurredAt: e.OccurredAt})
+			_, err = c.Store.CancelOrder(commandCtx, ledger.CancelOrder{EventID: e.ID, OrderID: d.OrderID, EngineID: d.EngineID, Symbol: d.Symbol, SequenceNumber: d.SequenceNumber, CorrelationID: d.CorrelationID, CausationID: d.CausationID, OccurredAt: e.OccurredAt})
 		}
 	default:
 		return fmt.Errorf("unsupported event type %q", e.Type)
@@ -115,6 +116,5 @@ func (c *Consumer) handle(ctx context.Context, raw []byte) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.DB.Exec(ctx, `INSERT INTO inbox_events(consumer_name,event_id,event_type) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, c.Name, e.ID, e.Type)
-	return err
+	return nil
 }

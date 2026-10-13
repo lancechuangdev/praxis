@@ -213,9 +213,10 @@ Work:
    ordering guarantee.
 2. [x] Define versioned event and DLQ envelopes, with legacy unversioned event
    decoding retained for the compatibility window.
-3. Add transactional outboxes wherever domain state and event publication are
-   not yet atomic.
-4. Add transactional inbox deduplication to consumers.
+3. [x] Add transactional outboxes wherever domain state and event publication
+   are not yet atomic. All implemented producers use a domain-local outbox.
+4. [x] Add transactional inbox deduplication to consumers. Ledger command
+   mutations and their inbox record now share one PostgreSQL transaction.
 5. Create a DLQ for each implemented source consumer, beginning with
    `ledger.commands.dlq.v1`.
 6. Implement atomic DLQ publication and source-offset commit.
@@ -302,10 +303,12 @@ Work:
 2. Build a reusable consumer foundation with inbox deduplication, schema
    validation, sequence checks, lag metrics, DLQ handoff, shadow mode, and
    rebuild mode.
-3. Build an order-status projection with authenticated snapshot and history
-   APIs.
+3. Build MongoDB Atlas on AWS projections for customer order history,
+   denormalized portfolio and activity views, and notification history, with
+   private EKS connectivity plus authenticated snapshot and history APIs.
 4. Prove that the projection can rebuild into new storage and cut over safely.
-5. Build a current-balance projection only when measured reads justify it.
+5. Build a current-balance projection only when measured reads justify it;
+   MongoDB Atlas portfolio views never authorize financial mutations.
 6. Add version fields, ETags, and conditional requests for private financial
    reads.
 7. Keep financial decisions on authoritative Ledger storage.

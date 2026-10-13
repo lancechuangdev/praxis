@@ -40,6 +40,45 @@ information needed for reconstruction. Authoritative financial state is not
 automatically a projection: Praxis Ledger journals and invariants remain the
 source of truth even if downstream services build balance or reporting views.
 
+### MongoDB Atlas projection store
+
+Praxis selects MongoDB Atlas on AWS as the managed document store for three
+customer-facing derived views:
+
+- order-history documents combining Order, Matching, and relevant Ledger facts;
+- denormalized portfolio and account-activity documents; and
+- notification-history documents used by customer delivery and replay APIs.
+
+MongoDB is projection storage, not a new system of record. PostgreSQL remains
+authoritative for orders, reservations, balances, journals, settlement, and
+idempotency decisions. No MongoDB value may authorize an order, reservation,
+withdrawal, settlement, or balance mutation. If MongoDB is unavailable or
+stale, mutations continue against the authoritative services while affected
+read APIs degrade or become unavailable.
+
+Deploy Atlas in the same AWS region as the EKS workloads, using a dedicated
+production tier distributed across availability zones. Connect through private
+networking rather than public IP allowlists, encrypt traffic and storage, keep
+credentials in the existing secret-management path, and grant each projection
+consumer only the collection privileges it requires. Atlas backup and restore
+protect operational recovery, but Kafka replay and authoritative PostgreSQL
+reconciliation remain the correctness and rebuild mechanisms.
+
+Suggested collection boundaries are `order_history`, `portfolio_activity`,
+and `notification_history`. Documents should be owned by an authenticated
+account key and include the newest applied domain version, source event ID,
+and update time. Financial quantities remain exact atomic-unit strings rather
+than BSON floating-point values. Indexes should support account plus occurrence
+time pagination, direct order lookup, and notification sequence lookup without
+creating unbounded arrays inside a customer document.
+
+Projection consumers must make event deduplication and document updates atomic.
+This can use a MongoDB transaction containing a unique inbox insert and the
+projection update, or a single-document conditional update when the event ID
+and monotonic domain version are embedded in the same document. Consumers must
+reject stale versions and detect sequence gaps instead of resolving conflicts
+by arrival time.
+
 ## How replay helps development
 
 Replay is useful when:
@@ -88,6 +127,11 @@ new tables: reporting_v2
         v
 validate -> catch up -> switch reads -> retire old tables
 ```
+
+For MongoDB Atlas, “new tables” means new versioned collections or a new database,
+for example `order_history_v2`. Build indexes before replay, validate the new
+generation, then switch the read-service collection alias/configuration
+atomically. Retain the previous generation through the rollback window.
 
 A typical rebuild is:
 

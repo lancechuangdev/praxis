@@ -76,7 +76,18 @@ Snapshot, history, and replay API
 
 The producer commits its domain change and outbox event in the same local transaction. Delivery begins only from committed outbox events. Matching, Order, and Ledger never wait for a browser connection, push provider, or customer webhook.
 
-An order-status projection should combine the committed Order, Matching, and relevant Ledger facts required for the customer-facing view. It is rebuildable and must not authorize financial mutations.
+An order-status projection should combine the committed Order, Matching, and relevant Ledger facts required for the customer-facing view. Praxis stores this customer-facing order history in MongoDB Atlas on AWS. It is rebuildable and must not authorize financial mutations.
+
+The Notification service also stores notification history in MongoDB Atlas as a
+derived delivery view. Each record includes the authenticated account owner,
+stable event ID, per-user stream sequence, channel, delivery state, occurrence
+time, and bounded delivery-attempt metadata. Provider tokens, webhook secrets,
+and other credentials are not stored in notification-history documents. A
+unique event/channel constraint makes repeated Kafka delivery harmless.
+
+Notification history supports reconnect replay, customer-visible delivery
+history, and operator investigation. It is not proof that a customer observed
+an event, and deleting or rebuilding it must not change committed order state.
 
 ## Event contract
 
@@ -239,7 +250,7 @@ Avoid user IDs, order IDs, endpoint URLs, and provider tokens as metric labels. 
 ## Recommended delivery stages
 
 1. Define versioned order lifecycle events and publish them through a transactional outbox.
-2. Build a rebuildable order-status projection with authenticated snapshot and history endpoints.
+2. Build a rebuildable MongoDB Atlas order-status/history projection with authenticated snapshot and history endpoints.
 3. Implement a Notification consumer with inbox deduplication and a fake provider.
 4. Add authenticated WebSocket or SSE delivery with sequence-based replay.
 5. Add APNs and FCM for background mobile notifications.

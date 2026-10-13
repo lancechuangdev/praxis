@@ -121,6 +121,15 @@ func insertOutbox(ctx context.Context, tx pgx.Tx, id, eventType, aggregate, key 
 	return err
 }
 
+func commitWithInbox(ctx context.Context, tx pgx.Tx) error {
+	if metadata, ok := ledger.InboxMetadataFromContext(ctx); ok {
+		if _, err := tx.Exec(ctx, `INSERT INTO inbox_events(consumer_name,event_id,event_type) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, metadata.ConsumerName, metadata.EventID, metadata.EventType); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
+}
+
 func (p *Postgres) PostDeposit(ctx context.Context, v ledger.PostDeposit) (ledger.OperationResult, error) {
 	if err := ledger.ValidateDeposit(v); err != nil {
 		return ledger.OperationResult{}, err
@@ -147,7 +156,7 @@ func (p *Postgres) PostDeposit(ctx context.Context, v ledger.PostDeposit) (ledge
 		return ledger.OperationResult{}, err
 	}
 	if !created {
-		if err = tx.Commit(ctx); err != nil {
+		if err = commitWithInbox(ctx, tx); err != nil {
 			return ledger.OperationResult{}, err
 		}
 		return ledger.OperationResult{JournalID: jid, Replay: true}, nil
@@ -166,7 +175,7 @@ func (p *Postgres) PostDeposit(ctx context.Context, v ledger.PostDeposit) (ledge
 	if err = outbox(ctx, tx, stableID("evt_", jid), "LedgerPosted", v.DepositID, uaa, v.CorrelationID, v.CausationID, map[string]any{"journal_id": jid, "deposit_id": v.DepositID, "bucket": v.TargetBucket}); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	if err = tx.Commit(ctx); err != nil {
+	if err = commitWithInbox(ctx, tx); err != nil {
 		return ledger.OperationResult{}, err
 	}
 	return ledger.OperationResult{JournalID: jid}, nil
@@ -444,7 +453,9 @@ func (p *Postgres) BookTrade(ctx context.Context, v ledger.TradeExecuted) (ledge
 		return ledger.OperationResult{}, err
 	}
 	if !created {
-		_ = tx.Commit(ctx)
+		if err = commitWithInbox(ctx, tx); err != nil {
+			return ledger.OperationResult{}, err
+		}
 		return ledger.OperationResult{JournalID: jid, Replay: true}, nil
 	}
 	if err = checkSequence(ctx, tx, v.EngineID, v.Symbol, v.SequenceNumber); err != nil {
@@ -527,7 +538,7 @@ func (p *Postgres) BookTrade(ctx context.Context, v ledger.TradeExecuted) (ledge
 	if err = outbox(ctx, tx, stableID("evt_", jid), "TradeBooked", v.TradeID, v.EngineID+":"+v.Symbol, v.CorrelationID, v.CausationID, map[string]any{"journal_id": jid, "trade_id": v.TradeID, "sequence_number": v.SequenceNumber}); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	if err = tx.Commit(ctx); err != nil {
+	if err = commitWithInbox(ctx, tx); err != nil {
 		return ledger.OperationResult{}, err
 	}
 	return ledger.OperationResult{JournalID: jid}, nil
@@ -564,7 +575,9 @@ func (p *Postgres) CancelOrder(ctx context.Context, v ledger.CancelOrder) (ledge
 		return ledger.OperationResult{}, err
 	}
 	if !created {
-		_ = tx.Commit(ctx)
+		if err = commitWithInbox(ctx, tx); err != nil {
+			return ledger.OperationResult{}, err
+		}
 		return ledger.OperationResult{JournalID: jid, Replay: true}, nil
 	}
 	if err = checkSequence(ctx, tx, v.EngineID, v.Symbol, v.SequenceNumber); err != nil {
@@ -600,7 +613,7 @@ func (p *Postgres) CancelOrder(ctx context.Context, v ledger.CancelOrder) (ledge
 	if err = outbox(ctx, tx, stableID("evt_", jid), "FundsReleased", v.OrderID, r.userAccount, v.CorrelationID, v.CausationID, map[string]any{"journal_id": jid, "amount_atomic": r.remaining}); err != nil {
 		return ledger.OperationResult{}, err
 	}
-	if err = tx.Commit(ctx); err != nil {
+	if err = commitWithInbox(ctx, tx); err != nil {
 		return ledger.OperationResult{}, err
 	}
 	return ledger.OperationResult{JournalID: jid}, nil
