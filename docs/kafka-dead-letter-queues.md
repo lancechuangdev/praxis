@@ -2,9 +2,9 @@
 
 Status: partially implemented. The Ledger command consumer has a versioned DLQ
 envelope, deterministic failure classification, a provisioned
-`ledger.commands.dlq.v1` topic, and transactional PostgreSQL inbox/outbox
-handoff. Operator inspection, replay, and the remaining future consumers are
-not yet implemented.
+`ledger.commands.dlq.v1` topic, transactional PostgreSQL inbox/outbox handoff,
+and controlled inspection and selective replay tooling. Broker-side age/size
+metrics, crash-window exercises, and DLQs for future consumers remain.
 
 Praxis may use a Kafka topic as the only dead-letter store for failures caused
 by consuming Kafka records. A database dead-letter table is not required for
@@ -163,10 +163,19 @@ the crash window reuses the same DLQ ID and cannot create another outbox row.
 Infrastructure provisions the topic and grants Ledger narrowly scoped write
 access.
 
+Ledger also provides `cmd/ledger-dlq`. It reads only an explicitly bounded
+partition/offset range, defaults to metadata-only output, accepts exact failure
+code and original event-ID filters, and refuses replay without an approval
+flag. The tool preserves the original key, value, and headers, adds replay
+provenance headers, publishes synchronously at a configured interval, and
+writes selected, success, and failure records to `dlq_operation_audit`.
+`PRAXIS_OPERATOR_ID` must be present in
+`PRAXIS_DLQ_ALLOWED_OPERATORS`; the production job runner must populate both
+from authenticated deployment configuration, while Kafka and PostgreSQL IAM
+remain the resource-level authentication boundary.
+
 The following work remains:
 
-- add authenticated, authorized, audited, and rate-limited inspection and
-  selective replay tooling;
 - add broker-side DLQ size and oldest-record-age metrics, replay metrics, and a
   tested replay runbook;
 - test crashes before and after handoff and offset commit; and

@@ -32,6 +32,34 @@ inbox and written to the transactional outbox for
 offset is committed. Database, dependency, cancellation, and sequence-gap
 errors remain transient and stop consumption without committing the offset.
 
+## Controlled DLQ operations
+
+`go run ./cmd/ledger-dlq` provides bounded, audited inspection and replay. It
+requires `PRAXIS_OPERATOR_ID` to match an entry in
+`PRAXIS_DLQ_ALLOWED_OPERATORS`, plus the normal Ledger database and Kafka
+configuration. Production must inject these variables through an authenticated
+operator job and restrict that job's database and Kafka IAM permissions.
+
+Inspect one record without displaying its key, headers, or payload:
+
+```bash
+go run ./cmd/ledger-dlq --action inspect --partition 0 --offset 42 \
+  --job-id INC-123-inspect --reason 'INC-123 payload validation investigation'
+```
+
+After the defect is resolved, replay a bounded range at no more than two
+records per second:
+
+```bash
+go run ./cmd/ledger-dlq --action replay --partition 0 --offset 42 \
+  --max-records 10 --failure-code invalid_event_payload --interval 500ms \
+  --job-id CHG-456-replay --reason 'CHG-456 parser fix deployed' --approve-replay
+```
+
+The CLI verifies migrations but never applies them. Run the normal migration
+job first so `004_dlq_replay_audit.sql` exists. Every selected record and final
+outcome is retained in `dlq_operation_audit`; replay never deletes DLQ data.
+
 The PostgreSQL writer pool is capped at 32 connections and the reader pool at 16
 connections by default. Override them independently with
 `LEDGER_DB_WRITER_MAX_CONNS` and `LEDGER_DB_READER_MAX_CONNS`; `/metrics` reports

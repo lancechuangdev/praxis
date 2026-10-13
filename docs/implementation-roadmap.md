@@ -225,7 +225,11 @@ Work:
 7. [x] Define deterministic and transient failure classes. Envelope, schema,
    and unsupported-type failures are deterministic; runtime, database,
    cancellation, and ordering failures remain transient.
-8. Add audited, authorized, rate-limited DLQ inspection and selective replay.
+8. [x] Add audited, authorized, rate-limited DLQ inspection and selective
+   replay. Ledger provides a narrowly scoped operator CLI with exact
+   partition/offset bounds, metadata-only inspection, allowlisted identity,
+   durable PostgreSQL audit records, explicit replay approval, and paced
+   publication that preserves original record bytes and headers.
 9. Add projection rebuild tooling that uses new consumer groups and new tables.
 10. [x] Prohibit casual in-place partition-count changes for order-sensitive
     topics. Terraform freezes the accepted counts unless an explicit migration
