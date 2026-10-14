@@ -7,7 +7,7 @@ PROFILE_WARMUP_DURATION ?= 0s
 PROFILE_DURATION ?= 60s
 PROFILE_COOLDOWN_SECONDS ?= 60
 
-.PHONY: test vet protobuf-generate protobuf-lint compose-up compose-down observability-up observability-down reset-load-data seed-distributed-users monitor profile-phase0 phase1-verify phase1-pod-drill partition-migration-check terraform-fmt
+.PHONY: test vet protobuf-generate protobuf-lint compose-up compose-down observability-up observability-down reset-load-data seed-distributed-users monitor profile-phase0 phase1-verify phase1-pod-drill phase5-verify partition-migration-check terraform-fmt
 
 test:
 	go test ./api/... ./ledgerservice/... ./matchingengine/... ./orderservice/... ./outboxrelay/... ./riskservice/...
@@ -52,6 +52,9 @@ phase1-verify:
 
 phase1-pod-drill:
 	ACK_PHASE1_FAILURE_DRILL=delete-one-pod ./scripts/phase1-pod-failure-drill.sh
+
+phase5-verify:
+	./scripts/verify-phase5.sh
 
 partition-migration-check:
 	cd outboxrelay && go run ./cmd/partition-migration-check --hot-percent 60

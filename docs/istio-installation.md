@@ -250,6 +250,17 @@ kubectl get peerauthentication,authorizationpolicy,destinationrule,telemetry \
 
 These checks prove configuration presence, not functional acceptance.
 
+Run the repository's read-only preflight to repeat these checks and validate
+the exact security, traffic, and access-log policy shape:
+
+```bash
+make phase5-verify
+```
+
+The preflight does not generate traffic, create an unauthorized test identity,
+scale workloads, delete pods, or alter mesh configuration. Those actions remain
+explicit non-production acceptance exercises.
+
 ## 10. Required acceptance evidence
 
 Before accepting the mesh for production traffic, verify and retain evidence

@@ -157,6 +157,9 @@ has completed; the task also bootstraps both runtime roles.
 After deployment, run `../../scripts/verify-phase1.sh` and complete the evidence
 and failure exercises in
 [`../../docs/phase-1-production-baseline.md`](../../docs/phase-1-production-baseline.md).
+When the optional mesh is enabled, also run `../../scripts/verify-phase5.sh`
+and complete the live exercises in the
+[Istio installation runbook](../../docs/istio-installation.md).
 Live trace, metric, log, authentication, alert-delivery, scaling, restore, and
 failure verification remain operator gates. Network policies and durable
 Matching also remain separate work. No live AWS deployment or failure drill is

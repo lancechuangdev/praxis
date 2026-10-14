@@ -337,6 +337,9 @@ Work:
 5. [x] Add opt-in endpoint-aware round-robin balancing; live distribution
    evidence remains an environment gate.
 6. Test scale-out, rolling drain, zone behavior, and backend distribution.
+   A read-only repository preflight now verifies sidecar readiness, proxy
+   synchronization, ready endpoint counts, and policy shape; traffic and
+   failure exercises remain environment gates.
 7. Add bounded connection pools, pending requests, and concurrency. Connection
    and pending HTTP/2 request bounds are implemented; measured concurrency
    tuning remains.
