@@ -1,10 +1,14 @@
 # gRPC load balancing
 
+For a focused implementation comparison of native gRPC and Istio-managed
+balancing, see [Two ways to configure gRPC load balancing](grpc-load-balancing-options.md).
+
 ## Status
 
-This document describes the current Praxis gRPC traffic distribution and
-options for future per-RPC load balancing. It is a design note only; no load
-balancing changes described here are currently implemented.
+This document describes Praxis gRPC traffic distribution and per-RPC load
+balancing. The default deployment retains Kubernetes connection-level
+selection. The repository now includes an opt-in Istio round-robin policy with
+bounded connection pools; live endpoint-distribution acceptance is pending.
 
 ## Production topology
 

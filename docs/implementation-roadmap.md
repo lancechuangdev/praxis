@@ -307,6 +307,14 @@ traffic until the environment gates in the status above are evidenced.
 
 ## Phase 5: introduce Istio and endpoint-aware load balancing
 
+Status: the first repository slice is implemented behind
+`enable_istio_mesh=false`. It provides selective sidecar enrollment,
+workload-scoped mTLS, Order identity authorization for financial gRPC ports,
+round-robin endpoint policy, bounded connection pools, and curated proxy
+metrics. A pinned control-plane installation, non-production rollout, live
+telemetry and identity evidence, failure testing, and rollback rehearsal remain
+environment gates. Proxy retries and outlier detection remain disabled.
+
 Primary documents:
 
 - [Observability and Istio](observability-and-istio.md)
@@ -315,15 +323,23 @@ Primary documents:
 
 Work:
 
-1. Enroll Order, Ledger, and Matching incrementally.
-2. Establish strict mTLS and workload authorization.
+1. [x] Add opt-in enrollment for Order, Ledger, and Matching. Incremental live
+   enrollment remains an environment gate.
+2. [x] Establish mTLS and workload authorization for internal financial gRPC
+   ports while preserving explicitly identified health, metrics, and ingress
+   ports. Live identity denial remains an environment gate.
 3. Confirm that existing application metrics and traces remain intact.
-4. Add mesh request metrics and controlled access logging.
-5. Replace connection-level distribution with endpoint-aware round-robin or
-   least-request balancing.
+4. Add mesh request metrics and controlled access logging. Curated proxy metric
+   collection is implemented; live ingestion and filtered durable access logs
+   remain.
+5. [x] Add opt-in endpoint-aware round-robin balancing; live distribution
+   evidence remains an environment gate.
 6. Test scale-out, rolling drain, zone behavior, and backend distribution.
-7. Add bounded connection pools, pending requests, and concurrency.
-8. Keep proxy retries disabled until every RPC has a documented retry contract.
+7. Add bounded connection pools, pending requests, and concurrency. Connection
+   and pending HTTP/2 request bounds are implemented; measured concurrency
+   tuning remains.
+8. [x] Keep proxy retries disabled until every RPC has a documented retry
+   contract.
 9. Add conservative outlier detection only after those protections exist:
    meaningful request-volume thresholds, a limited ejection percentage,
    temporary ejection, gradual reintroduction, and per-locality capacity

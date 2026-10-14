@@ -32,6 +32,7 @@ locals {
       MATCHING_IMAGE      = coalesce(local.images.matching, "missing-matching-image")
       RISK_IMAGE          = coalesce(local.images.risk, "missing-risk-image")
       RUNTIME_CONFIG_HASH = sha256(jsonencode(local.runtime_config_data))
+      ISTIO_INJECT        = tostring(var.enable_istio_mesh)
     })) : yamldecode(document)
   ]
   services    = { for document in local.workload_documents : document.metadata.name => document if document.kind == "Service" }

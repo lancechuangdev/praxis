@@ -3,7 +3,8 @@
 This Terraform stack deploys Order, Ledger, the mock Matching Engine, Risk, and
 a shared metrics/traces Collector to the EC2-backed EKS cluster created by
 `infra/aws`. The AWS stack also owns MSK, PostgreSQL, ECR, IAM, and the ECS
-Fargate Outbox Relay. Reporting and Notification are not implemented.
+Fargate Outbox Relay. Reporting and Notification are not implemented. Optional
+Phase 5 Istio enrollment is disabled by default.
 
 ## Apply order
 
@@ -92,17 +93,44 @@ target-group health check and receive no ingress. This requires at least six EKS
 nodes and increases the baseline EC2 cost; if a zone lacks two eligible nodes,
 the affected Order replica remains Pending instead of colocating.
 
-Matching remains one replica, so Order-to-Matching and Matching-to-Kafka traffic
-cannot be guaranteed AZ-local. RDS cluster endpoints are role-aware rather than
+Matching runs three replicas spread across the Availability Zones. Its Kafka
+traffic and the RDS cluster endpoints are role-aware rather than
 zone-aware; Ledger-to-PostgreSQL traffic can also cross zones when the selected
 database writer or reader is elsewhere. These settings reduce avoidable
 cross-zone hops but do not guarantee an entirely single-AZ order path.
 
 Risk runs three replicas spread across the three Availability Zones behind the
-private `risk.praxis.svc.cluster.local:9095` Service. Order does not call it
-yet; the deployment exists for direct contract verification and the next
-shadow-comparison phase. Its immutable startup policy is deliberately aligned
-with the embedded `embedded-v1` policy.
+private `risk.praxis.svc.cluster.local:9095` Service. Order uses it in shadow or
+authoritative mode according to `ORDER_RISK_REMOTE_MODE`; the checked-in EKS
+deployment remains in shadow mode. Its immutable startup policy is deliberately
+aligned with the embedded `embedded-v1` policy.
+
+## Optional Istio enrollment
+
+Install a version-pinned Istio sidecar control plane before enabling this
+stack's mesh resources. Control-plane installation and upgrades deliberately
+remain a separate operator-owned lifecycle; the Kubernetes provider cannot
+safely bootstrap custom resources before their CRDs exist.
+
+Set `enable_istio_mesh=true` only in a non-production workspace first. The flag:
+
+- injects sidecars into Order, Ledger, and Matching, but not Risk;
+- requires mTLS on their internal application ports while preserving the HTTP
+  health, metrics, and public Order ingress ports;
+- permits only Order's SPIFFE service identity to call the Ledger and Matching
+  gRPC ports;
+- selects backend endpoints round-robin with bounded connections and pending
+  HTTP/2 requests; and
+- adds a cardinality-limited Istio proxy scrape to the node-local collectors.
+
+No mesh retry policy or outlier detection is enabled. Before acceptance, prove
+identity denial, `mutual_tls` telemetry, even endpoint distribution, scaling,
+drain, overload, correlated dependency failure, and unchanged application
+metrics/traces. Record the Istio version, proxy resource overhead, and results
+with the Phase 1 evidence. To roll back, set `enable_istio_mesh=false`, apply,
+and verify all three Deployments have completed their sidecar-removal rollout;
+do not uninstall the control plane until no enrolled pods or mesh policies
+remain.
 
 ## Verify and operate
 

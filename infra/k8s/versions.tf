@@ -21,6 +21,23 @@ variable "deploy_workloads" {
   default     = true
 }
 
+variable "enable_istio_mesh" {
+  description = "Enroll Order, Ledger, and Matching in a pre-installed Istio sidecar mesh and apply the Phase 5 security and traffic policies."
+  type        = bool
+  default     = false
+}
+
+variable "istio_trust_domain" {
+  description = "Istio SPIFFE trust domain used in workload authorization principals."
+  type        = string
+  default     = "cluster.local"
+
+  validation {
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]*[a-z0-9]$", var.istio_trust_domain))
+    error_message = "istio_trust_domain must be a lowercase DNS-style trust domain."
+  }
+}
+
 data "terraform_remote_state" "aws" {
   backend = "local"
   config = {

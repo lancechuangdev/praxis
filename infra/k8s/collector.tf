@@ -5,7 +5,7 @@ locals {
       otlp = { protocols = { grpc = { endpoint = "0.0.0.0:4317" } } }
       prometheus = { config = {
         global = { scrape_interval = "30s", scrape_timeout = "10s" }
-        scrape_configs = [{
+        scrape_configs = concat([{
           job_name     = "praxis-eks-hot-path"
           metrics_path = "/metrics"
           sample_limit = 1000
@@ -22,7 +22,30 @@ locals {
             { action = "replace", source_labels = ["__meta_kubernetes_pod_name"], target_label = "pod" },
             { action = "replace", target_label = "environment", replacement = local.runtime.environment }
           ]
-        }]
+          }], var.enable_istio_mesh ? [{
+          job_name     = "praxis-istio-proxies"
+          metrics_path = "/stats/prometheus"
+          sample_limit = 2500
+          kubernetes_sd_configs = [{
+            role       = "pod"
+            namespaces = { names = ["praxis"] }
+          }]
+          relabel_configs = [
+            { action = "keep", source_labels = ["__meta_kubernetes_pod_label_app"], regex = "order|ledger|matching" },
+            { action = "keep", source_labels = ["__meta_kubernetes_pod_container_name"], regex = "istio-proxy" },
+            { action = "keep", source_labels = ["__meta_kubernetes_pod_container_port_name"], regex = "http-envoy-prom" },
+            { action = "keep", source_labels = ["__meta_kubernetes_pod_node_name"], regex = "$${env:K8S_NODE_NAME}" },
+            { action = "replace", source_labels = ["__meta_kubernetes_namespace"], target_label = "namespace" },
+            { action = "replace", source_labels = ["__meta_kubernetes_pod_label_app"], target_label = "service" },
+            { action = "replace", source_labels = ["__meta_kubernetes_pod_name"], target_label = "pod" },
+            { action = "replace", target_label = "environment", replacement = local.runtime.environment }
+          ]
+          metric_relabel_configs = [{
+            action        = "keep"
+            source_labels = ["__name__"]
+            regex         = "istio_requests_total|istio_request_duration_milliseconds_(bucket|sum|count)|istio_tcp_connections_(opened|closed)_total"
+          }]
+        }] : [])
       } }
     }
     processors = {

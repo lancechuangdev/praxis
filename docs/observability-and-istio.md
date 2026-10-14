@@ -2,9 +2,11 @@
 
 ## Status
 
-This document records the current Praxis observability architecture and a
-possible future Istio integration. It is a design note only; Istio and the
-described telemetry changes are not currently implemented.
+This document records the current Praxis observability architecture and its
+optional Istio integration. The repository now contains disabled-by-default
+sidecar enrollment, workload mTLS and authorization policies, backend traffic
+policy, and curated proxy metric collection. A pinned Istio control-plane
+installation and all live acceptance evidence remain deployment gates.
 
 ## Current observability architecture
 
@@ -297,6 +299,9 @@ The future integration should not be considered complete until:
 
 - `infra/k8s/collector.tf` defines the shared EKS ADOT metrics and trace
   pipelines.
+- `infra/k8s/mesh.tf` defines the opt-in workload security, authorization, and
+  backend traffic policies. It deliberately configures no mesh retries or
+  outlier detection.
 - `infra/aws/observability-amp.tf` and
   `infra/aws/observability-grafana.tf` define managed metrics and dashboard
   infrastructure.

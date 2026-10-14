@@ -81,6 +81,7 @@ spec:
         app: ledger
       annotations:
         checksum/runtime: ${RUNTIME_CONFIG_HASH}
+        sidecar.istio.io/inject: "${ISTIO_INJECT}"
     spec:
       serviceAccountName: ledger
       nodeSelector:
@@ -203,6 +204,7 @@ spec:
         app: matching
       annotations:
         checksum/runtime: ${RUNTIME_CONFIG_HASH}
+        sidecar.istio.io/inject: "${ISTIO_INJECT}"
     spec:
       serviceAccountName: matching
       nodeSelector:
@@ -387,6 +389,7 @@ spec:
         app: order
       annotations:
         checksum/runtime: ${RUNTIME_CONFIG_HASH}
+        sidecar.istio.io/inject: "${ISTIO_INJECT}"
     spec:
       serviceAccountName: order
       automountServiceAccountToken: false
