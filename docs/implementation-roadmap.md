@@ -311,12 +311,14 @@ Status: the first repository slice is implemented behind
 `enable_istio_mesh=false`. It provides selective sidecar enrollment,
 workload-scoped mTLS, Order identity authorization for financial gRPC ports,
 round-robin endpoint policy, bounded connection pools, and curated proxy
-metrics. A pinned control-plane installation, non-production rollout, live
-telemetry and identity evidence, failure testing, and rollback rehearsal remain
-environment gates. Proxy retries and outlier detection remain disabled.
+metrics plus error-only access logging. A pinned control-plane installation,
+non-production rollout, live telemetry and identity evidence, failure testing,
+and rollback rehearsal remain environment gates. Proxy retries and outlier
+detection remain disabled.
 
 Primary documents:
 
+- [Istio installation](istio-installation.md)
 - [Observability and Istio](observability-and-istio.md)
 - [gRPC load balancing](grpc-load-balancing.md)
 - [Outlier detection and ejection spirals](outlier-detection-ejection-spirals.md)
@@ -329,9 +331,9 @@ Work:
    ports while preserving explicitly identified health, metrics, and ingress
    ports. Live identity denial remains an environment gate.
 3. Confirm that existing application metrics and traces remain intact.
-4. Add mesh request metrics and controlled access logging. Curated proxy metric
-   collection is implemented; live ingestion and filtered durable access logs
-   remain.
+4. [x] Add allowlisted mesh request metrics and filtered error/denial access
+   logging. Live AMP ingestion, CloudWatch search, sensitive-data inspection,
+   and retention verification remain environment gates.
 5. [x] Add opt-in endpoint-aware round-robin balancing; live distribution
    evidence remains an environment gate.
 6. Test scale-out, rolling drain, zone behavior, and backend distribution.

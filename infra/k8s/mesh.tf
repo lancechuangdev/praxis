@@ -92,3 +92,26 @@ resource "kubernetes_manifest" "mesh_backend_traffic" {
 
   depends_on = [kubernetes_manifest.deployments]
 }
+
+# Log only failed requests and connections without an HTTP/gRPC response. The
+# built-in envoy provider writes to the proxy container's stdout, which the
+# existing CloudWatch Observability add-on already collects. The filter field
+# remains v1alpha1 in Istio even though the rest of Telemetry has graduated.
+resource "kubernetes_manifest" "mesh_error_access_logs" {
+  for_each = var.deploy_workloads && var.enable_istio_mesh ? local.mesh_workloads : toset([])
+
+  manifest = {
+    apiVersion = "telemetry.istio.io/v1alpha1"
+    kind       = "Telemetry"
+    metadata   = { name = "${each.key}-error-access-logs", namespace = "praxis" }
+    spec = {
+      selector = { matchLabels = { app = each.key } }
+      accessLogging = [{
+        providers = [{ name = "envoy" }]
+        filter    = { expression = "!has(response.code) || response.code >= 400" }
+      }]
+    }
+  }
+
+  depends_on = [kubernetes_manifest.deployments]
+}

@@ -111,6 +111,8 @@ Install a version-pinned Istio sidecar control plane before enabling this
 stack's mesh resources. Control-plane installation and upgrades deliberately
 remain a separate operator-owned lifecycle; the Kubernetes provider cannot
 safely bootstrap custom resources before their CRDs exist.
+Follow the [Istio installation runbook](../../docs/istio-installation.md) for
+the install order, verification, acceptance gates, and rollback procedure.
 
 Set `enable_istio_mesh=true` only in a non-production workspace first. The flag:
 
@@ -120,17 +122,23 @@ Set `enable_istio_mesh=true` only in a non-production workspace first. The flag:
 - permits only Order's SPIFFE service identity to call the Ledger and Matching
   gRPC ports;
 - selects backend endpoints round-robin with bounded connections and pending
-  HTTP/2 requests; and
-- adds a cardinality-limited Istio proxy scrape to the node-local collectors.
+  HTTP/2 requests;
+- adds a metric- and label-allowlisted Istio proxy scrape to the node-local
+  collectors; and
+- logs only responses with status 400 or higher and connections that fail
+  before producing a response, using Istio's built-in Envoy stdout provider.
 
 No mesh retry policy or outlier detection is enabled. Before acceptance, prove
 identity denial, `mutual_tls` telemetry, even endpoint distribution, scaling,
 drain, overload, correlated dependency failure, and unchanged application
-metrics/traces. Record the Istio version, proxy resource overhead, and results
-with the Phase 1 evidence. To roll back, set `enable_istio_mesh=false`, apply,
-and verify all three Deployments have completed their sidecar-removal rollout;
-do not uninstall the control plane until no enrolled pods or mesh policies
-remain.
+metrics/traces. Verify that error and denial logs arrive in CloudWatch without
+authorization headers or financial payloads; the default Envoy format records
+request paths and network addresses, so retention and access must follow the
+environment's log-data policy. Record the Istio version, proxy resource
+overhead, and results with the Phase 1 evidence. To roll back, set
+`enable_istio_mesh=false`, apply, and verify all three Deployments have completed
+their sidecar-removal rollout; do not uninstall the control plane until no
+enrolled pods or mesh policies remain.
 
 ## Verify and operate
 

@@ -40,11 +40,17 @@ locals {
             { action = "replace", source_labels = ["__meta_kubernetes_pod_name"], target_label = "pod" },
             { action = "replace", target_label = "environment", replacement = local.runtime.environment }
           ]
-          metric_relabel_configs = [{
-            action        = "keep"
-            source_labels = ["__name__"]
-            regex         = "istio_requests_total|istio_request_duration_milliseconds_(bucket|sum|count)|istio_tcp_connections_(opened|closed)_total"
-          }]
+          metric_relabel_configs = [
+            {
+              action        = "keep"
+              source_labels = ["__name__"]
+              regex         = "istio_requests_total|istio_request_duration_milliseconds_(bucket|sum|count)|istio_tcp_connections_(opened|closed)_total"
+            },
+            {
+              action = "labelkeep"
+              regex  = "__name__|namespace|service|pod|environment|reporter|source_workload|source_workload_namespace|destination_workload|destination_workload_namespace|response_code|grpc_response_status|connection_security_policy"
+            }
+          ]
         }] : [])
       } }
     }

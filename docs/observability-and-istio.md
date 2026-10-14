@@ -5,8 +5,9 @@
 This document records the current Praxis observability architecture and its
 optional Istio integration. The repository now contains disabled-by-default
 sidecar enrollment, workload mTLS and authorization policies, backend traffic
-policy, and curated proxy metric collection. A pinned Istio control-plane
-installation and all live acceptance evidence remain deployment gates.
+policy, curated proxy metric collection, and error-filtered Envoy access logs.
+A pinned Istio control-plane installation and all live acceptance evidence
+remain deployment gates.
 
 ## Current observability architecture
 
@@ -297,6 +298,8 @@ The future integration should not be considered complete until:
 
 ## Related implementation
 
+- [Istio installation for Praxis](istio-installation.md) defines the
+  control-plane installation, verification, acceptance, and rollback runbook.
 - `infra/k8s/collector.tf` defines the shared EKS ADOT metrics and trace
   pipelines.
 - `infra/k8s/mesh.tf` defines the opt-in workload security, authorization, and
