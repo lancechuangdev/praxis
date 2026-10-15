@@ -381,6 +381,13 @@ an ejection spiral.
 
 ## Phase 6: build the shared projection platform
 
+Status: started with an initial typed lifecycle-contract slice. Protobuf
+contracts, generated Go types and strict codecs cover Order workflow snapshots
+and complete Ledger journal/account-balance facts. Producers still emit the
+existing JSON events; atomic publication, remaining lifecycle facts, consumer
+foundation, Atlas deployment, APIs and rebuild/cutover remain pending. See
+[ADR 0007](adr/0007-projection-lifecycle-contracts.md).
+
 Primary documents:
 
 - [Event replay and projections](event-replay-and-projections.md)
@@ -390,7 +397,13 @@ Primary documents:
 
 Work:
 
-1. Define complete, versioned Order and Ledger lifecycle events.
+1. Define complete, versioned Order and Ledger lifecycle events. Initial
+   `events.lifecycle.v1` contracts now distinguish Order workflow progress
+   from execution status and carry balanced Ledger entries plus exact
+   before/after-versioned customer balance snapshots. Record-size bounds,
+   schema/type/producer validation and compatibility tests are implemented.
+   Atomic producer adoption, reservation lifecycle and Matching fill/terminal
+   facts remain pending; this item is not yet complete.
 2. Build a reusable consumer foundation with inbox deduplication, schema
    validation, sequence checks, lag metrics, DLQ handoff, shadow mode, and
    rebuild mode.

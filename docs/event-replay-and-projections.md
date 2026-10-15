@@ -1,7 +1,10 @@
 # Event replay and projections
 
 Status: design guidance; Praxis does not yet provide general replay or
-projection-rebuild tooling.
+projection-rebuild tooling. The initial Phase 6
+[typed lifecycle contracts](adr/0007-projection-lifecycle-contracts.md) are
+implemented in `api/proto/events/lifecycle/v1` with Go validation and codecs;
+producer adoption and projection consumers remain pending.
 
 Event replay means processing previously stored events again. It lets a
 developer repair or create derived data without repeating the original
@@ -227,7 +230,8 @@ Praxis currently supports:
 
 Praxis does not currently provide:
 
-- a DLQ replay CLI, API, or worker;
+- general projection replay tooling (Ledger has a separately scoped, audited
+  `ledger-dlq` inspection and selective replay CLI);
 - controlled consumer-group offset replay;
 - an automated projection rebuild and cutover workflow; or
 - a recovery operation for dead-lettered Order sagas.

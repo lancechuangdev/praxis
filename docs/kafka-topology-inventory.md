@@ -47,6 +47,22 @@ Phase 3 must therefore add:
 3. deterministic versus transient failure classification; and
 4. compatibility tests that cover old and new envelope versions.
 
+## Phase 6 contract preparation
+
+The initial `events.lifecycle.v1` Protobuf contracts are defined but not yet
+published. They do not change any producer, consumer, key or record format in
+the implemented topic table above:
+
+| Planned input | Key | Contract and ownership |
+| --- | --- | --- |
+| `order.events.v1` | `order_id` | `OrderWorkflowSnapshot`, owned by Order; per-order workflow versions, distinct from execution/fill status. |
+| `ledger.journals.v1` | `journal_id` | `LedgerJournalPosted`, owned by Ledger; complete immutable entries and affected customer snapshots with before/after account-version chains. No cross-journal account-order promise. |
+
+Both inputs require atomic producer adoption, topic provisioning, schema
+registration, retention and authorization review before activation. The new
+journal stream does not replace or re-key `ledger.events.v1`. See
+[ADR 0007](adr/0007-projection-lifecycle-contracts.md).
+
 ## Partition changes
 
 The order-sensitive topics above must not have their partition count increased

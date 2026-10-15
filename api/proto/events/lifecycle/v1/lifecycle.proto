@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package events.lifecycle.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "praxis/api/gen/events/lifecycle/v1;lifecyclev1";
+
+// Separate from transitional JSON envelopes; never decoded as a command.
+message LifecycleEvent {
+  string event_id = 1;
+  string event_type = 2;
+  uint32 schema_version = 3;
+  google.protobuf.Timestamp occurred_at = 4;
+  string correlation_id = 5;
+  string causation_id = 6;
+  string producer = 7;
+  oneof payload {
+    OrderWorkflowSnapshot order_workflow = 10;
+    LedgerJournalPosted ledger_journal = 11;
+  }
+}
+
+enum OrderWorkflowState {
+  ORDER_WORKFLOW_STATE_UNSPECIFIED = 0;
+  ORDER_WORKFLOW_STATE_RESERVATION_PENDING = 1;
+  ORDER_WORKFLOW_STATE_RESERVED = 2;
+  ORDER_WORKFLOW_STATE_ACCEPTED = 3;
+  ORDER_WORKFLOW_STATE_RELEASE_PENDING = 4;
+  ORDER_WORKFLOW_STATE_RELEASED = 5;
+  ORDER_WORKFLOW_STATE_DEAD_LETTER = 6;
+}
+
+// Order owns workflow progress, not Matching fill or customer execution status.
+message OrderWorkflowSnapshot {
+  string request_id = 1;
+  string order_id = 2;
+  string user_id = 3;
+  uint64 workflow_version = 4;
+  OrderWorkflowState state = 5;
+  string symbol = 6;
+  string side = 7;
+  string order_type = 8;
+  string quantity = 9; // Positive integer units, matching the current Order API.
+  string price = 10; // Required for limit orders; absent for market orders.
+  string reserve_asset_id = 11;
+  string reserve_amount_atomic = 12;
+  string reservation_id = 13;
+  string release_reason = 14;
+}
+
+enum PostingSide {
+  POSTING_SIDE_UNSPECIFIED = 0;
+  POSTING_SIDE_DEBIT = 1;
+  POSTING_SIDE_CREDIT = 2;
+}
+
+message JournalEntry {
+  string entry_id = 1;
+  string account_id = 2; // General ledger account, not customer identity.
+  string asset_id = 3;
+  PostingSide side = 4;
+  string amount_atomic = 5;
+  string user_asset_account_id = 6;
+  string bucket = 7;
+  string custody_position_id = 8;
+}
+
+// Complete post-commit customer balance with a before/after account-version chain.
+message AccountBalanceSnapshot {
+  string user_asset_account_id = 1;
+  string user_id = 2;
+  string asset_id = 3;
+  uint64 previous_version = 4;
+  uint64 version = 5;
+  string available_atomic = 6;
+  string reserved_atomic = 7;
+  string withdrawal_pending_atomic = 8;
+  string deposit_pending_atomic = 9;
+  string hold_atomic = 10;
+}
+
+// Immutable journal plus all affected customer balance snapshots from one tx.
+// Journal identity deduplicates facts; account versions order derived balances.
+message LedgerJournalPosted {
+  string journal_id = 1;
+  string business_type = 2;
+  string reference_id = 3;
+  string source_system = 4;
+  string command_id = 5;
+  repeated JournalEntry entries = 6;
+  repeated AccountBalanceSnapshot balances = 7;
+}
