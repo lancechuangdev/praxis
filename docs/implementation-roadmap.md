@@ -385,7 +385,9 @@ Status: started with an initial typed lifecycle-contract slice. Protobuf
 contracts, generated Go types and strict codecs cover Order workflow snapshots
 and complete Ledger journal/account-balance facts. Order now has opt-in
 transactional workflow source capture with database-allocated versions and
-strict Protobuf encoding; its ordered Kafka publisher remains pending.
+strict Protobuf encoding. A source-side dispatcher now adds locked per-order
+head selection, retained acknowledgement and bounded retry backoff; the Kafka
+adapter, runtime worker and failure-fenced publication remain pending.
 Existing Ledger and Matching producers still emit JSON. Ledger producer
 adoption, remaining lifecycle facts, consumer foundation, Atlas deployment,
 APIs and rebuild/cutover remain pending. See
@@ -407,8 +409,12 @@ Work:
    schema/type/producer validation and compatibility tests are implemented.
    Order can now capture immutable workflow snapshots atomically with saga
    changes behind `ORDER_LIFECYCLE_CAPTURE=false`, with concurrent replay,
-   stale-owner, failure rollback and disabled-capture gap tests. Ordered Order
-   Kafka publication, atomic Ledger adoption, reservation lifecycle and Matching
+   stale-owner, failure rollback and disabled-capture gap tests. Source-side
+   Order dispatch and expand-only delivery bookkeeping are implemented, with
+   integration tests for competing workers, retry ordering,
+   malformed heads and acknowledgement loss. Kafka activation and live database
+   verification remain pending. Ordered Order Kafka publication, atomic Ledger
+   adoption, reservation lifecycle and Matching
    fill/terminal facts remain pending; this item is not yet complete.
 2. Build a reusable consumer foundation with inbox deduplication, schema
    validation, sequence checks, lag metrics, DLQ handoff, shadow mode, and

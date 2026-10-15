@@ -78,7 +78,13 @@ The initial slice supplies contracts, generated Go types, validation and tests.
 Order now additionally provides opt-in transactional source capture in its own
 `order_workflow_outbox`, with database-allocated versions and an internal
 ProtoJSON snapshot converted strictly to Protobuf by `EncodeWorkflowOutbox`.
-Capture defaults off and has no Kafka publisher. The expand-only migration
+Capture defaults off and has no Kafka publisher. A source-side dispatcher now
+locks the earliest unpublished fact per order through acknowledgement, records
+publication and applies bounded retry backoff. This is not producer fencing:
+connection loss can permit late delivery, so Kafka activation still requires
+fencing or consumer stale-version handling plus deduplication. The integration
+suite covers concurrent claims, retry order, invalid heads and acknowledgement
+loss; execution against PostgreSQL remains an acceptance requirement. The expand-only migration
 reserves unpublished version 1 for existing sagas and advances versions even
 while capture is off, making missing history explicit. See the
 [Order rollout and rollback procedure](../../orderservice/README.md#phase-6-workflow-source-capture).

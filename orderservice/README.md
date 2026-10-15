@@ -646,3 +646,36 @@ Run database-backed tests against an isolated PostgreSQL database:
 ORDER_TEST_DATABASE_URL='postgres://user:password@localhost/order_test?sslmode=disable' \
   go test ./orderservice/...
 ```
+
+### Workflow dispatch foundation (not activated)
+
+Migration `003_workflow_delivery.sql` adds retained publication acknowledgement,
+attempt count and retry time to the Order-owned source outbox. It is expand-only;
+old binaries can continue capturing facts. `WorkflowDispatcher.DispatchOnce`
+validates and encodes one immutable snapshot and calls a synchronous publisher
+with its stable event ID, order key and version. No runtime worker or Kafka
+adapter is wired yet; capture remains separately opt-in.
+
+The dispatcher holds a PostgreSQL row lock across acknowledgement and excludes
+all unpublished predecessors, including locked or delayed ones. Multiple callers
+can progress separate orders. A failed or malformed head blocks its order and
+backs off exponentially to 60 seconds; it is never silently skipped. Calls have
+an explicit positive timeout. A timeout or connection loss rolls back delivery
+bookkeeping; the broker-acknowledgement/database-commit crash window can produce
+duplicates. A future consumer must atomically deduplicate event IDs and check
+versions. A database connection failure can also permit an old in-flight sender
+to complete late; row locking is not Kafka producer fencing and does not promise
+strict wire ordering across such failures.
+
+Before wiring a Kafka worker, require a reviewed topic/key/retention and schema
+registration, durable synchronous acknowledgements, bounded connection and send
+budgets, producer fencing or consumer stale-version handling, backlog/age and
+failure metrics, and live crash/failover evidence. The source-side acceptance
+tests cover competing workers, retry ordering, immutable redelivery after lost
+acknowledgement and malformed-head blocking. Run them against a disposable
+PostgreSQL database with `ORDER_TEST_DATABASE_URL` set. Do not activate production
+publication on unit-test evidence alone.
+
+Rollback this foundation by reverting the dispatcher code while retaining the
+migration and source rows. Once publication is wired, stop the worker to roll
+back; preserve its topic, acknowledged rows and source facts for audit/replay.
