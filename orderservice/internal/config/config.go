@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	LifecycleCapture           bool
 	HTTPAddress                string
 	DatabaseURL                string
 	SagaRetryInterval          time.Duration
@@ -44,7 +45,12 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	capture, err := strconv.ParseBool(value("ORDER_LIFECYCLE_CAPTURE", "false"))
+	if err != nil {
+		return Config{}, errors.New("ORDER_LIFECYCLE_CAPTURE must be true or false")
+	}
 	c := Config{
+		LifecycleCapture:           capture,
 		HTTPAddress:                value("ORDER_HTTP_ADDRESS", ":8083"),
 		DatabaseURL:                value("ORDER_DATABASE_URL", "postgres://ledger:ledger@localhost:5433/cex_ledger?sslmode=disable"),
 		SagaRetryInterval:          duration("ORDER_SAGA_RETRY_INTERVAL", time.Second),

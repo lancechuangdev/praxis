@@ -1,6 +1,6 @@
 # ADR 0007: Separate projection lifecycle facts from transitional event streams
 
-- Status: Accepted for the initial contract slice; producer rollout pending
+- Status: Accepted; Order source capture implemented, Kafka producer rollout pending
 - Date: 2026-10-14
 
 ## Context
@@ -74,9 +74,15 @@ their authoritative domains. No new customer-facing status is inferred here.
 
 ## Delivery, acceptance and rollback
 
-This slice supplies contracts, generated Go types, validation and tests only.
-It provisions no topics, registry, database schema, consumers or Atlas resources
-and changes no mutation path. Before publishing:
+The initial slice supplies contracts, generated Go types, validation and tests.
+Order now additionally provides opt-in transactional source capture in its own
+`order_workflow_outbox`, with database-allocated versions and an internal
+ProtoJSON snapshot converted strictly to Protobuf by `EncodeWorkflowOutbox`.
+Capture defaults off and has no Kafka publisher. The expand-only migration
+reserves unpublished version 1 for existing sagas and advances versions even
+while capture is off, making missing history explicit. See the
+[Order rollout and rollback procedure](../../orderservice/README.md#phase-6-workflow-source-capture).
+No topics, registry, consumers or Atlas resources are provisioned. Before publishing:
 
 1. Allocate stable event IDs, workflow versions and snapshots in each owner's
    domain transaction, with atomic outbox insertion and idempotent replay.
@@ -97,8 +103,9 @@ migration or in-place projection rebuild is authorized by this ADR.
 ## Consequences
 
 The first slice establishes a typed foundation without pretending current
-streams are rebuild-complete. The next implementation work is atomic producer
-publication and the consumer's inbox/version/gap/DLQ foundation. Order-history
-completion still requires authoritative Matching lifecycle facts. Atlas reads,
+streams are rebuild-complete. The next implementation work is ordered Order
+Kafka publication, atomic Ledger producer adoption and the consumer's
+inbox/version/gap/DLQ foundation. Order-history completion still requires
+authoritative Matching lifecycle facts. Atlas reads,
 rebuild generations, reconciled cutover and financial-authorization isolation
 remain Phase 6 exit requirements.

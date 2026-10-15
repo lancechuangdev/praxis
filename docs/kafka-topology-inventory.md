@@ -50,7 +50,8 @@ Phase 3 must therefore add:
 ## Phase 6 contract preparation
 
 The initial `events.lifecycle.v1` Protobuf contracts are defined but not yet
-published. They do not change any producer, consumer, key or record format in
+published. Order has an opt-in transactional workflow source outbox with no
+Kafka publisher yet. These contracts do not change any consumer, key or record format in
 the implemented topic table above:
 
 | Planned input | Key | Contract and ownership |

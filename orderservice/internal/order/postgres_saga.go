@@ -214,9 +214,19 @@ func (p *PostgresSagaStore) DueReservations(ctx context.Context, limit int, owne
 }
 
 func OpenSagaDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+	return OpenSagaDBWithLifecycle(ctx, databaseURL, false)
+}
+
+func OpenSagaDBWithLifecycle(ctx context.Context, databaseURL string, capture bool) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, err
+	}
+	// Set on every connection, including reconnects; never toggle shared sessions
+	// with SET LOCAL or an unscoped SET from a pooled request.
+	config.ConnConfig.RuntimeParams["praxis.order_lifecycle_capture"] = "off"
+	if capture {
+		config.ConnConfig.RuntimeParams["praxis.order_lifecycle_capture"] = "on"
 	}
 	config.MaxConns = 8
 	config.MaxConnLifetime = 30 * time.Minute

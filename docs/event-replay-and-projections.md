@@ -4,6 +4,7 @@ Status: design guidance; Praxis does not yet provide general replay or
 projection-rebuild tooling. The initial Phase 6
 [typed lifecycle contracts](adr/0007-projection-lifecycle-contracts.md) are
 implemented in `api/proto/events/lifecycle/v1` with Go validation and codecs;
+Order has opt-in atomic workflow source capture, but Kafka publication, Ledger
 producer adoption and projection consumers remain pending.
 
 Event replay means processing previously stored events again. It lets a

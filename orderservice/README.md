@@ -558,3 +558,91 @@ make reset-load-data
 
 The reset removes local financial/load-test rows but preserves the schema and
 reference fixtures. See `orderservice/README.md` for scenario-specific seeding.
+
+## Phase 6 workflow source capture
+
+`ORDER_LIFECYCLE_CAPTURE=false` is the default. Setting it to `true` opts every
+Order database connection into transactional workflow capture through a
+connection startup parameter. The setting is reapplied on reconnect; the
+application does not toggle shared pooled sessions between requests.
+Keep this off in deployed environments until source validation, storage
+budgets and a separately reviewed ordered publisher are ready.
+
+Migration `002_workflow_outbox.sql` adds a positive `workflow_version` to
+`order_sagas` and an Order-owned `order_workflow_outbox`. PostgreSQL increments
+the version only when state, reservation identity or release reason changes.
+Lease claims, retry scheduling, attempt counts and identical transition
+replays do not create new versions. With capture enabled, an AFTER trigger
+writes the complete immutable snapshot in the same transaction as the saga
+change. A failed outbox insert rolls back the transition. Versions continue
+advancing when capture is disabled, so missing history remains an explicit
+gap instead of being silently renumbered after rollback.
+
+The source row contains a SHA-256/order-version-derived stable event ID,
+order key, version, occurrence timestamp and an internal ProtoJSON snapshot.
+Atomic quantities are strings. The row preserves the original business
+correlation and causation, using the durable request ID for missing root
+metadata; it excludes retry error messages and trace identifiers. A row's
+occurrence time records the source transition, not future publication time.
+`EncodeWorkflowOutbox` strictly checks the source coordinates and typed
+contract before deterministically encoding the Protobuf Kafka record. It never
+accepts transitional JSON event envelopes.
+
+This is durable source capture, not a running Kafka producer. The migration
+adds no Kafka relay, claims, publication markers, schema registry, topics or
+consumer. Do not point the existing Ledger or Matching relays at this table.
+A future publisher must preserve per-order version ordering across replicas,
+use the stored ID/time on every attempt, and pause/quarantine invalid source
+snapshots before publication. It must not silently skip invalid records or
+reconstruct occurrence time from the current saga row. Acknowledgement and
+retention will be implemented with that publisher.
+
+Before a non-production capture exercise:
+
+1. Apply the expand-only migration using the existing Order startup migration
+   path. Retain the prior application image; no table or trigger removal is
+   required for code rollback.
+2. Validate existing request data against `events.lifecycle.v1`. The current
+   admission API predates the stricter canonical-number and limit-price
+   contract; capture does not retroactively normalize or repair old requests.
+3. Record baseline DB latency, throughput and disk budgets, then enable capture
+   for a synthetic cohort/environment. Inspect source snapshots with
+   `EncodeWorkflowOutbox`; strict encoding failures remain activation blockers.
+4. Exercise concurrent transition replay, retry scheduling, expired leases,
+   terminal compensation and outbox write failure. Reconcile captured versions
+   with the authoritative saga states.
+5. Monitor source count, oldest age and storage bytes. There is no publisher
+   draining this table in this slice, so bound the exercise and stop capture
+   before exceeding its approved storage or database-latency budget.
+
+Metadata-only monitoring query:
+
+```sql
+SELECT count(*) AS captured_events,
+       extract(epoch FROM now()-min(occurred_at)) AS oldest_age_seconds,
+       pg_total_relation_size('order_workflow_outbox') AS storage_bytes
+FROM order_workflow_outbox;
+```
+
+The migration reserves unpublished version 1 for preexisting sagas; it does
+not invent historical events. Their next transition is version 2 or later.
+An order started with capture disabled also lacks its initial event. Before
+projection adoption, bootstrap such orders from a reconciled authoritative
+snapshot with a recorded version boundary. A fresh consumer must reject a
+first version greater than 1 unless an explicit bootstrap covers that gap.
+No current history is claimed to be rebuild-complete.
+
+Rollback: set `ORDER_LIFECYCLE_CAPTURE=false` and replace/restart Order pods so
+all pooled connections use the disabled setting. Keep the outbox and version
+column intact. Older images also default to no capture because the custom
+session parameter is absent. The installed version trigger still advances
+versions. Re-enabling capture after any disabled interval requires a new
+bootstrap boundary or reconciled backfill; do not reset counters, delete source
+rows or treat the retained stream as contiguous.
+
+Run database-backed tests against an isolated PostgreSQL database:
+
+```bash
+ORDER_TEST_DATABASE_URL='postgres://user:password@localhost/order_test?sslmode=disable' \
+  go test ./orderservice/...
+```

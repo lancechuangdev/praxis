@@ -44,3 +44,20 @@ func TestLoadAcceptsAuthoritativeRiskMode(t *testing.T) {
 		t.Fatalf("mode=%q", cfg.RiskRemoteMode)
 	}
 }
+
+func TestLifecycleCaptureIsOptInAndValidated(t *testing.T) {
+	t.Setenv("ORDER_LIFECYCLE_CAPTURE", "false")
+	cfg, err := Load()
+	if err != nil || cfg.LifecycleCapture {
+		t.Fatalf("default capture=%v error=%v", cfg.LifecycleCapture, err)
+	}
+	t.Setenv("ORDER_LIFECYCLE_CAPTURE", "true")
+	cfg, err = Load()
+	if err != nil || !cfg.LifecycleCapture {
+		t.Fatalf("enabled capture=%v error=%v", cfg.LifecycleCapture, err)
+	}
+	t.Setenv("ORDER_LIFECYCLE_CAPTURE", "invalid")
+	if _, err := Load(); err == nil {
+		t.Fatal("invalid capture flag accepted")
+	}
+}

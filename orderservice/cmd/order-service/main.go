@@ -37,7 +37,7 @@ func main() {
 		log.Error("configuration", "error", err)
 		os.Exit(1)
 	}
-	sagaDB, err := order.OpenSagaDB(ctx, cfg.DatabaseURL)
+	sagaDB, err := order.OpenSagaDBWithLifecycle(ctx, cfg.DatabaseURL, cfg.LifecycleCapture)
 	if err != nil {
 		log.Error("saga database", "error", err)
 		os.Exit(1)
@@ -168,7 +168,7 @@ func main() {
 	server := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Service: service, Ready: ready}.Handler(), "order.http"), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.ListenAndServe() }()
-	log.Info("order service started", "http", cfg.HTTPAddress, "ledger_mode", cfg.LedgerMode, "matching_mode", cfg.MatchingMode, "risk_remote_mode", cfg.RiskRemoteMode)
+	log.Info("order service started", "http", cfg.HTTPAddress, "ledger_mode", cfg.LedgerMode, "matching_mode", cfg.MatchingMode, "risk_remote_mode", cfg.RiskRemoteMode, "lifecycle_capture", cfg.LifecycleCapture)
 	select {
 	case <-ctx.Done():
 	case err = <-errCh:
