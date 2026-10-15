@@ -313,8 +313,12 @@ workload-scoped mTLS, Order identity authorization for financial gRPC ports,
 round-robin endpoint policy, bounded connection pools, and curated proxy
 metrics plus error-only access logging. A pinned control-plane installation,
 non-production rollout, live telemetry and identity evidence, failure testing,
-and rollback rehearsal remain environment gates. Proxy retries and outlier
-detection remain disabled.
+and rollback rehearsal remain environment gates. The repository now includes
+pinned platform chart preparation with CNI for restricted Pod Security,
+incremental enrollment, health-only identity probes, AMP evidence capture and
+a [failure/capacity acceptance procedure](phase-5-acceptance.md). Proxy retries
+and outlier detection remain disabled; outlier policy implementation still
+depends on measured capacity and recovery safeguards.
 
 Primary documents:
 
@@ -325,15 +329,27 @@ Primary documents:
 
 Work:
 
-1. [x] Add opt-in enrollment for Order, Ledger, and Matching. Incremental live
-   enrollment remains an environment gate.
+1. [x] Add opt-in enrollment for Order, Ledger, and Matching. Workload selection
+   now supports Order-first enrollment and backend-first rollback; incremental
+   live enrollment remains an environment gate.
 2. [x] Establish mTLS and workload authorization for internal financial gRPC
    ports while preserving explicitly identified health, metrics, and ingress
-   ports. Live identity denial remains an environment gate.
-3. Confirm that existing application metrics and traces remain intact.
+   ports. Digest-pinned health-only probe Jobs test Order allow and dedicated
+   identity denial without financial mutations; live execution remains an
+   environment gate.
+3. Confirm that existing application metrics and traces remain intact. The
+   repository now includes a Mesh Acceptance dashboard with independent
+   application rate/latency panels next to destination-side mesh metrics;
+   live comparison and trace verification remain environment gates.
 4. [x] Add allowlisted mesh request metrics and filtered error/denial access
    logging. Live AMP ingestion, CloudWatch search, sensitive-data inspection,
-   and retention verification remain environment gates.
+   and retention verification remain environment gates. The managed Grafana
+   stack now imports per-backend-pod traffic distribution, transport security,
+   HTTP/gRPC outcomes, mesh latency, and scrape-health panels using the existing
+   curated metric labels. Its runbook requires comparison with ready endpoint
+   inventories rather than treating absent series as successful distribution.
+   The collector preserves histogram bucket boundaries (`le`), with a regression
+   check covering dashboard label compatibility.
 5. [x] Add opt-in endpoint-aware round-robin balancing; live distribution
    evidence remains an environment gate.
 6. Test scale-out, rolling drain, zone behavior, and backend distribution.

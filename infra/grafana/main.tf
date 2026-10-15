@@ -37,6 +37,27 @@ resource "grafana_dashboard" "service_red" {
   overwrite   = true
 }
 
+locals {
+  mesh_dashboard_source = jsondecode(file("${path.module}/../../observability/grafana/dashboards/praxis-mesh-acceptance.json"))
+  mesh_dashboard = merge(local.mesh_dashboard_source, {
+    id = null
+    panels = [for panel in local.mesh_dashboard_source.panels : merge(panel, {
+      datasource = { type = grafana_data_source.amp.type, uid = grafana_data_source.amp.uid }
+    })]
+    templating = {
+      list = [for variable in local.mesh_dashboard_source.templating.list : merge(variable, {
+        datasource = { type = grafana_data_source.amp.type, uid = grafana_data_source.amp.uid }
+      }) if variable.type != "datasource"]
+    }
+  })
+}
+
+resource "grafana_dashboard" "mesh_acceptance" {
+  folder      = grafana_folder.praxis.id
+  config_json = jsonencode(local.mesh_dashboard)
+  overwrite   = true
+}
+
 resource "grafana_contact_point" "email" {
   name = "Praxis email"
 

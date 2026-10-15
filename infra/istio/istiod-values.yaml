@@ -1,0 +1,41 @@
+# Review against the pinned chart before installing. Budgets require live tuning.
+cni:
+  enabled: true
+autoscaleEnabled: true
+autoscaleMin: 2
+autoscaleMax: 4
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: '2'
+    memory: 1Gi
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app: istiod
+global:
+  hub: docker.io/istio
+  tag: 1.31.1
+  proxy:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: '2'
+        memory: 256Mi
+meshConfig:
+  trustDomain: cluster.local
+  defaultConfig:
+    holdApplicationUntilProxyStarts: true
+    terminationDrainDuration: 15s
+  # Telemetry selects failed requests. Exclude paths, query strings, headers,
+  # user agents and payloads from the provider's output.
+  accessLogEncoding: JSON
+  accessLogFormat: |
+    {"start_time":"%START_TIME%","protocol":"%PROTOCOL%","response_code":"%RESPONSE_CODE%","grpc_status":"%GRPC_STATUS%","response_flags":"%RESPONSE_FLAGS%","duration_ms":"%DURATION%","upstream_host":"%UPSTREAM_HOST%"}

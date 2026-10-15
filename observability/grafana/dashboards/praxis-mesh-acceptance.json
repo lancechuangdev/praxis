@@ -1,0 +1,387 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Order RPC rate by backend pod",
+      "description": "Destination-side reports count each RPC once. Compare against the ready EndpointSlice inventory; missing pods are not displayed as zero.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (destination_workload, pod) (rate(istio_requests_total{environment=~\"${environment:regex}\",namespace=\"praxis\",reporter=\"destination\",source_workload=\"order\",source_workload_namespace=\"praxis\",destination_workload=~\"ledger|matching\",destination_workload_namespace=\"praxis\"}[5m]))",
+          "legendFormat": "{{destination_workload}} / {{pod}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Observed transport security",
+      "description": "Destination-side Order RPCs grouped by security policy. Require mutual_tls under sustained traffic; missing data does not prove security. Identity denial requires a separate exercise.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (destination_workload, connection_security_policy) (rate(istio_requests_total{environment=~\"${environment:regex}\",namespace=\"praxis\",reporter=\"destination\",source_workload=\"order\",source_workload_namespace=\"praxis\",destination_workload=~\"ledger|matching\",destination_workload_namespace=\"praxis\"}[5m]))",
+          "legendFormat": "{{destination_workload}} / {{connection_security_policy}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Backend traffic share",
+      "description": "Share within each backend, across observed pods. A pod that has never handled traffic has no series; compare with ready endpoints. Five-minute windows smooth scale-out and drain transitions.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "100 * sum by (destination_workload, pod) (rate(istio_requests_total{environment=~\"${environment:regex}\",namespace=\"praxis\",reporter=\"destination\",source_workload=\"order\",source_workload_namespace=\"praxis\",destination_workload=~\"ledger|matching\",destination_workload_namespace=\"praxis\"}[5m])) / on (destination_workload) group_left sum by (destination_workload) (rate(istio_requests_total{environment=~\"${environment:regex}\",namespace=\"praxis\",reporter=\"destination\",source_workload=\"order\",source_workload_namespace=\"praxis\",destination_workload=~\"ledger|matching\",destination_workload_namespace=\"praxis\"}[5m]))",
+          "legendFormat": "{{destination_workload}} / {{pod}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Backend RPC outcomes",
+      "description": "HTTP and gRPC statuses remain separate dimensions. gRPC errors may have HTTP 200. Missing grpc_response_status remains visible in the legend.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (destination_workload, response_code, grpc_response_status) (rate(istio_requests_total{environment=~\"${environment:regex}\",namespace=\"praxis\",reporter=\"destination\",source_workload=\"order\",source_workload_namespace=\"praxis\",destination_workload=~\"ledger|matching\",destination_workload_namespace=\"praxis\"}[5m]))",
+          "legendFormat": "{{destination_workload}} / HTTP {{response_code}} / gRPC {{grpc_response_status}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Mesh p95 duration by backend pod",
+      "description": "Destination-side duration in milliseconds; includes transport handling and differs from application operation duration.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, destination_workload, pod) (rate(istio_request_duration_milliseconds_bucket{environment=~\"${environment:regex}\",namespace=\"praxis\",reporter=\"destination\",source_workload=\"order\",source_workload_namespace=\"praxis\",destination_workload=~\"ledger|matching\",destination_workload_namespace=\"praxis\"}[5m])))",
+          "legendFormat": "{{destination_workload}} / {{pod}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Mesh scrape availability",
+      "description": "Scrape health is not readiness or endpoint eligibility. Compare with phase5-verify. Empty data means telemetry is absent, not that all proxies are healthy.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "min by (service, pod) (up{environment=~\"${environment:regex}\",namespace=\"praxis\",job=\"praxis-istio-proxies\"})",
+          "legendFormat": "{{service}} / {{pod}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Application request rates",
+      "description": "Application counters provide an independent comparison after enrollment. Ledger reserve calls are a subset of mesh RPCs, so totals need not match.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (pod) (rate(order_requests_total{environment=~\"${environment:regex}\",namespace=\"praxis\"}[5m]))",
+          "legendFormat": "order / {{pod}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (pod) (rate(ledger_reserve_requests_total{environment=~\"${environment:regex}\",namespace=\"praxis\"}[5m]))",
+          "legendFormat": "ledger reserve / {{pod}}",
+          "refId": "B"
+        },
+        {
+          "expr": "sum by (pod) (rate(matching_orders_submitted_total{environment=~\"${environment:regex}\",namespace=\"praxis\"}[5m]))",
+          "legendFormat": "matching submit / {{pod}}",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Application p95 duration",
+      "description": "Verify application telemetry remains visible alongside mesh metrics. Each histogram measures a different operation.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, pod) (rate(order_total_duration_seconds_bucket{environment=~\"${environment:regex}\",namespace=\"praxis\"}[5m])))",
+          "legendFormat": "order / {{pod}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, pod) (rate(ledger_reserve_duration_seconds_bucket{environment=~\"${environment:regex}\",namespace=\"praxis\"}[5m])))",
+          "legendFormat": "ledger reserve / {{pod}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, pod) (rate(matching_engine_duration_seconds_bucket{environment=~\"${environment:regex}\",namespace=\"praxis\"}[5m])))",
+          "legendFormat": "matching submit / {{pod}}",
+          "refId": "C"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 42,
+  "tags": [
+    "praxis",
+    "mesh",
+    "acceptance"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "Prometheus",
+          "value": "Prometheus"
+        },
+        "hide": 2,
+        "label": "Data source",
+        "name": "DS_PROMETHEUS",
+        "query": "prometheus",
+        "type": "datasource"
+      },
+      {
+        "name": "environment",
+        "label": "Environment",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "query": "label_values(up{job=\"praxis-istio-proxies\",namespace=\"praxis\"}, environment)",
+        "refresh": 1,
+        "multi": false,
+        "includeAll": false,
+        "sort": 1
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "Praxis Mesh Acceptance",
+  "uid": "praxis-mesh-acceptance",
+  "version": 1,
+  "description": "Phase 5 observation dashboard. Requires opt-in mesh and AMP ingestion. Does not establish live acceptance or authorization correctness."
+}

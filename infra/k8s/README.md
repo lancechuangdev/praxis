@@ -114,7 +114,15 @@ safely bootstrap custom resources before their CRDs exist.
 Follow the [Istio installation runbook](../../docs/istio-installation.md) for
 the install order, verification, acceptance gates, and rollback procedure.
 
-Set `enable_istio_mesh=true` only in a non-production workspace first. The flag:
+Set `enable_istio_mesh=true` only in a non-production workspace first. Use
+`mesh_enrolled_workloads` to enroll `["order"]`, then `["order", "ledger"]`,
+then all three workloads. A backend cannot be enrolled without Order. Reverse
+those steps during rollback and wait for each rollout before continuing.
+The default set contains all three services for compatibility with existing
+environments. The [Phase 5 acceptance procedure](../../docs/phase-5-acceptance.md)
+covers the pinned CNI/control-plane installation, identity probes, AMP evidence,
+failure/capacity matrix and rollback. CNI is required because Praxis keeps
+restricted Pod Security enabled. The flag:
 
 - injects sidecars into Order, Ledger, and Matching, but not Risk;
 - requires mTLS on their internal application ports while preserving the HTTP

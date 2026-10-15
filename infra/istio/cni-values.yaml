@@ -1,0 +1,4 @@
+hub: docker.io/istio
+tag: 1.31.1
+# Sidecar networking without NET_ADMIN in the restricted application namespace.
+# Platform review must verify EKS node CNI paths and aws-node compatibility.

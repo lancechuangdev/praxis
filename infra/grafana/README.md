@@ -16,6 +16,45 @@ After AWS apply, sign in as an assigned admin and create a short-lived token
 for the `praxis-terraform` service account. Keep the token outside Terraform
 state; it has workspace-admin privileges. Rotate or revoke it after use.
 
+The stack also imports `Praxis / Praxis Mesh Acceptance` from
+[`praxis-mesh-acceptance.json`](../../observability/grafana/dashboards/praxis-mesh-acceptance.json).
+This dashboard uses the existing AMP data source and the collector's curated
+metric labels. Select the target environment before capturing evidence. It
+shows Order RPC rate and traffic share by backend pod, transport security,
+HTTP and gRPC outcomes, mesh p95 duration, proxy scrape health, and independent
+application rate and latency panels. Destination-side reports avoid counting
+the same RPC at both caller and backend. See
+[Istio's standard metric definitions](https://istio.io/latest/docs/reference/config/metrics/).
+
+The dashboard is expected to have no mesh data until the optional mesh is
+enrolled and telemetry arrives. It creates no paging alerts and changes no
+traffic policy. Empty panels are missing evidence, never a successful check.
+For Phase 5 acceptance:
+
+1. Run `make phase5-verify` and retain the ready backend pod inventory.
+2. Generate representative authenticated order traffic for at least two
+   five-minute rate windows; select the corresponding dashboard interval.
+3. Compare every ready Ledger and Matching pod with the RPC-rate and share
+   panels. Pods without a metric series are absent from the chart, not known
+   to have received traffic. Repeat after scale-out and during rolling drain;
+   retain timestamped endpoint inventories and rollout events with each view.
+4. Verify that observed Order RPCs report `mutual_tls`. Run the separate
+   unauthorized-identity exercise and inspect denial logs; this panel filters
+   to Order traffic and cannot prove that other identities are denied.
+5. Compare application rates and p95 duration with the pre-enrollment baseline.
+   Application operations and mesh RPCs cover different work and need not have
+   equal counts or latency. Inspect gRPC status as well as HTTP status because
+   gRPC failures can arrive with HTTP 200.
+
+Queries use five-minute rates, so drain and scale-out appear with a lag. Proxy
+scrape health does not establish backend readiness. The dashboard does not
+measure zone-level capacity, retry budgets, active requests, ejections, or
+proxy resource overhead; those remain separate acceptance evidence. It can
+also be loaded by the local Grafana file provisioner, but the default local
+Compose topology does not export Kubernetes mesh metrics. Roll back this
+dashboard independently by restoring its prior JSON and applying this stack;
+workload and collector configuration remain separate.
+
 First provision the AWS and Kubernetes stacks and deploy real workloads. Then
 run the read-only ingestion check from the repository root:
 

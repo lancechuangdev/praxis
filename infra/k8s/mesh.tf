@@ -1,6 +1,6 @@
 locals {
-  mesh_workloads = toset(["order", "ledger", "matching"])
-  mesh_backends  = toset(["ledger", "matching"])
+  mesh_workloads = var.mesh_enrolled_workloads
+  mesh_backends  = setintersection(var.mesh_enrolled_workloads, toset(["ledger", "matching"]))
   mesh_ports = {
     ledger   = 9091
     matching = 9092

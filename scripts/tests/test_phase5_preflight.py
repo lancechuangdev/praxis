@@ -15,6 +15,7 @@ def emit(value): print(json.dumps(value))
 if tool == "terraform":
     if args[-1] == "eks_cluster_name": print("test-cluster")
     elif args[-1] == "eks_runtime_config": emit(dict(aws_region="us-west-2"))
+    elif args[-1] == "mesh_enrolled_workloads": emit(["order"] if os.environ.get("TEST_FAULT") == "partial" else ["order", "ledger", "matching"])
     else: emit(dict(ledger=limits, matching=limits))
 elif tool == "aws": pass
 elif tool == "istioctl":
@@ -58,11 +59,13 @@ class PreflightTest(unittest.TestCase):
                 path = Path(directory) / name
                 path.write_text(MOCK)
                 path.chmod(0o755)
-            for fault in ("", "limit", "retry", "ejection"):
+            for fault in ("", "partial", "limit", "retry", "ejection"):
                 with self.subTest(fault=fault):
                     env = dict(os.environ, PATH=directory + ":" + os.environ["PATH"], TEST_FAULT=fault)
                     result = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True)
-                    self.assertEqual(result.returncode == 0, fault == "", result.stdout + result.stderr)
+                    self.assertEqual(result.returncode == 0, fault in ("", "partial"), result.stdout + result.stderr)
+                    if fault == "partial":
+                        self.assertIn("full Phase 5 acceptance is incomplete", result.stdout)
 
 
 if __name__ == "__main__":

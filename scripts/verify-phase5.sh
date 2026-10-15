@@ -15,6 +15,13 @@ done
 cluster_name=$(terraform -chdir="${project_dir}/infra/aws" output -raw eks_cluster_name)
 aws_region=$(terraform -chdir="${project_dir}/infra/aws" output -json eks_runtime_config | jq -r .aws_region)
 pool_limits=$(terraform -chdir="${project_dir}/infra/k8s" output -json mesh_backend_connection_limits)
+enrolled=$(terraform -chdir="${project_dir}/infra/k8s" output -json mesh_enrolled_workloads)
+jq -e 'type == "array" and length > 0 and index("order") != null and
+  all(.[]; . == "order" or . == "ledger" or . == "matching")' <<<"${enrolled}" >/dev/null || {
+  printf 'FAIL: no valid applied mesh enrollment; apply the Kubernetes stack first.\n' >&2
+  exit 1
+}
+mapfile -t workloads < <(jq -r '.[]' <<<"${enrolled}")
 
 printf 'Verifying Phase 5 mesh configuration on cluster %s in %s\n' "${cluster_name}" "${aws_region}"
 aws eks update-kubeconfig --name "${cluster_name}" --region "${aws_region}" >/dev/null
@@ -28,7 +35,8 @@ for crd in \
 done
 
 kubectl rollout status deployment/istiod -n "${istio_namespace}" --timeout=5m
-for workload in order ledger matching; do
+kubectl rollout status daemonset/istio-cni-node -n "${istio_namespace}" --timeout=5m
+for workload in "${workloads[@]}"; do
   kubectl rollout status "deployment/${workload}" -n "${namespace}" --timeout=5m
 
   pods=$(kubectl get pods -n "${namespace}" -l "app=${workload}" -o json)
@@ -78,6 +86,10 @@ for workload in order ledger matching; do
 done
 
 for backend in ledger matching; do
+  if ! jq -e --arg backend "${backend}" 'index($backend) != null' <<<"${enrolled}" >/dev/null; then
+    printf 'SKIP: %s is not enrolled; full Phase 5 acceptance is incomplete.\n' "${backend}"
+    continue
+  fi
   case "${backend}" in
     ledger) grpc_port=9091 ;;
     matching) grpc_port=9092 ;;
@@ -88,7 +100,7 @@ for backend in ledger matching; do
   ready_endpoints=$(kubectl get endpointslice -n "${namespace}" \
     -l "kubernetes.io/service-name=${backend}" -o json |
     jq '[.items[].endpoints[] | select(.conditions.ready == true)] | length')
-  if [[ -z "${available}" || "${ready_endpoints}" -ne "${available}" ]]; then
+  if [[ -z "${available}" || "${available}" -le 0 || "${ready_endpoints}" -ne "${available}" ]]; then
     printf 'FAIL: %s has %s available replicas but %s ready service endpoints.\n' \
       "${backend}" "${available:-0}" "${ready_endpoints}" >&2
     exit 1
@@ -126,7 +138,7 @@ if grep -Eq 'STALE|NOT SENT' <<<"${proxy_status}"; then
   printf 'FAIL: one or more Istio proxies have stale or unsent configuration.\n' >&2
   exit 1
 fi
-for workload in order ledger matching; do
+for workload in "${workloads[@]}"; do
   mapfile -t pod_names < <(kubectl get pods -n "${namespace}" -l "app=${workload}" \
     -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}')
   for pod_name in "${pod_names[@]}"; do

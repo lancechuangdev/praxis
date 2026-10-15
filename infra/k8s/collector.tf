@@ -48,7 +48,9 @@ locals {
             },
             {
               action = "labelkeep"
-              regex  = "__name__|namespace|service|pod|environment|reporter|source_workload|source_workload_namespace|destination_workload|destination_workload_namespace|response_code|grpc_response_status|connection_security_policy"
+              # Histogram buckets must retain le or they collapse into the
+              # same series and cannot support latency quantiles in AMP.
+              regex = "__name__|le|namespace|service|pod|environment|reporter|source_workload|source_workload_namespace|destination_workload|destination_workload_namespace|response_code|grpc_response_status|connection_security_policy"
             }
           ]
         }] : [])

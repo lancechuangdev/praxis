@@ -27,12 +27,14 @@ locals {
 
   workload_documents = [
     for document in split("\n---\n", templatefile("${path.module}/workloads.yaml", {
-      ORDER_IMAGE         = coalesce(local.images.order, "missing-order-image")
-      LEDGER_IMAGE        = coalesce(local.images.ledger, "missing-ledger-image")
-      MATCHING_IMAGE      = coalesce(local.images.matching, "missing-matching-image")
-      RISK_IMAGE          = coalesce(local.images.risk, "missing-risk-image")
-      RUNTIME_CONFIG_HASH = sha256(jsonencode(local.runtime_config_data))
-      ISTIO_INJECT        = tostring(var.enable_istio_mesh)
+      ORDER_IMAGE           = coalesce(local.images.order, "missing-order-image")
+      LEDGER_IMAGE          = coalesce(local.images.ledger, "missing-ledger-image")
+      MATCHING_IMAGE        = coalesce(local.images.matching, "missing-matching-image")
+      RISK_IMAGE            = coalesce(local.images.risk, "missing-risk-image")
+      RUNTIME_CONFIG_HASH   = sha256(jsonencode(local.runtime_config_data))
+      ISTIO_INJECT_ORDER    = tostring(var.enable_istio_mesh && contains(var.mesh_enrolled_workloads, "order"))
+      ISTIO_INJECT_LEDGER   = tostring(var.enable_istio_mesh && contains(var.mesh_enrolled_workloads, "ledger"))
+      ISTIO_INJECT_MATCHING = tostring(var.enable_istio_mesh && contains(var.mesh_enrolled_workloads, "matching"))
     })) : yamldecode(document)
   ]
   services    = { for document in local.workload_documents : document.metadata.name => document if document.kind == "Service" }

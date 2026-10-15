@@ -27,6 +27,24 @@ variable "enable_istio_mesh" {
   default     = false
 }
 
+variable "mesh_enrolled_workloads" {
+  description = "Workloads to enroll when the mesh is enabled. Enroll Order first, then one backend at a time; remove backends before Order during rollback."
+  type        = set(string)
+  default     = ["order", "ledger", "matching"]
+
+  validation {
+    condition = (
+      length(setsubtract(var.mesh_enrolled_workloads, toset(["order", "ledger", "matching"]))) == 0 &&
+      (length(var.mesh_enrolled_workloads) == 0 || contains(var.mesh_enrolled_workloads, "order"))
+    )
+    error_message = "Enroll only Order, Ledger, and Matching; any nonempty enrollment must include Order so strict backend mTLS retains its caller."
+  }
+}
+
+output "mesh_enrolled_workloads" {
+  value = var.enable_istio_mesh && var.deploy_workloads ? sort(tolist(var.mesh_enrolled_workloads)) : []
+}
+
 variable "mesh_backend_connection_limits" {
   description = "Per-caller-proxy connection, pending request, and active HTTP/2 request bounds for each backend; tune from measured capacity, not fleet-wide quotas."
   type = map(object({

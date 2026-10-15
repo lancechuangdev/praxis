@@ -14,6 +14,7 @@ installation:
 ```text
 Platform installation lifecycle
     |-- Istio CRDs and cluster roles
+    |-- Istio CNI node agent
     |-- Istiod
     |-- admission and validation webhooks
     `-- injection templates and trust configuration
@@ -37,8 +38,11 @@ This runbook installs the Istio sidecar control plane with Helm. It does not
 install an Istio ingress gateway. Praxis continues to use its AWS Application
 Load Balancer and the Order NodePort for public ingress.
 
-This runbook does not enable ambient mode, Istio CNI, proxy retries, or outlier
-detection. Those are separate architecture and acceptance decisions.
+This runbook uses Istio CNI so the restricted Praxis namespace needs no
+privileged network-init container. Ambient mode, proxy retries and outlier
+detection remain disabled. Follow the [Phase 5 acceptance procedure](phase-5-acceptance.md)
+for artifact preparation, incremental rollout, identity probes and failure
+exercises; a successful installation does not complete those gates.
 
 ## Prerequisites
 
@@ -84,7 +88,7 @@ Both authorization checks must return `yes`.
 Set the exact approved version returned by the Istio chart repository:
 
 ```bash
-PRAXIS_ISTIO_VERSION="REPLACE_WITH_APPROVED_VERSION"
+PRAXIS_ISTIO_VERSION="$(cat infra/istio/version)"
 ```
 
 Keep the same version for the `base` and `istiod` charts. Record the version,
@@ -115,7 +119,7 @@ helm template istio-base istio/base \
 helm template istiod istio/istiod \
   --namespace istio-system \
   --version "${PRAXIS_ISTIO_VERSION}" \
-  --set profile=default
+  --values infra/istio/istiod-values.yaml
 ```
 
 The review should confirm the pinned proxy and control-plane images, resource
@@ -149,7 +153,20 @@ kubectl get crd telemetries.telemetry.istio.io
 
 Do not enable the Praxis mesh if any required CRD is absent.
 
-## 6. Install Istiod
+## 6. Install CNI, then Istiod
+
+Before Istiod, install the same pinned CNI release. Review node paths and AWS
+VPC CNI compatibility; the platform namespace must allow its privileged node
+agent. Keep the application namespace restricted:
+
+```bash
+helm upgrade --install istio-cni istio/cni \
+  --namespace istio-system \
+  --version "${PRAXIS_ISTIO_VERSION}" \
+  --values infra/istio/cni-values.yaml \
+  --wait --timeout 10m
+kubectl rollout status daemonset/istio-cni-node --namespace istio-system --timeout=5m
+```
 
 Istiod watches Kubernetes discovery and Istio policy resources, operates the
 sidecar injection webhook, issues workload certificates, and sends xDS
@@ -159,7 +176,7 @@ configuration to Envoy proxies.
 helm upgrade --install istiod istio/istiod \
   --namespace istio-system \
   --version "${PRAXIS_ISTIO_VERSION}" \
-  --set profile=default \
+  --values infra/istio/istiod-values.yaml \
   --wait \
   --timeout 10m
 ```
@@ -189,6 +206,11 @@ Resolve unexpected analysis errors before enabling sidecar injection. Existing
 warnings must be understood and recorded rather than silently ignored.
 
 ## 8. Enable the Praxis mesh
+
+Enroll Order first with `mesh_enrolled_workloads=["order"]`, then Ledger, then
+Matching, retaining Order in every nonempty enrollment. Persist each accepted
+set in the environment variable file and verify traffic after each rollout.
+The full-enrollment plan below is the final step, not the initial canary:
 
 First review the Kubernetes plan:
 
@@ -284,6 +306,12 @@ that:
 Proxy retries and outlier detection must remain disabled during this initial
 acceptance.
 
+The managed Grafana stack includes the `Praxis Mesh Acceptance` dashboard for
+these exercises. Follow the [dashboard evidence procedure](../infra/grafana/README.md)
+to compare destination-side per-pod traffic, transport security, RPC outcomes,
+and application telemetry with ready endpoint inventories. Dashboard presence
+does not complete any live acceptance gate.
+
 ## Rollback
 
 Mesh policy and sidecar removal must precede control-plane removal. First plan
@@ -305,6 +333,7 @@ If the control plane must also be removed, uninstall the discovery chart first:
 
 ```bash
 helm uninstall istiod --namespace istio-system
+helm uninstall istio-cni --namespace istio-system
 helm uninstall istio-base --namespace istio-system
 ```
 
