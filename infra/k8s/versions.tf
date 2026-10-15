@@ -27,6 +27,34 @@ variable "enable_istio_mesh" {
   default     = false
 }
 
+variable "mesh_backend_connection_limits" {
+  description = "Per-caller-proxy connection, pending request, and active HTTP/2 request bounds for each backend; tune from measured capacity, not fleet-wide quotas."
+  type = map(object({
+    max_connections      = number
+    max_pending_requests = number
+    max_active_requests  = number
+  }))
+  default = {
+    ledger   = { max_connections = 64, max_pending_requests = 64, max_active_requests = 256 }
+    matching = { max_connections = 64, max_pending_requests = 64, max_active_requests = 256 }
+  }
+
+  validation {
+    condition = (
+      toset(keys(var.mesh_backend_connection_limits)) == toset(["ledger", "matching"]) &&
+      alltrue(flatten([for limits in values(var.mesh_backend_connection_limits) : [
+        for value in values(limits) : try(value >= 1 && value <= 2147483647 && floor(value) == value, false)
+      ]]))
+    )
+    error_message = "Provide exactly ledger and matching, with positive integer limits no greater than 2147483647; zero/unlimited values are prohibited."
+  }
+}
+
+output "mesh_backend_connection_limits" {
+  description = "Applied backend pool limits used by the Phase 5 live preflight."
+  value       = var.mesh_backend_connection_limits
+}
+
 variable "istio_trust_domain" {
   description = "Istio SPIFFE trust domain used in workload authorization principals."
   type        = string

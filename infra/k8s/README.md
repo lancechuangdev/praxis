@@ -128,6 +128,22 @@ Set `enable_istio_mesh=true` only in a non-production workspace first. The flag:
 - logs only responses with status 400 or higher and connections that fail
   before producing a response, using Istio's built-in Envoy stdout provider.
 
+The `mesh_backend_connection_limits` map sets independent Ledger and Matching
+`max_connections`, `max_pending_requests`, and `max_active_requests` values.
+Both backend entries are required; each value must be a positive integer.
+Defaults remain 64 connections, 64 pending requests, and 256 active requests.
+These are per-caller-proxy bounds, not an authoritative fleet concurrency quota.
+Choose values using backend saturation measurements and the maximum number of
+Order replicas; repeat overload, shared-dependency, and rolling-drain exercises
+after tuning. Roll back by restoring the previous map and applying Terraform.
+Istio documents these fields in its
+[DestinationRule reference](https://istio.io/latest/docs/reference/config/networking/destination-rule/#ConnectionPoolSettings).
+
+After applying, `make phase5-verify` reads the Kubernetes stack's applied
+`mesh_backend_connection_limits` output and checks live policy against it.
+Reapply older state to populate this output before running the updated preflight.
+Run `python3 -m unittest discover -s scripts/tests` for offline preflight tests.
+
 No mesh retry policy or outlier detection is enabled. Before acceptance, prove
 identity denial, `mutual_tls` telemetry, even endpoint distribution, scaling,
 drain, overload, correlated dependency failure, and unchanged application

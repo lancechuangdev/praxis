@@ -78,10 +78,10 @@ resource "kubernetes_manifest" "mesh_backend_traffic" {
       trafficPolicy = {
         loadBalancer = { simple = "ROUND_ROBIN" }
         connectionPool = {
-          tcp = { maxConnections = 64, connectTimeout = "3s" }
+          tcp = { maxConnections = var.mesh_backend_connection_limits[each.key].max_connections, connectTimeout = "3s" }
           http = {
-            http1MaxPendingRequests  = 64
-            http2MaxRequests         = 256
+            http1MaxPendingRequests  = var.mesh_backend_connection_limits[each.key].max_pending_requests
+            http2MaxRequests         = var.mesh_backend_connection_limits[each.key].max_active_requests
             maxRequestsPerConnection = 0
             maxRetries               = 0
           }

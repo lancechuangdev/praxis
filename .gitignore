@@ -19,6 +19,7 @@ override.tf.json
 bin/
 coverage.out
 *.test
+__pycache__/
 orderservice/loadtest/results/
 
 # Editors and operating systems

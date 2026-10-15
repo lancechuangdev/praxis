@@ -14,6 +14,7 @@ done
 
 cluster_name=$(terraform -chdir="${project_dir}/infra/aws" output -raw eks_cluster_name)
 aws_region=$(terraform -chdir="${project_dir}/infra/aws" output -json eks_runtime_config | jq -r .aws_region)
+pool_limits=$(terraform -chdir="${project_dir}/infra/k8s" output -json mesh_backend_connection_limits)
 
 printf 'Verifying Phase 5 mesh configuration on cluster %s in %s\n' "${cluster_name}" "${aws_region}"
 aws eks update-kubeconfig --name "${cluster_name}" --region "${aws_region}" >/dev/null
@@ -104,13 +105,15 @@ for backend in ledger matching; do
     ' >/dev/null
 
   kubectl get destinationrule "${backend}" -n "${namespace}" -o json |
-    jq -e --arg host "${backend}.${namespace}.svc.cluster.local" '
+    jq -e --arg host "${backend}.${namespace}.svc.cluster.local" \
+      --argjson limits "$(jq -ce --arg backend "${backend}" '.[$backend]' <<<"${pool_limits}")" '
       .spec.host == $host and
       .spec.trafficPolicy.loadBalancer.simple == "ROUND_ROBIN" and
-      .spec.trafficPolicy.connectionPool.tcp.maxConnections == 64 and
-      .spec.trafficPolicy.connectionPool.http.http1MaxPendingRequests == 64 and
-      .spec.trafficPolicy.connectionPool.http.http2MaxRequests == 256 and
-      .spec.trafficPolicy.connectionPool.http.maxRetries == 0
+      .spec.trafficPolicy.connectionPool.tcp.maxConnections == $limits.max_connections and
+      .spec.trafficPolicy.connectionPool.http.http1MaxPendingRequests == $limits.max_pending_requests and
+      .spec.trafficPolicy.connectionPool.http.http2MaxRequests == $limits.max_active_requests and
+      .spec.trafficPolicy.connectionPool.http.maxRetries == 0 and
+      (.spec.trafficPolicy | has("outlierDetection") | not)
     ' >/dev/null
 
   printf 'PASS: %s has %s ready endpoints and the expected identity and traffic policy.\n' \

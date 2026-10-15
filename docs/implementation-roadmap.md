@@ -340,9 +340,12 @@ Work:
    A read-only repository preflight now verifies sidecar readiness, proxy
    synchronization, ready endpoint counts, and policy shape; traffic and
    failure exercises remain environment gates.
-7. Add bounded connection pools, pending requests, and concurrency. Connection
-   and pending HTTP/2 request bounds are implemented; measured concurrency
-   tuning remains.
+7. [x] Add bounded connection pools, pending requests, and concurrency. Separate
+   Ledger and Matching connection, pending-request, and active HTTP/2 request
+   limits are configurable with positive-integer validation. The preflight
+   compares live policy to applied Terraform outputs and rejects retry or
+   outlier-detection drift. Defaults preserve the initial 64/64/256 bounds;
+   measured tuning and overload acceptance remain environment gates.
 8. [x] Keep proxy retries disabled until every RPC has a documented retry
    contract.
 9. Add conservative outlier detection only after those protections exist:
