@@ -117,7 +117,12 @@ acceptance work. See the [consumer procedure](../../projectionservice/README.md#
 An opt-in executable now validates configuration, performs read-only storage
 verification before constructing its consumer, and serves health/readiness and
 metrics. It defaults to disabled with no remote connections. The initial runtime
-uses Kafka TLS/SCRAM-SHA-512; MSK IAM remains pending. Consumer errors leave
+uses Kafka TLS with SCRAM-SHA-512 or opt-in MSK IAM OAuth. IAM mode requires an
+explicit region and uses the AWS default credential chain only during bounded
+SASL handshakes. Expired/malformed tokens and rejected challenges fail closed;
+signer errors do not expose credentials or token material. No AWS policies or
+resources are changed. Identity denial, credential renewal and reconnect tests
+against non-production MSK remain acceptance requirements. Consumer errors leave
 diagnostics running and readiness failed, with no automatic consumer restart.
 Shutdown cancels and joins consumption before closing storage. It never
 provisions collections or resets offsets. Runtime tests cover disabled mode,

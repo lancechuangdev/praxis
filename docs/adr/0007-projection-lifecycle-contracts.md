@@ -134,7 +134,8 @@ storage verification, deployed runtime acceptance, gap recovery and DLQ handoff
 remain pending. A fail-stop Kafka consumer adapter provides sequential
 processing/commit barriers and isolated target groups. An executable now wires
 the adapters behind an opt-in flag with storage preflight and health/metrics;
-live broker acceptance and MSK IAM support are still required.
+the runtime supports opt-in MSK IAM, while live identity and broker acceptance
+remain required.
 Order-history completion still requires
 authoritative Matching lifecycle facts. Atlas reads,
 rebuild generations, reconciled cutover and financial-authorization isolation

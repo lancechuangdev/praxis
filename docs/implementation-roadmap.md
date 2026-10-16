@@ -409,8 +409,11 @@ fail-stop handling for every unacknowledged record. Controlled-reader tests
 cover failed-head barriers, ambiguous commits, deadlines and cancellation.
 An opt-in executable now wires read-only storage verification, the consumer,
 health/readiness and metrics with joined shutdown. It defaults to disabled,
-supports Kafka TLS/SCRAM, and retains diagnostics without automatic restart
-after consumption failure. MSK IAM, live runtime activation and broker evidence remain pending; see
+supports Kafka TLS/SCRAM and opt-in MSK IAM OAuth, and retains diagnostics without
+automatic restart after consumption failure. IAM signing is deadline-bounded,
+credentials are retrieved only during handshakes, and tokens/errors are validated
+without disclosure. Live identity/authorization/renewal evidence, runtime
+activation and broker acceptance remain pending; see
 [ADR 0008](adr/0008-workflow-projection-transaction-protocol.md).
 Existing Ledger and Matching producers still emit JSON. Ledger producer
 adoption, remaining lifecycle facts, the remaining consumer foundation, Atlas deployment,
@@ -460,7 +463,9 @@ Work:
    rules. An opt-in runtime now verifies storage before consumption and serves
    health/readiness/outcome metrics; failures remain stopped with diagnostics
    available. Tests cover configuration, disabled operation, shutdown and
-   failure readiness. Deployed Atlas/Kafka verification, MSK IAM support,
+   failure readiness. MSK IAM OAuth now uses the AWS signer with bounded signing,
+   expiry/cancellation checks and redacted errors; unit tests require no AWS
+   identity. Deployed Atlas/Kafka and IAM authorization/renewal verification,
    bounded gap recovery and broker lag metrics
    and atomic DLQ handoff remain pending; this item is not complete.
 3. Build MongoDB Atlas on AWS projections for customer order history,

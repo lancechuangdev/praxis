@@ -15,6 +15,7 @@ func enabledEnvironment(t *testing.T) {
 		"PROJECTION_MONGODB_DATABASE": "test_projection", "PROJECTION_GENERATION": "orders-v1",
 		"PROJECTION_MODE": "shadow", "PROJECTION_GROUP_NAMESPACE": "dev-db",
 		"PROJECTION_KAFKA_BROKERS": "broker:9096", "PROJECTION_KAFKA_USERNAME": "user", "PROJECTION_KAFKA_PASSWORD": "secret",
+		"PROJECTION_KAFKA_AUTH_MODE": "scram_sha512", "AWS_REGION": "",
 		"PROJECTION_TRANSACTION_TIMEOUT": "10s", "PROJECTION_COMMIT_TIMEOUT": "5s",
 	} {
 		t.Setenv(key, value)
@@ -25,9 +26,28 @@ func TestDisabledRuntimeRequiresNoConnections(t *testing.T) {
 	t.Setenv("PROJECTION_WORKFLOW_ENABLED", "")
 	t.Setenv("PROJECTION_HTTP_ADDRESS", "")
 	t.Setenv("PROJECTION_MONGODB_URI", "invalid")
+	t.Setenv("PROJECTION_KAFKA_AUTH_MODE", "invalid")
 	cfg, err := Load()
 	if err != nil || cfg.Enabled || cfg.Mongo != nil {
 		t.Fatalf("disabled config err=%v", err)
+	}
+}
+
+func TestIAMRuntimeDoesNotRequireSCRAMOrRetrieveAWSCredentialsAtLoad(t *testing.T) {
+	enabledEnvironment(t)
+	t.Setenv("PROJECTION_KAFKA_AUTH_MODE", "msk_iam")
+	t.Setenv("PROJECTION_KAFKA_USERNAME", "")
+	t.Setenv("PROJECTION_KAFKA_PASSWORD", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("IAM accepted without explicit region")
+	}
+	t.Setenv("AWS_REGION", "us-west-2")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Kafka.Dialer.SASLMechanism.Name() != "OAUTHBEARER" || cfg.Kafka.Dialer.TLS.InsecureSkipVerify {
+		t.Fatal("IAM mechanism or TLS policy missing")
 	}
 }
 

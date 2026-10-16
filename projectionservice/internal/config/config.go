@@ -9,9 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/segmentio/kafka-go"
-	"github.com/segmentio/kafka-go/sasl/scram"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"praxis/projectionservice/internal/kafkaauth"
 	"praxis/projectionservice/internal/kafkaconsumer"
 	"praxis/projectionservice/internal/workflow"
 )
@@ -84,13 +83,9 @@ func Load() (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	username, password := os.Getenv("PROJECTION_KAFKA_USERNAME"), os.Getenv("PROJECTION_KAFKA_PASSWORD")
-	if username == "" || password == "" {
-		return cfg, errors.New("projection Kafka SCRAM credentials are required")
-	}
-	mechanism, err := scram.Mechanism(scram.SHA512, username, password)
+	dialer, err := kafkaauth.Dialer(kafkaauth.Config{Mode: os.Getenv("PROJECTION_KAFKA_AUTH_MODE"), Region: os.Getenv("AWS_REGION"), Username: os.Getenv("PROJECTION_KAFKA_USERNAME"), Password: os.Getenv("PROJECTION_KAFKA_PASSWORD")})
 	if err != nil {
-		return cfg, errors.New("invalid projection Kafka SCRAM credentials")
+		return cfg, err
 	}
 	brokers := strings.Split(os.Getenv("PROJECTION_KAFKA_BROKERS"), ",")
 	for i, broker := range brokers {
@@ -101,7 +96,7 @@ func Load() (Config, error) {
 			return cfg, errors.New("PROJECTION_KAFKA_BROKERS must contain host:port endpoints")
 		}
 	}
-	cfg.Kafka = kafkaconsumer.Config{Brokers: brokers, Target: cfg.Target, GroupNamespace: os.Getenv("PROJECTION_GROUP_NAMESPACE"), CommitTimeout: commitTimeout, Dialer: &kafka.Dialer{Timeout: 5 * time.Second, TLS: &tls.Config{MinVersion: tls.VersionTLS12}, SASLMechanism: mechanism}}
+	cfg.Kafka = kafkaconsumer.Config{Brokers: brokers, Target: cfg.Target, GroupNamespace: os.Getenv("PROJECTION_GROUP_NAMESPACE"), CommitTimeout: commitTimeout, Dialer: dialer}
 	if cfg.Kafka.GroupNamespace == "" {
 		return cfg, errors.New("PROJECTION_GROUP_NAMESPACE is required")
 	}

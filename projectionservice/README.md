@@ -195,15 +195,15 @@ verifying a dedicated destination generation and retained source history:
 | `PROJECTION_MONGODB_URI` | Required secret URI; verified TLS 1.2+ is enforced. |
 | `PROJECTION_MONGODB_DATABASE` | Required explicit destination database. |
 | `PROJECTION_KAFKA_BROKERS` | Required comma-separated `host:port` endpoints. |
-| `PROJECTION_KAFKA_USERNAME`, `PROJECTION_KAFKA_PASSWORD` | Required SCRAM-SHA-512 credentials; supply through the deployment secret path. |
+| `PROJECTION_KAFKA_AUTH_MODE` | Defaults to `scram_sha512`; `msk_iam` selects AWS IAM OAuth. |
+| `PROJECTION_KAFKA_USERNAME`, `PROJECTION_KAFKA_PASSWORD` | Required for SCRAM only; supply through the deployment secret path. |
+| `AWS_REGION` | Required for MSK IAM. Credentials use the AWS SDK default provider chain at handshake time. |
 | `PROJECTION_TRANSACTION_TIMEOUT` | Defaults to `10s`; positive, at most `30s`. |
 | `PROJECTION_COMMIT_TIMEOUT` | Defaults to `5s`; positive, at most `30s`. |
 
-The initial executable supports SCRAM-SHA-512 over verified system-root TLS for
-Kafka. It does not configure MSK IAM, plaintext brokers, or Kafka client
-certificates. Do not change the accepted broker authentication configuration
-to accommodate this executable; extend and verify its authentication adapter
-before using it against IAM-only MSK. MongoDB URI TLS roots/certificates are
+The executable supports SCRAM-SHA-512 and MSK IAM OAuth over verified
+system-root TLS for Kafka. It does not configure plaintext brokers or Kafka
+client certificates. MongoDB URI TLS roots/certificates are
 retained when supplied, insecure verification is rejected, and verified TLS is
 enforced even when the URI omits TLS. The Mongo pool is capped at eight
 connections with zero minimum, five-second connect/selection timeouts and a
@@ -233,3 +233,44 @@ recheck configuration before restarts. No live deployment, broker/Atlas outage
 acceptance, DLQ skip policy, gap recovery, reconciliation or read cutover is
 implied by this executable. Roll back consumption by disabling the flag and
 restarting while retaining destination generations, inboxes and group offsets.
+
+### MSK IAM authentication (opt-in)
+
+Set `PROJECTION_KAFKA_AUTH_MODE=msk_iam`, `AWS_REGION` and the MSK IAM bootstrap
+endpoints in `PROJECTION_KAFKA_BROKERS`. Keep the target and group namespace
+stable when switching authentication for an existing destination. SCRAM secrets
+are neither required nor used in IAM mode. Unsupported modes fail configuration
+instead of falling back to another identity or plaintext.
+
+The adapter uses the pinned AWS MSK signer already used elsewhere in Praxis.
+Constructing configuration does not retrieve AWS credentials. Each SASL
+handshake invokes the signer through the default AWS credential provider chain
+under the earlier caller deadline or a five-second signing timeout. No custom
+token cache is added. Empty tokens, control-character injection and tokens
+expiring within five seconds are rejected. Cancellation prevents sending a
+token even if signing finishes after cancellation. Signer errors and broker
+challenges are sanitized; no tokens or credential-provider details are logged.
+The broker still decides authentication and resource authorization. See the
+[AWS signer](https://github.com/aws/aws-msk-iam-sasl-signer-go) and
+[MSK client setup](https://docs.aws.amazon.com/msk/latest/developerguide/configure-clients-for-iam-access-control.html).
+
+Provision the workload identity through the existing AWS identity path. Scope
+its consume permissions to the destination's exact cluster, topic and group:
+
+| Resource | Required consume actions |
+| --- | --- |
+| Accepted MSK cluster ARN | `kafka-cluster:Connect` |
+| `order.events.v1` topic ARN | `kafka-cluster:DescribeTopic`, `kafka-cluster:ReadData` |
+| Exact `projection-workflow-<namespace>.<mode>.<generation>` group ARN | `kafka-cluster:DescribeGroup`, `kafka-cluster:AlterGroup` |
+
+These requirements follow [AWS's consume-policy documentation](https://docs.aws.amazon.com/msk/latest/developerguide/iam-access-control-use-cases.html).
+The adapter does not create roles, attach policies, obtain bootstrap endpoints,
+provision topics or enable runtime consumption. Rebuild groups need separately
+reviewed permission scopes. Unit tests use injected signing and dummy local
+credentials, covering OAuth framing, signing deadlines, new signing calls per
+handshake, expiry/rejection, cancellation and redaction. No live AWS identity is
+used by tests. Before rollout, verify role identity, allowed consumption,
+denial outside the exact topic/group, credential renewal, broker reconnect and
+shutdown in non-production. Live evidence remains pending. Roll back by stopping
+consumption and restoring the prior reviewed authentication configuration while
+retaining target collections and group offsets.
