@@ -80,7 +80,10 @@ Order now additionally provides opt-in transactional source capture in its own
 ProtoJSON snapshot converted strictly to Protobuf by `EncodeWorkflowOutbox`.
 Capture defaults off and has no Kafka publisher. A source-side dispatcher now
 locks the earliest unpublished fact per order through acknowledgement, records
-publication and applies bounded retry backoff. This is not producer fencing:
+publication and applies bounded retry backoff. An unwired runtime worker adds
+bounded concurrency, jittered startup/idle/error pacing, joined cancellation and
+dispatch counters. It is not connected to Order startup or its metrics handler;
+Kafka activation remains pending. This is not producer fencing:
 connection loss can permit late delivery, so Kafka activation still requires
 fencing or consumer stale-version handling plus deduplication. The integration
 suite covers concurrent claims, retry order, invalid heads and acknowledgement

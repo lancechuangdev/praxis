@@ -653,8 +653,23 @@ Migration `003_workflow_delivery.sql` adds retained publication acknowledgement,
 attempt count and retry time to the Order-owned source outbox. It is expand-only;
 old binaries can continue capturing facts. `WorkflowDispatcher.DispatchOnce`
 validates and encodes one immutable snapshot and calls a synchronous publisher
-with its stable event ID, order key and version. No runtime worker or Kafka
-adapter is wired yet; capture remains separately opt-in.
+with its stable event ID, order key and version. `WorkflowWorker` supplies an
+unwired runtime loop with 1–64 concurrent dispatches, jittered startup and idle
+polling, and a separate jittered error delay. Both configured delays must be
+positive and at most one minute; actual jittered waits are between one and two
+times the configured delay. The source dispatcher still owns per-record retry
+backoff. Successful dispatches continue immediately to drain backlog. No Kafka
+adapter or runtime activation is wired yet; capture remains separately opt-in.
+
+`Run(ctx)` rejects a concurrent start of the same worker, cancels dispatch via
+the shared context, and joins every dispatch before returning. Publishers must
+honor cancellation and the dispatcher timeout. Stop and join the worker before
+closing its database pool or publisher; budget up to one database connection
+per worker independently of request admission. Its `Prometheus()` sample exposes
+active dispatches and attempt, source-acknowledgement, failure and empty-poll
+counters without business labels. It is not yet attached to the service's
+metrics handler. Acknowledgements count source commits, including duplicate
+delivery retries; shutdown cancellation is excluded from failure counts.
 
 The dispatcher holds a PostgreSQL row lock across acknowledgement and excludes
 all unpublished predecessors, including locked or delayed ones. Multiple callers
