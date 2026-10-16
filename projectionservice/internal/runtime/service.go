@@ -25,8 +25,9 @@ type Consumer interface {
 // Service retains health and metrics after a consumer failure. It never retries
 // or recreates a stopped consumer. Worker=nil is the disabled configuration.
 type Service struct {
-	Worker Consumer
-	failed atomic.Bool
+	Worker     Consumer
+	LagMetrics func(context.Context) string
+	failed     atomic.Bool
 }
 
 func (s *Service) Handler() http.Handler {
@@ -56,7 +57,7 @@ func (s *Service) Handler() http.Handler {
 		}
 		_, _ = fmt.Fprintln(w, "ready")
 	})
-	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		enabled, failed := 0, 0
 		if s.Worker != nil {
@@ -68,6 +69,11 @@ func (s *Service) Handler() http.Handler {
 		_, _ = fmt.Fprintf(w, "projection_workflow_enabled %d\nprojection_workflow_consumer_failed %d\n", enabled, failed)
 		if s.Worker != nil {
 			_, _ = fmt.Fprint(w, s.Worker.Prometheus())
+		}
+		if s.LagMetrics != nil {
+			_, _ = fmt.Fprint(w, "projection_workflow_lag_observation_enabled 1\n", s.LagMetrics(r.Context()))
+		} else {
+			_, _ = fmt.Fprint(w, "projection_workflow_lag_observation_enabled 0\n")
 		}
 	})
 	return mux

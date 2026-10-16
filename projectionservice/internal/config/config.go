@@ -17,6 +17,7 @@ import (
 
 type Config struct {
 	Enabled            bool
+	LagObserve         bool
 	HTTPAddress        string
 	Mongo              *options.ClientOptions
 	Database           string
@@ -45,6 +46,14 @@ func Load() (Config, error) {
 	}
 	if !cfg.Enabled {
 		return cfg, nil
+	}
+	lagFlag := os.Getenv("PROJECTION_LAG_OBSERVE")
+	if lagFlag == "" {
+		lagFlag = "false"
+	}
+	cfg.LagObserve, err = strconv.ParseBool(lagFlag)
+	if err != nil {
+		return cfg, errors.New("PROJECTION_LAG_OBSERVE must be true or false")
 	}
 	cfg.Target = workflow.Target{Generation: os.Getenv("PROJECTION_GENERATION"), Mode: workflow.Mode(os.Getenv("PROJECTION_MODE"))}
 	if err := cfg.Target.Validate(); err != nil {

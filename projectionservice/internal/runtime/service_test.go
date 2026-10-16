@@ -55,6 +55,22 @@ func TestDisabledEndpoints(t *testing.T) {
 	}
 }
 
+func TestLagFailureKeepsApplicationMetricsAvailable(t *testing.T) {
+	s := &Service{LagMetrics: func(ctx context.Context) string {
+		if ctx == nil {
+			t.Fatal("missing scrape context")
+		}
+		return "projection_workflow_lag_observation_up 0\n"
+	}}
+	response := httptest.NewRecorder()
+	s.Handler().ServeHTTP(response, httptest.NewRequest("GET", "/metrics", nil))
+	for _, metric := range []string{"projection_workflow_enabled 0\n", "projection_workflow_lag_observation_enabled 1\n", "projection_workflow_lag_observation_up 0\n"} {
+		if response.Code != 200 || !strings.Contains(response.Body.String(), metric) {
+			t.Fatal(response.Body.String())
+		}
+	}
+}
+
 func TestFailureRetainsMetricsAndStopsReadinessUntilShutdown(t *testing.T) {
 	worker := &fakeConsumer{started: make(chan struct{}), failure: make(chan struct{})}
 	s := &Service{Worker: worker}

@@ -110,7 +110,7 @@ rejection/revocation/recovery. When the URI is unset
 they skip; passing unit tests is not evidence of deployed Atlas correctness.
 Database outage, failover and ambiguous server commit exercises remain live
 acceptance gates. Roll back by stopping future consumers and retaining both
-collections, inbox receipts and source offsets. Deployment, DLQ, broker lag, bootstrap,
+collections, inbox receipts and source offsets. Deployment, DLQ, bootstrap,
 reconciliation and read cutover remain pending.
 
 ## Kafka workflow adapter (not activated)
@@ -159,7 +159,8 @@ it rejects calls after Run has started. Reader close has no context argument,
 so live shutdown timing remains an acceptance exercise. `Prometheus()` exposes
 active state and fetched/applied/duplicate/committed and failure counters without
 business labels. The executable serves them at `/metrics`; they do not measure
-broker lag. Process/commit failures include cancellation returned by those calls.
+broker lag by themselves. The optional group-offset observer below supplies
+lag separately. Process/commit failures include cancellation returned by those calls.
 
 Controlled-reader tests cover commit ordering, failed-head barriers, unknown
 outcomes, ambiguous commit/redelivery, commit deadlines, duplicate starts,
@@ -189,6 +190,7 @@ verifying a dedicated destination generation and retained source history:
 | Environment variable | Enabled-mode requirement/default |
 | --- | --- |
 | `PROJECTION_WORKFLOW_ENABLED` | Defaults to `false`; explicit `true` enables connections and consumption. |
+| `PROJECTION_LAG_OBSERVE` | Defaults to `false`; opt-in group-offset observation while workflow runtime is enabled. |
 | `PROJECTION_MODE` | Required: `shadow` or `rebuild`. |
 | `PROJECTION_GENERATION` | Required isolated generation name. |
 | `PROJECTION_GROUP_NAMESPACE` | Required unique environment/destination identity. |
@@ -319,3 +321,58 @@ group and let inbox deduplication resolve uncertain redelivery. Snapshot memory
 is bounded independently of event count and partition cardinality. Tests cover
 blocked-head coordinates, prior acknowledgements, commit ambiguity, sanitized
 reason codes, caller mutation and graceful cancellation.
+
+### Broker group-lag observation (opt-in)
+
+Set `PROJECTION_LAG_OBSERVE=true` in an enabled workflow runtime to add group-lag
+metrics. It is ignored when workflow runtime is disabled, which continues to
+open no remote connections. A separate Kafka transport uses the same verified
+TLS/SASL configuration, fixed `order.events.v1` topic and derived consumer group.
+It queries topic metadata, committed group offsets and retained log start/end
+offsets. It does not join the group, read event payloads, commit offsets or
+change consumer readiness. It continues observing after the consumer stops.
+
+Each metrics scrape has one two-second budget covering discovery and offset
+queries; overlapping scrapes fail collection immediately instead of queueing
+additional broker work. The observer accepts 1–256 partitions and rejects
+partial, duplicate, unexpected or errored partition responses. Client transport
+idle connections close after HTTP shutdown; no monitoring goroutine is added.
+The existing IAM consume scope includes the topic/group describe permissions
+needed by these queries. Live IAM authorization and query cost still require
+verification in the target environment.
+
+| Metric | Meaning |
+| --- | --- |
+| `projection_workflow_lag_observation_enabled` | Whether this process has the observer configured. |
+| `projection_workflow_lag_observation_up` | Complete broker query collection succeeded; absent when disabled. |
+| `projection_workflow_lag_partitions` | Number of partitions discovered for this sample. |
+| `projection_workflow_lag_uncommitted_partitions` | Partitions for which Kafka returned no committed group offset. |
+| `projection_workflow_lag_out_of_range_partitions` | Committed offsets before retained start or after observed log end. |
+| `projection_workflow_lag_complete` | All discovered partitions have usable committed offsets within retained ranges. |
+| `projection_workflow_lag_offsets` | Sum of log-end minus committed next-offset across all partitions; emitted only when complete. |
+| `projection_workflow_lag_max_partition_offsets` | Largest partition offset lag; emitted only when complete. |
+
+Failed collection emits only `observation_up 0`; it never serves stale cached
+values or a healthy zero lag. Successful queries with uncommitted/out-of-range
+offsets emit `complete 0` and omit aggregate lag. Missing commits, even on empty
+partitions, are not treated as proof of complete history. An offset below log
+start can indicate lost retained history: investigate before resuming; no offset
+reset or automatic history bootstrap is performed.
+
+Lag is an offset distance, not an exact number of business events, latency or
+projection correctness. Offset holes, compaction and transaction markers can
+affect interpretation. Broker calls are sequential observations, not an atomic
+Kafka checkpoint; group progress is sampled before log ends to reduce ordinary
+forward-progress inconsistencies. Compare against the Kafka group inspection
+tools during acceptance; [Apache Kafka documents group offsets and log ends](https://github.com/apache/kafka/blob/trunk/docs/operations/basic-kafka-operations.md).
+Do not use zero lag for read cutover without authoritative reconciliation.
+
+Every replica observes the same group, so do not sum these gauges across pods.
+The metrics have no per-partition, user or event labels. Set scrape cadence and
+alert thresholds from deployed query-cost and backlog measurements; monitor
+both collection health and coverage before interpreting lag. Unit tests cover
+correct next-offset arithmetic, missing commits, retention/truncation bounds,
+partial failures, cardinality limits, overflow, cancellation and concurrent
+scrapes. Live Kafka/IAM lag validation remains pending. Roll back by disabling
+the observation flag and restarting; consumption state and source offsets are
+unchanged by monitoring.

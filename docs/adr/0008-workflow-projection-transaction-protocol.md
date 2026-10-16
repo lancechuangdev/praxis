@@ -139,6 +139,16 @@ complete partition inventory. Operator offset reset, gap skipping and read
 cutover remain outside this endpoint's contract. Normal cancellation is not a
 failure. Defensive snapshot copies prevent callers from mutating shared state.
 
+An independently opt-in group-lag observer now queries the same topic/group
+through a separate authenticated transport. It never joins, consumes or commits.
+A single scrape deadline, one concurrent collection and a 256-partition limit
+bound request work. Missing commits and committed offsets outside retained log
+bounds suppress aggregate lag; failed or partial responses emit collection
+failure without stale gauges. Offset lag is not a business-event count, atomic
+checkpoint or reconciliation proof. Observation failures do not change consumer
+readiness. Live lag accuracy, query-cost and authorization evidence remain
+acceptance gates; disabling observation does not modify committed state.
+
 Rollback is a code revert before deployment. Future adapter rollback stops
 consumption while retaining source topics, target generations, inbox receipts
 and recorded offsets. No in-place rebuild or destructive migration is enabled.

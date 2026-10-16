@@ -16,6 +16,7 @@ func enabledEnvironment(t *testing.T) {
 		"PROJECTION_MODE": "shadow", "PROJECTION_GROUP_NAMESPACE": "dev-db",
 		"PROJECTION_KAFKA_BROKERS": "broker:9096", "PROJECTION_KAFKA_USERNAME": "user", "PROJECTION_KAFKA_PASSWORD": "secret",
 		"PROJECTION_KAFKA_AUTH_MODE": "scram_sha512", "AWS_REGION": "",
+		"PROJECTION_LAG_OBSERVE":         "false",
 		"PROJECTION_TRANSACTION_TIMEOUT": "10s", "PROJECTION_COMMIT_TIMEOUT": "5s",
 	} {
 		t.Setenv(key, value)
@@ -82,6 +83,7 @@ func TestInvalidRuntimeConfigurationAndRedaction(t *testing.T) {
 		{"PROJECTION_KAFKA_BROKERS", ":9096"}, {"PROJECTION_KAFKA_BROKERS", "broker:0"},
 		{"PROJECTION_TRANSACTION_TIMEOUT", "0s"}, {"PROJECTION_COMMIT_TIMEOUT", "31s"},
 		{"PROJECTION_COMMIT_TIMEOUT", "invalid"},
+		{"PROJECTION_LAG_OBSERVE", "invalid"},
 	} {
 		t.Run(tc.key+tc.value, func(t *testing.T) {
 			enabledEnvironment(t)
@@ -94,5 +96,18 @@ func TestInvalidRuntimeConfigurationAndRedaction(t *testing.T) {
 				t.Fatal("configuration error leaked credentials")
 			}
 		})
+	}
+}
+
+func TestLagObservationIsOptIn(t *testing.T) {
+	enabledEnvironment(t)
+	cfg, err := Load()
+	if err != nil || cfg.LagObserve {
+		t.Fatal("lag observation enabled by default")
+	}
+	t.Setenv("PROJECTION_LAG_OBSERVE", "true")
+	cfg, err = Load()
+	if err != nil || !cfg.LagObserve {
+		t.Fatal("lag observation flag ignored")
 	}
 }

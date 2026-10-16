@@ -56,6 +56,14 @@ func run(ctx context.Context, log *slog.Logger) error {
 		}
 		defer func() { _ = consumer.Close() }() // Releases an unused reader if listener setup fails.
 		service.Worker = consumer
+		if cfg.LagObserve {
+			observer, err := kafkaconsumer.NewLagObserver(cfg.Kafka)
+			if err != nil {
+				return err
+			}
+			defer observer.Close()
+			service.LagMetrics = observer.Prometheus
+		}
 	}
 	listener, err := net.Listen("tcp", cfg.HTTPAddress)
 	if err != nil {

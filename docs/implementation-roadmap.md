@@ -419,6 +419,10 @@ The runtime now retains bounded sanitized consumer stage/failure diagnostics
 through `/status` and a fixed-label failure gauge, including current source and
 last observed commit coordinates without exposing business data. These are
 process-local diagnostics, not broker lag or durable checkpoints.
+Opt-in broker group-lag observation now compares committed offsets with retained
+log bounds across a bounded partition inventory. Missing/out-of-range offsets
+are explicit and incomplete/failed samples omit aggregate lag. Live query-cost,
+IAM authorization and lag accuracy evidence remain environment gates.
 Existing Ledger and Matching producers still emit JSON. Ledger producer
 adoption, remaining lifecycle facts, the remaining consumer foundation, Atlas deployment,
 APIs and rebuild/cutover remain pending. See
@@ -473,8 +477,11 @@ Work:
    acknowledged coordinates without business keys, payloads or raw errors;
    tests cover gap/fetch/commit ambiguity, redaction and snapshot isolation.
    Deployed Atlas/Kafka and IAM authorization/renewal verification,
-   bounded gap recovery and broker lag metrics
-   and atomic DLQ handoff remain pending; this item is not complete.
+   bounded gap recovery and atomic DLQ handoff remain pending. Opt-in broker
+   group-lag metrics now provide collection health, partition coverage and
+   offset-distance aggregates only for complete valid samples. Unit tests cover
+   missing commits, retention bounds, partial failures, concurrency and overflow;
+   deployed lag/query-cost evidence remains pending. This item is not complete.
 3. Build MongoDB Atlas on AWS projections for customer order history,
    denormalized portfolio and activity views, and notification history, with
    private EKS connectivity plus authenticated snapshot and history APIs.
