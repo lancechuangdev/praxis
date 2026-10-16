@@ -92,6 +92,18 @@ inserts, gap blocking, rollback after both writes and target isolation. Until
 executed, these tests are not evidence of Atlas transaction acceptance. Live
 outage, failover and ambiguous server commit behavior remain unverified.
 
+Storage transactions now require successful explicit metadata verification.
+`Prepare` creates the target collections and then verifies them; read-only
+`Verify` supports already-provisioned generations without DDL privileges.
+Verification inspects the replica-set handshake, collection options and indexes
+under the store deadline. Standalone/mongos endpoints, nonstandard collections,
+nonbinary collation, missing identity indexes, TTL/partial indexes and additional
+unique constraints are rejected. Failed checks revoke verification for future
+transactions. The check does not alter data or indexes and is not an ongoing
+DDL lock or a proof against direct shard endpoints; endpoint review and
+administrative privilege separation remain required. Unit tests cover policy
+decisions; the opt-in replica-set suite includes TTL rejection and recovery.
+
 The Kafka adapter now uses explicit synchronous commits after one successful
 processor outcome at a time. Processing/commit failures close its single-use
 reader before any later fetch. Restarts require a fresh consumer with the same

@@ -3,6 +3,7 @@ package mongostore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -86,5 +87,14 @@ func TestStoreConfigurationAndTargetIsolation(t *testing.T) {
 	}
 	if err := s.Within(context.Background(), target, nil); err == nil {
 		t.Fatal("accepted nil callback")
+	}
+	s.verified.Store(true)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := s.Verify(ctx); err == nil {
+		t.Fatal("cancelled preflight succeeded")
+	}
+	if err := s.Within(context.Background(), target, func(workflow.Transaction) error { t.Fatal("failed verification allowed transaction"); return nil }); !errors.Is(err, ErrUnverified) {
+		t.Fatal(err)
 	}
 }

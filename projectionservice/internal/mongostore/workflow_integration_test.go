@@ -49,6 +49,33 @@ func integrationStore(t *testing.T) *Store {
 	}
 	return s
 }
+
+func TestMongoPreflightRejectsTTLAndRevokesProcessing(t *testing.T) {
+	s := integrationStore(t)
+	_, err := s.inbox.Indexes().CreateOne(context.Background(), mongo.IndexModel{Keys: bson.D{{Key: "created_at", Value: 1}}, Options: options.Index().SetName("unsafe_ttl").SetExpireAfterSeconds(3600)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Verify(context.Background()); err == nil {
+		t.Fatal("TTL index accepted")
+	}
+	p, err := workflow.New(s.target, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := process(t, p, 1); !errors.Is(err, ErrUnverified) {
+		t.Fatal(err)
+	}
+	if err := s.inbox.Indexes().DropOne(context.Background(), "unsafe_ttl"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Verify(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if outcome, err := process(t, p, 1); outcome != workflow.Applied || err != nil {
+		t.Fatalf("%s %v", outcome, err)
+	}
+}
 func process(t *testing.T, p *workflow.Processor, version uint64) (workflow.Outcome, error) {
 	t.Helper()
 	event := testEvent(version)

@@ -39,13 +39,40 @@ the protocol, acceptance requirements and rollback boundaries.
 
 Create a store bound to one target with a positive transaction timeout of at
 most 30 seconds. Call `Prepare(ctx)` explicitly with provisioning privileges
-before processing a new generation. It creates `workflow_<mode>_<generation>`
+before processing a new generation, or read-only `Verify(ctx)` for an existing
+generation. Processing returns `ErrUnverified` until either succeeds.
+`Prepare` creates `workflow_<mode>_<generation>`
 and `workflow_inbox_<mode>_<generation>`, retaining the built-in unique `_id`
 indexes for order IDs and event IDs respectively. Use ordinary unsharded
-collections with default binary collation and no TTL indexes. The adapter does
-not inspect existing collection options, sharding, extra indexes or retention;
-review those independently before reuse. No collections are dropped or cleared
-by the adapter. The caller owns client shutdown.
+collections with default binary collation and no TTL indexes. `Prepare` finishes
+by running the same read-only preflight as `Verify`. No collections or indexes
+are dropped, repaired or cleared by the adapter. The caller owns client shutdown.
+
+The preflight uses `hello`, full `listCollections` metadata and `listIndexes`
+for both target collections, all under the store's context timeout. The runtime
+identity needs permission to inspect collection options and indexes as well as
+the normal transactional read/write privileges. Collection-creation privileges
+are needed only for `Prepare`, so an existing generation can use a narrower
+identity through `Verify`.
+
+Verification requires a writable replica-set primary with logical sessions;
+standalone and mongos endpoints are rejected. This initial check uses `hello`
+and therefore requires a server supporting that command (MongoDB 5.0+). Direct
+connections to shards are unsupported and must be excluded through endpoint
+review; a replica-set handshake alone cannot distinguish those endpoints.
+Each collection must be ordinary, with default options or explicit uncapped/
+simple binary collation. Other options, including time-series, clustered or
+validator configuration, are rejected pending a reviewed contract. Both
+collections require the built-in `_id` index. TTL, partial, nonbinary-collation
+and additional unique indexes are rejected. Ordinary nonunique secondary
+indexes are permitted.
+
+Any failed verification revokes the instance's verified state; subsequent
+transactions are blocked until a successful check. Verification is a
+point-in-time check, not a lock against later administrative changes. Recheck
+after index/collection changes and before restarting consumers. In-flight
+transactions are not cancelled by a failed recheck. Keep DDL/retention privileges
+out of the runtime identity and control configuration changes independently.
 
 Each callback runs sequentially in a session transaction with snapshot read
 concern, primary reads and majority write concern. Snapshot and inbox writes
@@ -77,7 +104,8 @@ The tests create uniquely named `praxis_projection_it_*` databases and drop only
 those databases during cleanup. The test identity therefore needs database
 creation/drop privileges; never use a production endpoint. Tests cover
 concurrent first-event delivery, duplicates, contiguous updates, gap blocking,
-rollback after both writes and mode/generation isolation. When the URI is unset
+rollback after both writes, mode/generation isolation, and TTL preflight
+rejection/revocation/recovery. When the URI is unset
 they skip; passing unit tests is not evidence of deployed Atlas correctness.
 Database outage, failover and ambiguous server commit exercises remain live
 acceptance gates. Roll back by stopping future consumers and retaining both

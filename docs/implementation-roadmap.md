@@ -400,7 +400,9 @@ An initial Order workflow consumer transaction protocol now lives in
 `projectionservice`, with strict record validation, target-scoped inbox receipts,
 contiguous versions and atomic storage contracts. A MongoDB adapter now provides
 target-scoped snapshot/inbox transactions, unique IDs, conditional version writes
-and bounded race retries. Replica-set tests are opt-in and live Atlas acceptance
+and bounded race retries. A read-only storage preflight now gates transactions
+on compatible replica-set, collection and index metadata, rejecting TTL and
+identity/retention policy drift when checked. Replica-set tests are opt-in and live Atlas acceptance
 remains pending. A TLS-only Kafka adapter adds isolated consumer groups,
 sequential processing and synchronous commits, bounded reader settings and
 fail-stop handling for every unacknowledged record. Controlled-reader tests
@@ -447,7 +449,10 @@ Work:
    or rebuild targets. Transaction-model tests cover rollback, ambiguous commit,
    concurrent duplication, gaps/stale conflicts and target isolation. A MongoDB
    transaction adapter and opt-in replica-set concurrency/rollback tests are
-   implemented. The Kafka adapter enforces a one-record processing/commit barrier
+   implemented. MongoDB processing now requires successful metadata preflight;
+   failed checks revoke verification without altering data or indexes. Unit
+   tests cover topology/options/index rejection and an opt-in replica-set test
+   covers TTL rejection and recovery. The Kafka adapter enforces a one-record processing/commit barrier
    and closes on failure; controlled-reader tests cover offset safety and restart
    rules. Deployed Atlas/Kafka verification, runtime wiring, bounded gap recovery, lag/outcome metrics
    and atomic DLQ handoff remain pending; this item is not complete.

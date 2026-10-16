@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"sync/atomic"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -31,12 +32,13 @@ type Store struct {
 	target           workflow.Target
 	snapshots, inbox *mongo.Collection
 	timeout          time.Duration
+	verified         atomic.Bool
 }
 
 var _ workflow.Store = (*Store)(nil)
 
-// New binds the store permanently to one target. Call Prepare explicitly before
-// use with a new generation; it is never called implicitly during processing.
+// New binds the store permanently to one target. Call Prepare for a new
+// generation or read-only Verify for existing collections before processing.
 // The client remains caller-owned and must use deployment-approved TLS/auth.
 func New(client *mongo.Client, database string, target workflow.Target, timeout time.Duration) (*Store, error) {
 	if client == nil || database == "" || target.Validate() != nil || timeout <= 0 || timeout > 30*time.Second {
@@ -52,6 +54,7 @@ func New(client *mongo.Client, database string, target workflow.Target, timeout 
 // indexes enforce order-ID and event-ID uniqueness. No TTL or destructive
 // cleanup is installed. Provision privileges can be separated from runtime.
 func (s *Store) Prepare(ctx context.Context) error {
+	s.verified.Store(false)
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	for _, name := range []string{s.snapshots.Name(), s.inbox.Name()} {
@@ -61,12 +64,15 @@ func (s *Store) Prepare(ctx context.Context) error {
 			return err
 		}
 	}
-	return nil
+	return s.Verify(ctx)
 }
 
 func (s *Store) Within(ctx context.Context, target workflow.Target, callback func(workflow.Transaction) error) error {
 	if target != s.target || callback == nil {
 		return errors.New("Mongo workflow target mismatch or missing callback")
+	}
+	if !s.verified.Load() {
+		return ErrUnverified
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
