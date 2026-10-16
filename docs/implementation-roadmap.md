@@ -388,8 +388,10 @@ transactional workflow source capture with database-allocated versions and
 strict Protobuf encoding. A source-side dispatcher now adds locked per-order
 head selection, retained acknowledgement and bounded retry backoff. An unwired
 runtime worker adds bounded concurrency, jittered polling/error pacing, joined
-shutdown and dispatch counters. The Kafka adapter, runtime activation and
-failure-fenced publication remain pending.
+shutdown and dispatch counters. A TLS-only synchronous Kafka adapter validates
+workflow coordinates, preserves source bytes and occurrence time, keys by order
+and requires all in-sync replica acknowledgements with one send attempt per
+dispatch. Runtime activation and failure-fenced publication remain pending.
 Existing Ledger and Matching producers still emit JSON. Ledger producer
 adoption, remaining lifecycle facts, consumer foundation, Atlas deployment,
 APIs and rebuild/cutover remain pending. See
@@ -416,8 +418,10 @@ Work:
    integration tests for competing workers, retry ordering,
    malformed heads and acknowledgement loss. Runtime-loop tests cover concurrency
    bounds, duplicate starts, outage/idle pacing and joined cancellation. Kafka
-   activation and live database
-   verification remain pending. Ordered Order Kafka publication, atomic Ledger
+   adapter tests cover strict coordinates, immutable payloads, synchronous
+   acknowledgement, TLS policy and deadline/error propagation. Kafka activation
+   and live database verification remain pending. Failure-safe ordered Order
+   Kafka activation, atomic Ledger
    adoption, reservation lifecycle and Matching
    fill/terminal facts remain pending; this item is not yet complete.
 2. Build a reusable consumer foundation with inbox deduplication, schema

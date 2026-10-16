@@ -658,8 +658,9 @@ unwired runtime loop with 1–64 concurrent dispatches, jittered startup and idl
 polling, and a separate jittered error delay. Both configured delays must be
 positive and at most one minute; actual jittered waits are between one and two
 times the configured delay. The source dispatcher still owns per-record retry
-backoff. Successful dispatches continue immediately to drain backlog. No Kafka
-adapter or runtime activation is wired yet; capture remains separately opt-in.
+backoff. Successful dispatches continue immediately to drain backlog. The Kafka
+adapter described below is implemented but runtime activation is not wired;
+capture remains separately opt-in.
 
 `Run(ctx)` rejects a concurrent start of the same worker, cancels dispatch via
 the shared context, and joins every dispatch before returning. Publishers must
@@ -690,6 +691,42 @@ tests cover competing workers, retry ordering, immutable redelivery after lost
 acknowledgement and malformed-head blocking. Run them against a disposable
 PostgreSQL database with `ORDER_TEST_DATABASE_URL` set. Do not activate production
 publication on unit-test evidence alone.
+
+### Workflow Kafka adapter (not activated)
+
+`adapters.NewWorkflowKafkaPublisher` implements the dispatch publisher for the
+new Protobuf `order.events.v1` stream. It requires explicit brokers, a
+caller-owned Kafka transport with verified TLS 1.2 or newer, and a positive send
+timeout of at most 30 seconds. Supply the deployment's SASL authentication on
+that transport. No credentials, topic provisioning, or startup configuration
+are implicitly loaded. The caller must not mutate transport configuration after
+construction.
+
+The writer uses the existing Kafka hash balancer with `order_id` keys,
+synchronous writes, all in-sync replica acknowledgements, single-record batches,
+one send attempt, and no automatic topic creation. The adapter strictly decodes
+the lifecycle Protobuf, verifies event ID, order ID and workflow version against
+the dispatch coordinates, then sends the original bytes and business occurrence
+time. It does not re-encode or generate new event identifiers. The send context
+uses the earlier of the caller deadline and configured timeout; set the send
+budget below the dispatch timeout to leave time for source acknowledgement.
+Configure broker/topic record limits for the 1 MiB contract plus Kafka record
+overhead; the writer's batch-byte ceiling is 2 MiB.
+
+A failed or cancelled write can still arrive later. The adapter copies its
+payload buffer so an in-flight write remains immutable after cancellation, but
+does not provide Kafka transactions or producer fencing. All-replica
+acknowledgement also requires reviewed replication and `min.insync.replicas`
+settings. Before activation, meet the preceding acceptance gates, including
+consumer deduplication and stale-version rejection or producer fencing. Broker
+acknowledgement/crash/failover evidence is still pending; adapter tests use a
+controlled writer rather than a live broker.
+
+Shutdown order is worker cancellation, worker join, publisher `Close()`, then
+shared transport `CloseIdleConnections()` and database pool shutdown. Writer
+close may drain pending sends and is not context-bounded; account for its
+configured network timeouts in the process termination budget. The worker,
+adapter and metrics remain disconnected from service startup.
 
 Rollback this foundation by reverting the dispatcher code while retaining the
 migration and source rows. Once publication is wired, stop the worker to roll
