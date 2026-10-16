@@ -407,7 +407,10 @@ remains pending. A TLS-only Kafka adapter adds isolated consumer groups,
 sequential processing and synchronous commits, bounded reader settings and
 fail-stop handling for every unacknowledged record. Controlled-reader tests
 cover failed-head barriers, ambiguous commits, deadlines and cancellation.
-Executable/runtime activation and live broker evidence remain pending; see
+An opt-in executable now wires read-only storage verification, the consumer,
+health/readiness and metrics with joined shutdown. It defaults to disabled,
+supports Kafka TLS/SCRAM, and retains diagnostics without automatic restart
+after consumption failure. MSK IAM, live runtime activation and broker evidence remain pending; see
 [ADR 0008](adr/0008-workflow-projection-transaction-protocol.md).
 Existing Ledger and Matching producers still emit JSON. Ledger producer
 adoption, remaining lifecycle facts, the remaining consumer foundation, Atlas deployment,
@@ -454,7 +457,11 @@ Work:
    tests cover topology/options/index rejection and an opt-in replica-set test
    covers TTL rejection and recovery. The Kafka adapter enforces a one-record processing/commit barrier
    and closes on failure; controlled-reader tests cover offset safety and restart
-   rules. Deployed Atlas/Kafka verification, runtime wiring, bounded gap recovery, lag/outcome metrics
+   rules. An opt-in runtime now verifies storage before consumption and serves
+   health/readiness/outcome metrics; failures remain stopped with diagnostics
+   available. Tests cover configuration, disabled operation, shutdown and
+   failure readiness. Deployed Atlas/Kafka verification, MSK IAM support,
+   bounded gap recovery and broker lag metrics
    and atomic DLQ handoff remain pending; this item is not complete.
 3. Build MongoDB Atlas on AWS projections for customer order history,
    denormalized portfolio and activity views, and notification history, with

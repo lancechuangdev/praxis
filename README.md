@@ -14,7 +14,7 @@ The repository contains:
 - `ledgerservice`: PostgreSQL-backed double-entry ledger and reservation APIs.
 - `matchingengine`: durable PostgreSQL-backed order admission with a transactional outbox and asynchronous Kafka relay.
 - `outboxrelay`: batched PostgreSQL-outbox-to-Kafka relay.
-- `projectionservice`: Order workflow projection protocol with MongoDB and Kafka adapters; deployment and runtime activation remain pending.
+- `projectionservice`: opt-in Order workflow consumer with MongoDB/Kafka adapters, storage preflight and health/metrics; deployment acceptance remains pending.
 - `infra/aws`: independent VPC, Amazon MSK, Kafka topics, and Multi-AZ PostgreSQL Terraform.
 
 ## Implementation status
@@ -25,7 +25,7 @@ The repository contains:
 | Order Service | Implements synchronous risk simulation, Ledger reservation over gRPC, and Matching Engine admission over gRPC. |
 | Matching Engine | Implements durable per-symbol order admission and a transactional outbox with an asynchronous relay. It does not yet execute matches or emit fills. |
 | Outbox Relay | Independently runnable batched relay for publishing PostgreSQL outbox records to Kafka; it is not started by the main Compose file. |
-| Projection Service | Order workflow validation, deduplication and sequencing with MongoDB/Kafka adapters and opt-in replica-set tests; no deployed store, consumer runtime or read API yet. |
+| Projection Service | Opt-in workflow consumer with MongoDB/Kafka adapters, storage preflight and health/metrics; no deployed store/consumer or customer read API yet. |
 | AWS infrastructure | Terraform reference configuration for an isolated VPC, Amazon MSK, Kafka topics, and Multi-AZ PostgreSQL. Applying it creates billable AWS resources and requires environment-specific review. |
 | Deposit architecture | Reference design only; the Address, Indexer, Risk, Treasury, Wallet, Notification, and Reconciliation services are not implemented here. |
 

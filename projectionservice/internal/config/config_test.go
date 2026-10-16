@@ -1,0 +1,78 @@
+package config
+
+import (
+	"crypto/tls"
+	"strings"
+	"testing"
+	"time"
+)
+
+func enabledEnvironment(t *testing.T) {
+	t.Helper()
+	for key, value := range map[string]string{
+		"PROJECTION_WORKFLOW_ENABLED": "true", "PROJECTION_HTTP_ADDRESS": "127.0.0.1:0",
+		"PROJECTION_MONGODB_URI":      "mongodb://user:secret@localhost:27017/?replicaSet=rs0",
+		"PROJECTION_MONGODB_DATABASE": "test_projection", "PROJECTION_GENERATION": "orders-v1",
+		"PROJECTION_MODE": "shadow", "PROJECTION_GROUP_NAMESPACE": "dev-db",
+		"PROJECTION_KAFKA_BROKERS": "broker:9096", "PROJECTION_KAFKA_USERNAME": "user", "PROJECTION_KAFKA_PASSWORD": "secret",
+		"PROJECTION_TRANSACTION_TIMEOUT": "10s", "PROJECTION_COMMIT_TIMEOUT": "5s",
+	} {
+		t.Setenv(key, value)
+	}
+}
+
+func TestDisabledRuntimeRequiresNoConnections(t *testing.T) {
+	t.Setenv("PROJECTION_WORKFLOW_ENABLED", "")
+	t.Setenv("PROJECTION_HTTP_ADDRESS", "")
+	t.Setenv("PROJECTION_MONGODB_URI", "invalid")
+	cfg, err := Load()
+	if err != nil || cfg.Enabled || cfg.Mongo != nil {
+		t.Fatalf("disabled config err=%v", err)
+	}
+}
+
+func TestEnabledRuntimeBoundsAndSecureTransport(t *testing.T) {
+	enabledEnvironment(t)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Mongo.TLSConfig == nil || cfg.Mongo.TLSConfig.InsecureSkipVerify || cfg.Mongo.TLSConfig.MinVersion < tls.VersionTLS12 {
+		t.Fatal("insecure Mongo transport")
+	}
+	if *cfg.Mongo.MaxPoolSize != 8 || *cfg.Mongo.MinPoolSize != 0 || *cfg.Mongo.ServerSelectionTimeout != 5*time.Second {
+		t.Fatal("unbounded Mongo pool or timeout")
+	}
+	if cfg.Kafka.Dialer.SASLMechanism.Name() != "SCRAM-SHA-512" || cfg.Kafka.Target != cfg.Target {
+		t.Fatal("Kafka authentication or target mismatch")
+	}
+	if err := cfg.Kafka.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInvalidRuntimeConfigurationAndRedaction(t *testing.T) {
+	for _, tc := range []struct{ key, value string }{
+		{"PROJECTION_WORKFLOW_ENABLED", "invalid"}, {"PROJECTION_HTTP_ADDRESS", "invalid"},
+		{"PROJECTION_MODE", "live"}, {"PROJECTION_GENERATION", "../live"},
+		{"PROJECTION_MONGODB_DATABASE", "bad.name"}, {"PROJECTION_MONGODB_URI", "mongodb://secret@/invalid"},
+		{"PROJECTION_MONGODB_URI", "mongodb://user:secret@localhost/?tls=true&tlsInsecure=true"},
+		{"PROJECTION_KAFKA_USERNAME", ""}, {"PROJECTION_KAFKA_PASSWORD", ""},
+		{"PROJECTION_KAFKA_BROKERS", "broker"}, {"PROJECTION_GROUP_NAMESPACE", "bad.namespace"},
+		{"PROJECTION_KAFKA_BROKERS", ":9096"}, {"PROJECTION_KAFKA_BROKERS", "broker:0"},
+		{"PROJECTION_TRANSACTION_TIMEOUT", "0s"}, {"PROJECTION_COMMIT_TIMEOUT", "31s"},
+		{"PROJECTION_COMMIT_TIMEOUT", "invalid"},
+	} {
+		t.Run(tc.key+tc.value, func(t *testing.T) {
+			enabledEnvironment(t)
+			t.Setenv(tc.key, tc.value)
+			_, err := Load()
+			if err == nil {
+				t.Fatal("invalid runtime config accepted")
+			}
+			if strings.Contains(err.Error(), "secret") {
+				t.Fatal("configuration error leaked credentials")
+			}
+		})
+	}
+}

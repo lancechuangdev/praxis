@@ -18,6 +18,7 @@ type fakeReader struct {
 	fetched, closed int
 	commits         []kafka.Message
 	commit          func(context.Context, kafka.Message) error
+	closeHook       func()
 }
 
 func (r *fakeReader) FetchMessage(context.Context) (kafka.Message, error) {
@@ -39,7 +40,32 @@ func (r *fakeReader) CommitMessages(ctx context.Context, messages ...kafka.Messa
 	}
 	return nil
 }
-func (r *fakeReader) Close() error { r.closed++; return nil }
+func (r *fakeReader) Close() error {
+	r.closed++
+	if r.closeHook != nil {
+		r.closeHook()
+	}
+	return nil
+}
+
+func TestConsumerBecomesUnreadyBeforeReaderCleanup(t *testing.T) {
+	closing, release := make(chan struct{}), make(chan struct{})
+	r := &fakeReader{closeHook: func() { close(closing); <-release }}
+	c := consumer(r, func(context.Context, string, []byte, []byte) (workflow.Outcome, error) {
+		t.Fatal("unexpected processing")
+		return "", nil
+	})
+	done := make(chan error, 1)
+	go func() { done <- c.Run(context.Background()) }()
+	<-closing
+	if c.Running() {
+		t.Error("consumer still reports running during cleanup")
+	}
+	close(release)
+	if err := <-done; !errors.Is(err, io.EOF) {
+		t.Fatal(err)
+	}
+}
 
 type processFunc func(context.Context, string, []byte, []byte) (workflow.Outcome, error)
 

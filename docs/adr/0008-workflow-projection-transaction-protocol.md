@@ -73,8 +73,8 @@ Before runtime activation, verify the adapter against Atlas transactions, unique
 indexes, first-document races, database failure/ambiguous commit recovery,
 partition offset barriers, bounded queues/gap recovery, atomic DLQ handoff,
 telemetry and shadow reconciliation. The processor makes no financial calls
-and cannot deliver notifications or authorize mutations. There is no consumer
-runtime, deployed projection store, read API or cutover in this slice.
+and cannot deliver notifications or authorize mutations. There is no deployed
+consumer/store, read API or cutover in this slice.
 
 The repository now includes `projectionservice/internal/mongostore`: target-bound
 snapshot/inbox collections use built-in unique `_id` indexes and session
@@ -84,7 +84,7 @@ unique first inserts and bounded whole-transaction retries cover creation
 races. A shared context deadline bounds retries and commit, with separately
 bounded session cleanup. Unknown additive fields and exact quantities remain
 in a binary Protobuf snapshot; the inbox keeps the original-byte digest.
-Provisioning is explicit, clients remain caller-owned, and no runtime is wired.
+Provisioning is explicit and clients remain caller-owned.
 See the [adapter procedure](../../projectionservice/README.md#mongodb-workflow-adapter-not-activated)
 for collection constraints and rollback. Integration tests require a disposable
 replica set via `PROJECTION_TEST_MONGODB_URI`; they cover concurrent first
@@ -109,10 +109,20 @@ processor outcome at a time. Processing/commit failures close its single-use
 reader before any later fetch. Restarts require a fresh consumer with the same
 group offsets. Group names isolate an explicit environment/destination namespace,
 mode and generation. TLS, queue/fetch bounds, commit deadlines and controlled
-reader tests are implemented; there is no runtime executable or active group.
+reader tests are implemented; no active group is deployed by this work.
 No error is automatically skipped or DLQed. Live rebalance/failure tests,
-bounded gap recovery, DLQ handoff, metrics serving and reconciliation remain
+bounded gap recovery, DLQ handoff, broker lag and reconciliation remain
 acceptance work. See the [consumer procedure](../../projectionservice/README.md#kafka-workflow-adapter-not-activated).
+
+An opt-in executable now validates configuration, performs read-only storage
+verification before constructing its consumer, and serves health/readiness and
+metrics. It defaults to disabled with no remote connections. The initial runtime
+uses Kafka TLS/SCRAM-SHA-512; MSK IAM remains pending. Consumer errors leave
+diagnostics running and readiness failed, with no automatic consumer restart.
+Shutdown cancels and joins consumption before closing storage. It never
+provisions collections or resets offsets. Runtime tests cover disabled mode,
+configuration, failure diagnostics and shutdown; live deployment and end-to-end
+broker/Atlas evidence remain acceptance gates.
 
 Rollback is a code revert before deployment. Future adapter rollback stops
 consumption while retaining source topics, target generations, inbox receipts

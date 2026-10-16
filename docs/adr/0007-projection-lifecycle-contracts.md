@@ -130,10 +130,11 @@ inbox/version/gap/DLQ foundation. The initial Order workflow transaction protoco
 is now implemented in `projectionservice`; [ADR 0008](0008-workflow-projection-transaction-protocol.md)
 defines its deduplication, sequencing and storage requirements. A MongoDB
 transaction adapter is implemented with opt-in replica-set tests; deployed
-storage verification, consumer runtime wiring, gap recovery and DLQ handoff
-remain pending. A fail-stop Kafka consumer adapter now provides sequential
-processing/commit barriers and isolated target groups; live broker acceptance
-is still required.
+storage verification, deployed runtime acceptance, gap recovery and DLQ handoff
+remain pending. A fail-stop Kafka consumer adapter provides sequential
+processing/commit barriers and isolated target groups. An executable now wires
+the adapters behind an opt-in flag with storage preflight and health/metrics;
+live broker acceptance and MSK IAM support are still required.
 Order-history completion still requires
 authoritative Matching lifecycle facts. Atlas reads,
 rebuild generations, reconciled cutover and financial-authorization isolation

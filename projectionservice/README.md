@@ -2,7 +2,8 @@
 
 This module begins Phase 6's derived consumer platform. It currently contains
 an Order workflow transaction processor, MongoDB and Kafka adapters, and tests.
-It has no executable, deployed consumer/store, read API or delivery provider.
+An opt-in executable now wires the adapters and serves health/metrics. No
+consumer/store is deployed, and there is no read API or delivery provider.
 MongoDB Atlas remains the planned projection store. PostgreSQL remains
 authoritative and projected values cannot authorize financial mutations.
 
@@ -109,7 +110,7 @@ rejection/revocation/recovery. When the URI is unset
 they skip; passing unit tests is not evidence of deployed Atlas correctness.
 Database outage, failover and ambiguous server commit exercises remain live
 acceptance gates. Roll back by stopping future consumers and retaining both
-collections, inbox receipts and source offsets. Runtime wiring, DLQ, metrics endpoints, bootstrap,
+collections, inbox receipts and source offsets. Deployment, DLQ, broker lag, bootstrap,
 reconciliation and read cutover remain pending.
 
 ## Kafka workflow adapter (not activated)
@@ -157,7 +158,7 @@ MongoDB client. `Close()` releases a constructed consumer that was never run;
 it rejects calls after Run has started. Reader close has no context argument,
 so live shutdown timing remains an acceptance exercise. `Prometheus()` exposes
 active state and fetched/applied/duplicate/committed and failure counters without
-business labels. They are not yet served by an HTTP endpoint and do not measure
+business labels. The executable serves them at `/metrics`; they do not measure
 broker lag. Process/commit failures include cancellation returned by those calls.
 
 Controlled-reader tests cover commit ordering, failed-head barriers, unknown
@@ -166,3 +167,69 @@ cancellation and target-group isolation. Live Kafka rebalance, broker failure,
 offset recovery and end-to-end Atlas tests remain required. There is no deployed
 consumer or production activation in this slice. Roll back future consumption
 by stopping it and retaining group offsets, inboxes, snapshots and source topics.
+
+## Opt-in executable
+
+From the repository root, start disabled diagnostics with:
+
+```bash
+go run ./projectionservice/cmd/projection-service
+```
+
+Disabled mode opens only the HTTP listener and does not connect to MongoDB or
+Kafka. `/healthz` returns 200; `/readyz` returns 503 because no consumer runs.
+`/metrics` reports `projection_workflow_enabled 0`. HTTP defaults to `:8086`;
+set `PROJECTION_HTTP_ADDRESS=127.0.0.1:8086` for local-only access. Protect the
+listener through private network policy in a deployment. No financial or
+customer read endpoint is registered.
+
+Enable only in a reviewed non-production environment after provisioning and
+verifying a dedicated destination generation and retained source history:
+
+| Environment variable | Enabled-mode requirement/default |
+| --- | --- |
+| `PROJECTION_WORKFLOW_ENABLED` | Defaults to `false`; explicit `true` enables connections and consumption. |
+| `PROJECTION_MODE` | Required: `shadow` or `rebuild`. |
+| `PROJECTION_GENERATION` | Required isolated generation name. |
+| `PROJECTION_GROUP_NAMESPACE` | Required unique environment/destination identity. |
+| `PROJECTION_MONGODB_URI` | Required secret URI; verified TLS 1.2+ is enforced. |
+| `PROJECTION_MONGODB_DATABASE` | Required explicit destination database. |
+| `PROJECTION_KAFKA_BROKERS` | Required comma-separated `host:port` endpoints. |
+| `PROJECTION_KAFKA_USERNAME`, `PROJECTION_KAFKA_PASSWORD` | Required SCRAM-SHA-512 credentials; supply through the deployment secret path. |
+| `PROJECTION_TRANSACTION_TIMEOUT` | Defaults to `10s`; positive, at most `30s`. |
+| `PROJECTION_COMMIT_TIMEOUT` | Defaults to `5s`; positive, at most `30s`. |
+
+The initial executable supports SCRAM-SHA-512 over verified system-root TLS for
+Kafka. It does not configure MSK IAM, plaintext brokers, or Kafka client
+certificates. Do not change the accepted broker authentication configuration
+to accommodate this executable; extend and verify its authentication adapter
+before using it against IAM-only MSK. MongoDB URI TLS roots/certificates are
+retained when supplied, insecure verification is rejected, and verified TLS is
+enforced even when the URI omits TLS. The Mongo pool is capped at eight
+connections with zero minimum, five-second connect/selection timeouts and a
+ten-second client operation timeout. Transaction context deadlines also apply.
+
+Startup validates configuration and runs read-only storage `Verify` before
+constructing the Kafka consumer. It never calls `Prepare`, creates collections,
+resets offsets or deletes data. Missing/unsafe collections or insufficient
+inspection privileges fail startup. Runtime errors do not log source bytes,
+credentials or raw database errors; inspect protected infrastructure diagnostics
+when troubleshooting a failed preflight.
+
+Readiness means the consumer loop is running, not that Kafka has assigned
+partitions, the projection is caught up, or MongoDB remains healthy during an
+idle period. The loop becomes unready before reader cleanup. A consumer failure
+leaves HTTP running, returns 503 readiness, sets
+`projection_workflow_consumer_failed 1`, and retains counters for inspection.
+Health stays 200. The process does not restart consumption. Resolve the error
+and restart with the same target/namespace; do not reset offsets to bypass it.
+
+On SIGINT/SIGTERM, the service cancels consumption, shuts HTTP down with a
+five-second budget, joins the consumer and closes MongoDB with a five-second
+cleanup context. Kafka reader cleanup is joined but has no context argument;
+measure its timing before choosing a deployment termination grace period.
+Startup verification remains point-in-time; control collection/index DDL and
+recheck configuration before restarts. No live deployment, broker/Atlas outage
+acceptance, DLQ skip policy, gap recovery, reconciliation or read cutover is
+implied by this executable. Roll back consumption by disabling the flag and
+restarting while retaining destination generations, inboxes and group offsets.

@@ -31,6 +31,14 @@ type Config struct {
 
 var groupNamespace = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
+func (cfg Config) Validate() error {
+	rc, err := readerConfig(cfg)
+	if err != nil {
+		return err
+	}
+	return rc.Validate()
+}
+
 func readerConfig(cfg Config) (kafka.ReaderConfig, error) {
 	if cfg.Target.Validate() != nil || !groupNamespace.MatchString(cfg.GroupNamespace) || len(cfg.Brokers) == 0 || cfg.CommitTimeout <= 0 || cfg.CommitTimeout > 30*time.Second {
 		return kafka.ReaderConfig{}, errors.New("workflow consumer requires valid target, brokers and commit timeout in (0, 30s]")
@@ -106,8 +114,8 @@ func (c *Consumer) Run(ctx context.Context) (result error) {
 		return errors.New("workflow consumer is single-use")
 	}
 	c.active.Store(1)
-	defer c.active.Store(0)
 	defer func() { result = errors.Join(result, c.reader.Close()) }()
+	defer c.active.Store(0)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -168,3 +176,5 @@ func (c *Consumer) Close() error {
 func (c *Consumer) Prometheus() string {
 	return fmt.Sprintf("projection_workflow_consumer_active %d\nprojection_workflow_fetched_total %d\nprojection_workflow_applied_total %d\nprojection_workflow_duplicates_total %d\nprojection_workflow_committed_total %d\nprojection_workflow_fetch_failures_total %d\nprojection_workflow_process_failures_total %d\nprojection_workflow_commit_failures_total %d\n", c.active.Load(), c.fetched.Load(), c.applied.Load(), c.duplicates.Load(), c.committed.Load(), c.fetchFailures.Load(), c.processFailures.Load(), c.commitFailures.Load())
 }
+
+func (c *Consumer) Running() bool { return c.active.Load() == 1 }
