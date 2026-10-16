@@ -14,8 +14,9 @@ import (
 )
 
 type HTTP struct {
-	Service *order.Service
-	Ready   func(context.Context) error
+	Service         *order.Service
+	Ready           func(context.Context) error
+	WorkflowMetrics func(context.Context) string
 }
 
 func (h HTTP) Handler() http.Handler {
@@ -91,7 +92,7 @@ func (h HTTP) admit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, response)
 }
 
-func (h HTTP) metrics(w http.ResponseWriter, _ *http.Request) {
+func (h HTTP) metrics(w http.ResponseWriter, r *http.Request) {
 	m := h.Service.Metrics
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	_, _ = fmt.Fprintf(w, `order_requests_total %d
@@ -118,6 +119,11 @@ order_risk_shadow_errors_total %d
 order_risk_shadow_dropped_total %d
 `, m.Requests.Load(), m.Accepted.Load(), m.RiskRejected.Load(), m.Failed.Load(), m.DeadLettered.Load(), m.SagaRecoveryPanics.Load(), m.SagaClaims.Load(), m.SagaRetryAttempts.Load(), m.SagaActiveClaims.Load(), m.SagaLeaseExpirations.Load(), m.SagaRecoveryReplays.Load(), m.SagaDue.Load(), float64(m.SagaOldestDueAgeMillis.Load())/1000, m.AdmissionRejected.Load(), m.AdmissionWouldReject.Load(), m.AdmissionOverloaded.Load(), m.AdmissionErrors.Load(), m.RiskShadowAttempts.Load(), m.RiskShadowMatches.Load(), m.RiskShadowMismatches.Load(), m.RiskShadowErrors.Load(), m.RiskShadowDropped.Load())
 	_, _ = fmt.Fprint(w, m.RiskDuration.Prometheus("order_risk_duration_seconds"), m.ReserveDuration.Prometheus("order_reserve_duration_seconds"), m.MatchingDuration.Prometheus("order_matching_duration_seconds"), m.TotalDuration.Prometheus("order_total_duration_seconds"))
+	if h.WorkflowMetrics != nil {
+		_, _ = fmt.Fprint(w, "order_workflow_outbox_observation_enabled 1\n", h.WorkflowMetrics(r.Context()))
+	} else {
+		_, _ = fmt.Fprint(w, "order_workflow_outbox_observation_enabled 0\n")
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

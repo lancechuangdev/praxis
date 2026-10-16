@@ -61,3 +61,21 @@ func TestLifecycleCaptureIsOptInAndValidated(t *testing.T) {
 		t.Fatal("invalid capture flag accepted")
 	}
 }
+
+func TestWorkflowObservationIsIndependentAndOptIn(t *testing.T) {
+	t.Setenv("ORDER_WORKFLOW_OBSERVE", "")
+	t.Setenv("ORDER_LIFECYCLE_CAPTURE", "false")
+	cfg, err := Load()
+	if err != nil || cfg.WorkflowObserve {
+		t.Fatalf("default observe=%v error=%v", cfg.WorkflowObserve, err)
+	}
+	t.Setenv("ORDER_WORKFLOW_OBSERVE", "true")
+	cfg, err = Load()
+	if err != nil || !cfg.WorkflowObserve || cfg.LifecycleCapture {
+		t.Fatalf("observe=%v capture=%v error=%v", cfg.WorkflowObserve, cfg.LifecycleCapture, err)
+	}
+	t.Setenv("ORDER_WORKFLOW_OBSERVE", "invalid")
+	if _, err := Load(); err == nil {
+		t.Fatal("invalid observation flag accepted")
+	}
+}

@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	LifecycleCapture           bool
+	WorkflowObserve            bool
 	HTTPAddress                string
 	DatabaseURL                string
 	SagaRetryInterval          time.Duration
@@ -45,12 +46,17 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	observe, err := strconv.ParseBool(value("ORDER_WORKFLOW_OBSERVE", "false"))
+	if err != nil {
+		return Config{}, errors.New("ORDER_WORKFLOW_OBSERVE must be true or false")
+	}
 	capture, err := strconv.ParseBool(value("ORDER_LIFECYCLE_CAPTURE", "false"))
 	if err != nil {
 		return Config{}, errors.New("ORDER_LIFECYCLE_CAPTURE must be true or false")
 	}
 	c := Config{
 		LifecycleCapture:           capture,
+		WorkflowObserve:            observe,
 		HTTPAddress:                value("ORDER_HTTP_ADDRESS", ":8083"),
 		DatabaseURL:                value("ORDER_DATABASE_URL", "postgres://ledger:ledger@localhost:5433/cex_ledger?sslmode=disable"),
 		SagaRetryInterval:          duration("ORDER_SAGA_RETRY_INTERVAL", time.Second),

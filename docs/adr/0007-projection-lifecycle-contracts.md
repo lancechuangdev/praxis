@@ -82,7 +82,7 @@ Capture defaults off and has no activated Kafka publisher. A source-side dispatc
 locks the earliest unpublished fact per order through acknowledgement, records
 publication and applies bounded retry backoff. An unwired runtime worker adds
 bounded concurrency, jittered startup/idle/error pacing, joined cancellation and
-dispatch counters. It is not connected to Order startup or its metrics handler;
+dispatch counters. It is not connected to Order startup or its metrics handler.
 The Kafka adapter now supplies TLS-only synchronous all-in-sync-replica writes
 to `order.events.v1` keyed by order ID, strict payload-coordinate validation,
 immutable source bytes/time and a bounded send-call deadline. It disables
@@ -91,8 +91,16 @@ activation remains pending. This is not producer fencing:
 connection loss can permit late delivery, so Kafka activation still requires
 fencing or consumer stale-version handling plus deduplication. The integration
 suite covers concurrent claims, retry order, invalid heads and acknowledgement
-loss; execution against PostgreSQL remains an acceptance requirement. The expand-only migration
-reserves unpublished version 1 for existing sagas and advances versions even
+loss; execution against PostgreSQL remains an acceptance requirement.
+
+Independently opt-in source-outbox observation now reports pending
+and retried counts, oldest pending age and explicit collection failure through
+Order's metrics endpoint. It uses a separate one-connection read-only pool with
+query deadlines, does not affect readiness and cannot activate publication.
+Deployed query-cost and telemetry verification remain acceptance gates.
+
+The expand-only source-capture migration reserves unpublished version 1 for
+existing sagas and advances versions even
 while capture is off, making missing history explicit. See the
 [Order rollout and rollback procedure](../../orderservice/README.md#phase-6-workflow-source-capture).
 No topics, registry, consumers or Atlas resources are provisioned. Before publishing:

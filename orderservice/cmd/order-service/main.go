@@ -47,6 +47,16 @@ func main() {
 		log.Error("saga migrations", "error", err)
 		os.Exit(1)
 	}
+	var workflowMetrics func(context.Context) string
+	if cfg.WorkflowObserve {
+		observationDB, observationErr := order.OpenWorkflowObservationDB(ctx, cfg.DatabaseURL)
+		if observationErr != nil {
+			log.Error("workflow observation configuration", "error", observationErr)
+			os.Exit(1)
+		}
+		defer observationDB.Close()
+		workflowMetrics = (order.WorkflowOutboxObserver{DB: observationDB}).Prometheus
+	}
 	tracingShutdown, err := observability.SetupTracing(ctx, "order-service")
 	if err != nil {
 		log.Error("tracing setup", "error", err)
@@ -165,7 +175,7 @@ func main() {
 		}
 		return readinessErr
 	}
-	server := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Service: service, Ready: ready}.Handler(), "order.http"), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Service: service, Ready: ready, WorkflowMetrics: workflowMetrics}.Handler(), "order.http"), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	errCh := make(chan error, 1)
 	go func() { errCh <- server.ListenAndServe() }()
 	log.Info("order service started", "http", cfg.HTTPAddress, "ledger_mode", cfg.LedgerMode, "matching_mode", cfg.MatchingMode, "risk_remote_mode", cfg.RiskRemoteMode, "lifecycle_capture", cfg.LifecycleCapture)

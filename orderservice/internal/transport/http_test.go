@@ -60,6 +60,29 @@ func TestMetricsExposeSagaBacklogAndExpiredLeases(t *testing.T) {
 	}
 }
 
+func TestMetricsWorkflowObservation(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		h := HTTP{Service: &order.Service{Metrics: &order.Metrics{}}}
+		if enabled {
+			h.WorkflowMetrics = func(ctx context.Context) string {
+				if ctx == nil {
+					t.Fatal("missing request context")
+				}
+				return "order_workflow_outbox_observation_up 0\n"
+			}
+		}
+		response := httptest.NewRecorder()
+		h.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+		want := "order_workflow_outbox_observation_enabled 0\n"
+		if enabled {
+			want = "order_workflow_outbox_observation_enabled 1\norder_workflow_outbox_observation_up 0\n"
+		}
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), want) || !strings.Contains(response.Body.String(), "order_requests_total 0\n") {
+			t.Fatal(response.Body.String())
+		}
+	}
+}
+
 type captureLedger struct{ request order.Request }
 
 func (c *captureLedger) Reserve(_ context.Context, request order.Request) (order.Reservation, error) {

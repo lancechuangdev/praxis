@@ -728,6 +728,45 @@ close may drain pending sends and is not context-bounded; account for its
 configured network timeouts in the process termination budget. The worker,
 adapter and metrics remain disconnected from service startup.
 
+### Workflow source-outbox observation (opt-in)
+
+Set `ORDER_WORKFLOW_OBSERVE=true` to add source-outbox gauges to Order's existing
+`/metrics` endpoint. The default is `false`. Observation is independent of
+capture and publication: keep it enabled when capture or a future publisher is
+stopped so retained backlog remains visible. This flag does not activate the
+Kafka publisher or workflow worker.
+
+The observer uses a separate lazy pool with at most one connection per Order
+pod, zero minimum connections, read-only sessions, a 500 ms server statement
+timeout, and a 500 ms context budget per scrape including connection acquisition.
+Account for this extra connection in the deployment's database budget. The
+query aggregates unpublished rows and can use the existing partial index; large
+backlogs can exceed its budget. Measure query cost before increasing scrape
+frequency or deploying broadly. Concurrent scrapes share the same connection
+limit, and each scrape has its own timeout. The pool uses `ORDER_DATABASE_URL`;
+it does not introduce a separate database identity.
+
+| Metric | Meaning |
+| --- | --- |
+| `order_workflow_outbox_observation_enabled` | Whether this process has observation configured. |
+| `order_workflow_outbox_observation_up` | Query success in this scrape; absent when disabled. |
+| `order_workflow_outbox_pending` | All unpublished facts, including delayed retries and blocked successors. |
+| `order_workflow_outbox_retried_pending` | Unpublished facts with a persisted attempt count greater than zero; a gauge, not an attempt counter. |
+| `order_workflow_outbox_oldest_pending_age_seconds` | Age of the oldest unpublished business occurrence, clamped to zero; zero for an empty backlog. |
+
+Failures omit all three backlog gauges rather than presenting a healthy zero or
+stale cached value. The endpoint continues serving application counters with
+HTTP 200 while observation reports `up=0`; database errors and business
+identifiers are not emitted. Observation availability does not alter readiness.
+Investigate repeated `up=0`, unexpected disabled observation and sustained
+backlog/age growth. Numeric alert thresholds remain subject to the deployed
+baseline, including whether publication is intentionally off. Each replica
+observes the same table: do not sum backlog gauges across pods. Roll back by
+setting `ORDER_WORKFLOW_OBSERVE=false` and restarting; source facts, delivery
+markers, schemas and broker configuration remain intact. PostgreSQL-backed
+observer tests require `ORDER_TEST_DATABASE_URL`; deployment query-cost and
+failure evidence remain acceptance gates.
+
 Rollback this foundation by reverting the dispatcher code while retaining the
 migration and source rows. Once publication is wired, stop the worker to roll
 back; preserve its topic, acknowledged rows and source facts for audit/replay.

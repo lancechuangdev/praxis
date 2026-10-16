@@ -392,6 +392,10 @@ shutdown and dispatch counters. A TLS-only synchronous Kafka adapter validates
 workflow coordinates, preserves source bytes and occurrence time, keys by order
 and requires all in-sync replica acknowledgements with one send attempt per
 dispatch. Runtime activation and failure-fenced publication remain pending.
+Opt-in source-outbox observation exposes pending/retried counts and oldest
+pending age through Order metrics using a separate bounded read-only pool;
+observation failure is explicit and does not affect readiness. Deployed query
+cost and telemetry evidence remain acceptance gates.
 Existing Ledger and Matching producers still emit JSON. Ledger producer
 adoption, remaining lifecycle facts, consumer foundation, Atlas deployment,
 APIs and rebuild/cutover remain pending. See
