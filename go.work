@@ -6,5 +6,6 @@ use (
 	./matchingengine
 	./orderservice
 	./outboxrelay
+	./projectionservice
 	./riskservice
 )

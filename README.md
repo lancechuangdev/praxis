@@ -14,6 +14,7 @@ The repository contains:
 - `ledgerservice`: PostgreSQL-backed double-entry ledger and reservation APIs.
 - `matchingengine`: durable PostgreSQL-backed order admission with a transactional outbox and asynchronous Kafka relay.
 - `outboxrelay`: batched PostgreSQL-outbox-to-Kafka relay.
+- `projectionservice`: initial Order workflow projection transaction protocol; storage and consumer runtime remain pending.
 - `infra/aws`: independent VPC, Amazon MSK, Kafka topics, and Multi-AZ PostgreSQL Terraform.
 
 ## Implementation status
@@ -24,6 +25,7 @@ The repository contains:
 | Order Service | Implements synchronous risk simulation, Ledger reservation over gRPC, and Matching Engine admission over gRPC. |
 | Matching Engine | Implements durable per-symbol order admission and a transactional outbox with an asynchronous relay. It does not yet execute matches or emit fills. |
 | Outbox Relay | Independently runnable batched relay for publishing PostgreSQL outbox records to Kafka; it is not started by the main Compose file. |
+| Projection Service | Order workflow validation, deduplication and sequencing protocol with transaction-model tests; no deployed store, broker consumer or read API yet. |
 | AWS infrastructure | Terraform reference configuration for an isolated VPC, Amazon MSK, Kafka topics, and Multi-AZ PostgreSQL. Applying it creates billable AWS resources and requires environment-specific review. |
 | Deposit architecture | Reference design only; the Address, Indexer, Risk, Treasury, Wallet, Notification, and Reconciliation services are not implemented here. |
 
@@ -36,6 +38,7 @@ The repository contains:
 - [Order Service and load tests](orderservice/README.md)
 - [Matching Engine](matchingengine/README.md)
 - [Outbox Relay](outboxrelay/README.md)
+- [Projection Service foundation](projectionservice/README.md)
 - [AWS infrastructure](infra/aws/README.md)
 - [EKS workloads and handoff](infra/k8s/README.md)
 - [Microservices migration architecture](docs/microservices-migration.md)

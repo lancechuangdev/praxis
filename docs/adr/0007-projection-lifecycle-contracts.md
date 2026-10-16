@@ -126,7 +126,11 @@ migration or in-place projection rebuild is authorized by this ADR.
 The first slice establishes a typed foundation without pretending current
 streams are rebuild-complete. The next implementation work is ordered Order
 Kafka publication, atomic Ledger producer adoption and the consumer's
-inbox/version/gap/DLQ foundation. Order-history completion still requires
+inbox/version/gap/DLQ foundation. The initial Order workflow transaction protocol
+is now implemented in `projectionservice`; [ADR 0008](0008-workflow-projection-transaction-protocol.md)
+defines its deduplication, sequencing and storage requirements. Storage and
+broker adapters, gap recovery and DLQ handoff remain pending.
+Order-history completion still requires
 authoritative Matching lifecycle facts. Atlas reads,
 rebuild generations, reconciled cutover and financial-authorization isolation
 remain Phase 6 exit requirements.

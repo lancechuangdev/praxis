@@ -5,7 +5,11 @@ projection-rebuild tooling. The initial Phase 6
 [typed lifecycle contracts](adr/0007-projection-lifecycle-contracts.md) are
 implemented in `api/proto/events/lifecycle/v1` with Go validation and codecs;
 Order has opt-in atomic workflow source capture, but Kafka publication, Ledger
-producer adoption and projection consumers remain pending.
+producer adoption and projection consumer activation remain pending. An initial
+Order workflow transaction protocol in `projectionservice` now supplies strict
+validation, exact-byte deduplication, contiguous sequence checks and isolated
+shadow/rebuild targets. It has no storage or broker adapter; see
+[ADR 0008](adr/0008-workflow-projection-transaction-protocol.md).
 
 Event replay means processing previously stored events again. It lets a
 developer repair or create derived data without repeating the original

@@ -396,8 +396,12 @@ Opt-in source-outbox observation exposes pending/retried counts and oldest
 pending age through Order metrics using a separate bounded read-only pool;
 observation failure is explicit and does not affect readiness. Deployed query
 cost and telemetry evidence remain acceptance gates.
+An initial Order workflow consumer transaction protocol now lives in
+`projectionservice`, with strict record validation, target-scoped inbox receipts,
+contiguous versions and atomic storage contracts. Storage adapters and broker
+runtime remain unimplemented; see [ADR 0008](adr/0008-workflow-projection-transaction-protocol.md).
 Existing Ledger and Matching producers still emit JSON. Ledger producer
-adoption, remaining lifecycle facts, consumer foundation, Atlas deployment,
+adoption, remaining lifecycle facts, the remaining consumer foundation, Atlas deployment,
 APIs and rebuild/cutover remain pending. See
 [ADR 0007](adr/0007-projection-lifecycle-contracts.md).
 
@@ -430,7 +434,13 @@ Work:
    fill/terminal facts remain pending; this item is not yet complete.
 2. Build a reusable consumer foundation with inbox deduplication, schema
    validation, sequence checks, lag metrics, DLQ handoff, shadow mode, and
-   rebuild mode.
+   rebuild mode. The initial Order workflow processor validates source records,
+   checks exact-byte inbox receipts and contiguous versions, preserves owner
+   identity, and requires atomic snapshot/inbox commits within isolated shadow
+   or rebuild targets. Transaction-model tests cover rollback, ambiguous commit,
+   concurrent duplication, gaps/stale conflicts and target isolation. Atlas
+   persistence, Kafka offset barriers, bounded gap recovery, lag/outcome metrics
+   and atomic DLQ handoff remain pending; this item is not complete.
 3. Build MongoDB Atlas on AWS projections for customer order history,
    denormalized portfolio and activity views, and notification history, with
    private EKS connectivity plus authenticated snapshot and history APIs.
