@@ -128,8 +128,12 @@ streams are rebuild-complete. The next implementation work is ordered Order
 Kafka publication, atomic Ledger producer adoption and the consumer's
 inbox/version/gap/DLQ foundation. The initial Order workflow transaction protocol
 is now implemented in `projectionservice`; [ADR 0008](0008-workflow-projection-transaction-protocol.md)
-defines its deduplication, sequencing and storage requirements. Storage and
-broker adapters, gap recovery and DLQ handoff remain pending.
+defines its deduplication, sequencing and storage requirements. A MongoDB
+transaction adapter is implemented with opt-in replica-set tests; deployed
+storage verification, consumer runtime wiring, gap recovery and DLQ handoff
+remain pending. A fail-stop Kafka consumer adapter now provides sequential
+processing/commit barriers and isolated target groups; live broker acceptance
+is still required.
 Order-history completion still requires
 authoritative Matching lifecycle facts. Atlas reads,
 rebuild generations, reconciled cutover and financial-authorization isolation

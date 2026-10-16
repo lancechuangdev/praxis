@@ -398,8 +398,15 @@ observation failure is explicit and does not affect readiness. Deployed query
 cost and telemetry evidence remain acceptance gates.
 An initial Order workflow consumer transaction protocol now lives in
 `projectionservice`, with strict record validation, target-scoped inbox receipts,
-contiguous versions and atomic storage contracts. Storage adapters and broker
-runtime remain unimplemented; see [ADR 0008](adr/0008-workflow-projection-transaction-protocol.md).
+contiguous versions and atomic storage contracts. A MongoDB adapter now provides
+target-scoped snapshot/inbox transactions, unique IDs, conditional version writes
+and bounded race retries. Replica-set tests are opt-in and live Atlas acceptance
+remains pending. A TLS-only Kafka adapter adds isolated consumer groups,
+sequential processing and synchronous commits, bounded reader settings and
+fail-stop handling for every unacknowledged record. Controlled-reader tests
+cover failed-head barriers, ambiguous commits, deadlines and cancellation.
+Executable/runtime activation and live broker evidence remain pending; see
+[ADR 0008](adr/0008-workflow-projection-transaction-protocol.md).
 Existing Ledger and Matching producers still emit JSON. Ledger producer
 adoption, remaining lifecycle facts, the remaining consumer foundation, Atlas deployment,
 APIs and rebuild/cutover remain pending. See
@@ -438,8 +445,11 @@ Work:
    checks exact-byte inbox receipts and contiguous versions, preserves owner
    identity, and requires atomic snapshot/inbox commits within isolated shadow
    or rebuild targets. Transaction-model tests cover rollback, ambiguous commit,
-   concurrent duplication, gaps/stale conflicts and target isolation. Atlas
-   persistence, Kafka offset barriers, bounded gap recovery, lag/outcome metrics
+   concurrent duplication, gaps/stale conflicts and target isolation. A MongoDB
+   transaction adapter and opt-in replica-set concurrency/rollback tests are
+   implemented. The Kafka adapter enforces a one-record processing/commit barrier
+   and closes on failure; controlled-reader tests cover offset safety and restart
+   rules. Deployed Atlas/Kafka verification, runtime wiring, bounded gap recovery, lag/outcome metrics
    and atomic DLQ handoff remain pending; this item is not complete.
 3. Build MongoDB Atlas on AWS projections for customer order history,
    denormalized portfolio and activity views, and notification history, with

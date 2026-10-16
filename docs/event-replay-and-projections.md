@@ -8,7 +8,10 @@ Order has opt-in atomic workflow source capture, but Kafka publication, Ledger
 producer adoption and projection consumer activation remain pending. An initial
 Order workflow transaction protocol in `projectionservice` now supplies strict
 validation, exact-byte deduplication, contiguous sequence checks and isolated
-shadow/rebuild targets. It has no storage or broker adapter; see
+shadow/rebuild targets. A MongoDB snapshot/inbox transaction adapter is now
+implemented with opt-in replica-set tests. A fail-stop Kafka adapter commits
+only after successful sequential processing. Runtime activation and live
+storage/broker acceptance remain pending. See
 [ADR 0008](adr/0008-workflow-projection-transaction-protocol.md).
 
 Event replay means processing previously stored events again. It lets a

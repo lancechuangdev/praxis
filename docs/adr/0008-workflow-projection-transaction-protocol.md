@@ -1,6 +1,6 @@
 # ADR 0008: Order workflow projection transaction protocol
 
-- Status: Accepted; processor implemented, storage and broker adapters pending
+- Status: Accepted; processor, MongoDB and Kafka adapters implemented; runtime acceptance pending
 - Date: 2026-10-15
 
 ## Context
@@ -69,12 +69,38 @@ duplicates, rollback at every storage operation/commit boundary, lost commit
 acknowledgement, target isolation and validation before storage. They do not
 prove a real storage adapter's atomicity or broker behavior.
 
-Before runtime activation, implement and test Atlas transactions, unique
+Before runtime activation, verify the adapter against Atlas transactions, unique
 indexes, first-document races, database failure/ambiguous commit recovery,
 partition offset barriers, bounded queues/gap recovery, atomic DLQ handoff,
 telemetry and shadow reconciliation. The processor makes no financial calls
 and cannot deliver notifications or authorize mutations. There is no consumer
 runtime, deployed projection store, read API or cutover in this slice.
+
+The repository now includes `projectionservice/internal/mongostore`: target-bound
+snapshot/inbox collections use built-in unique `_id` indexes and session
+transactions with snapshot read concern, primary reads and majority write
+concern. Version/owner conditional replacement protects existing snapshots;
+unique first inserts and bounded whole-transaction retries cover creation
+races. A shared context deadline bounds retries and commit, with separately
+bounded session cleanup. Unknown additive fields and exact quantities remain
+in a binary Protobuf snapshot; the inbox keeps the original-byte digest.
+Provisioning is explicit, clients remain caller-owned, and no runtime is wired.
+See the [adapter procedure](../../projectionservice/README.md#mongodb-workflow-adapter-not-activated)
+for collection constraints and rollback. Integration tests require a disposable
+replica set via `PROJECTION_TEST_MONGODB_URI`; they cover concurrent first
+inserts, gap blocking, rollback after both writes and target isolation. Until
+executed, these tests are not evidence of Atlas transaction acceptance. Live
+outage, failover and ambiguous server commit behavior remain unverified.
+
+The Kafka adapter now uses explicit synchronous commits after one successful
+processor outcome at a time. Processing/commit failures close its single-use
+reader before any later fetch. Restarts require a fresh consumer with the same
+group offsets. Group names isolate an explicit environment/destination namespace,
+mode and generation. TLS, queue/fetch bounds, commit deadlines and controlled
+reader tests are implemented; there is no runtime executable or active group.
+No error is automatically skipped or DLQed. Live rebalance/failure tests,
+bounded gap recovery, DLQ handoff, metrics serving and reconciliation remain
+acceptance work. See the [consumer procedure](../../projectionservice/README.md#kafka-workflow-adapter-not-activated).
 
 Rollback is a code revert before deployment. Future adapter rollback stops
 consumption while retaining source topics, target generations, inbox receipts

@@ -81,8 +81,15 @@ type Processor struct {
 
 var generationName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 
+func (t Target) Validate() error {
+	if !generationName.MatchString(t.Generation) || (t.Mode != Shadow && t.Mode != Rebuild) {
+		return errors.New("workflow projection requires an isolated generation and shadow/rebuild mode")
+	}
+	return nil
+}
+
 func New(target Target, store Store) (*Processor, error) {
-	if !generationName.MatchString(target.Generation) || (target.Mode != Shadow && target.Mode != Rebuild) || store == nil {
+	if target.Validate() != nil || store == nil {
 		return nil, errors.New("workflow projection requires an isolated generation, shadow/rebuild mode and transactional store")
 	}
 	return &Processor{target: target, store: store}, nil
