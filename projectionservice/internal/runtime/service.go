@@ -2,12 +2,15 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"sync/atomic"
 	"time"
+
+	"praxis/projectionservice/internal/kafkaconsumer"
 )
 
 var ErrConsumerStopped = errors.New("projection consumer stopped; operator intervention required")
@@ -16,6 +19,7 @@ type Consumer interface {
 	Run(context.Context) error
 	Running() bool
 	Prometheus() string
+	Status() kafkaconsumer.Status
 }
 
 // Service retains health and metrics after a consumer failure. It never retries
@@ -27,6 +31,20 @@ type Service struct {
 
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		var consumer *kafkaconsumer.Status
+		if s.Worker != nil {
+			status := s.Worker.Status()
+			consumer = &status
+		}
+		_ = json.NewEncoder(w).Encode(struct {
+			Enabled  bool                  `json:"enabled"`
+			Failed   bool                  `json:"failed"`
+			Consumer *kafkaconsumer.Status `json:"consumer,omitempty"`
+		}{Enabled: s.Worker != nil, Failed: s.failed.Load(), Consumer: consumer})
+	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprintln(w, "ok")

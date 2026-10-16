@@ -415,6 +415,10 @@ credentials are retrieved only during handshakes, and tokens/errors are validate
 without disclosure. Live identity/authorization/renewal evidence, runtime
 activation and broker acceptance remain pending; see
 [ADR 0008](adr/0008-workflow-projection-transaction-protocol.md).
+The runtime now retains bounded sanitized consumer stage/failure diagnostics
+through `/status` and a fixed-label failure gauge, including current source and
+last observed commit coordinates without exposing business data. These are
+process-local diagnostics, not broker lag or durable checkpoints.
 Existing Ledger and Matching producers still emit JSON. Ledger producer
 adoption, remaining lifecycle facts, the remaining consumer foundation, Atlas deployment,
 APIs and rebuild/cutover remain pending. See
@@ -465,7 +469,10 @@ Work:
    available. Tests cover configuration, disabled operation, shutdown and
    failure readiness. MSK IAM OAuth now uses the AWS signer with bounded signing,
    expiry/cancellation checks and redacted errors; unit tests require no AWS
-   identity. Deployed Atlas/Kafka and IAM authorization/renewal verification,
+   identity. Bounded status/failure diagnostics now retain failed-head and last
+   acknowledged coordinates without business keys, payloads or raw errors;
+   tests cover gap/fetch/commit ambiguity, redaction and snapshot isolation.
+   Deployed Atlas/Kafka and IAM authorization/renewal verification,
    bounded gap recovery and broker lag metrics
    and atomic DLQ handoff remain pending; this item is not complete.
 3. Build MongoDB Atlas on AWS projections for customer order history,

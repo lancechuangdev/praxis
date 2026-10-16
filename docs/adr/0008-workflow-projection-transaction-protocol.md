@@ -129,6 +129,16 @@ provisions collections or resets offsets. Runtime tests cover disabled mode,
 configuration, failure diagnostics and shutdown; live deployment and end-to-end
 broker/Atlas evidence remain acceptance gates.
 
+The runtime also exposes a bounded, process-local `/status` snapshot and a
+fixed-label failure gauge. Diagnostics include stage, a classified reason and
+source partition/offset when known, plus the last observed commit acknowledgement.
+They omit business keys, event IDs, payloads, headers, credentials and raw errors.
+Fetch failure does not blame the previous record; an ambiguous commit does not
+advance the observed acknowledgement. Status is not an offset authority or
+complete partition inventory. Operator offset reset, gap skipping and read
+cutover remain outside this endpoint's contract. Normal cancellation is not a
+failure. Defensive snapshot copies prevent callers from mutating shared state.
+
 Rollback is a code revert before deployment. Future adapter rollback stops
 consumption while retaining source topics, target generations, inbox receipts
 and recorded offsets. No in-place rebuild or destructive migration is enabled.

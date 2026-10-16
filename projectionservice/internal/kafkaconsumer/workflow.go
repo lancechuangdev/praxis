@@ -81,6 +81,7 @@ type Consumer struct {
 	commitTimeout                                                                           time.Duration
 	started                                                                                 atomic.Bool
 	active                                                                                  atomic.Int64
+	status                                                                                  atomic.Pointer[Status]
 	fetched, applied, duplicates, committed, fetchFailures, processFailures, commitFailures atomic.Uint64
 }
 
@@ -114,9 +115,27 @@ func (c *Consumer) Run(ctx context.Context) (result error) {
 		return errors.New("workflow consumer is single-use")
 	}
 	c.active.Store(1)
-	defer func() { result = errors.Join(result, c.reader.Close()) }()
-	defer c.active.Store(0)
+	state := Status{Stage: "fetch"}
+	defer func() {
+		closeErr := c.reader.Close()
+		if closeErr != nil && state.Failure == nil && ctx.Err() == nil {
+			state.Failure = &Failure{Stage: "close", Reason: failureReason(closeErr)}
+			c.publishStatus(state)
+		}
+		result = errors.Join(result, closeErr)
+	}()
+	defer func() {
+		c.active.Store(0)
+		if result != nil && ctx.Err() == nil {
+			state.Failure = &Failure{Stage: state.Stage, Reason: failureReason(result)}
+		}
+		state.Stage = "stopped"
+		c.publishStatus(state)
+	}()
 	for {
+		state.Stage = "fetch"
+		state.Current = nil
+		c.publishStatus(state)
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -129,9 +148,14 @@ func (c *Consumer) Run(ctx context.Context) (result error) {
 			return fmt.Errorf("fetch workflow: %w", err)
 		}
 		c.fetched.Add(1)
+		state.Stage = "process"
+		if message.Topic == "order.events.v1" && message.Partition >= 0 && message.Offset >= 0 {
+			state.Current = &Position{Topic: "order.events.v1", Partition: message.Partition, Offset: message.Offset}
+		}
+		c.publishStatus(state)
 		if message.Partition < 0 || message.Offset < 0 {
 			c.processFailures.Add(1)
-			return errors.New("invalid workflow source coordinates")
+			return fmt.Errorf("%w: invalid workflow source coordinates", workflow.ErrInvalid)
 		}
 		outcome, err := c.processor.Process(ctx, message.Topic, message.Key, message.Value)
 		if err != nil {
@@ -151,6 +175,8 @@ func (c *Consumer) Run(ctx context.Context) (result error) {
 			return err
 		}
 		commitCtx, cancel := context.WithTimeout(ctx, c.commitTimeout)
+		state.Stage = "commit"
+		c.publishStatus(state)
 		err = c.reader.CommitMessages(commitCtx, message)
 		cancel()
 		if err != nil {
@@ -158,6 +184,7 @@ func (c *Consumer) Run(ctx context.Context) (result error) {
 			return fmt.Errorf("commit workflow offset: %w", err)
 		}
 		c.committed.Add(1)
+		state.LastCommitted = state.Current
 	}
 }
 
@@ -170,11 +197,17 @@ func (c *Consumer) Close() error {
 	if c.reader == nil {
 		return nil
 	}
+	c.publishStatus(Status{Stage: "closed"})
 	return c.reader.Close()
 }
 
 func (c *Consumer) Prometheus() string {
-	return fmt.Sprintf("projection_workflow_consumer_active %d\nprojection_workflow_fetched_total %d\nprojection_workflow_applied_total %d\nprojection_workflow_duplicates_total %d\nprojection_workflow_committed_total %d\nprojection_workflow_fetch_failures_total %d\nprojection_workflow_process_failures_total %d\nprojection_workflow_commit_failures_total %d\n", c.active.Load(), c.fetched.Load(), c.applied.Load(), c.duplicates.Load(), c.committed.Load(), c.fetchFailures.Load(), c.processFailures.Load(), c.commitFailures.Load())
+	status := c.Status()
+	failure := ""
+	if status.Failure != nil {
+		failure = fmt.Sprintf("projection_workflow_failure{stage=%q,reason=%q} 1\n", status.Failure.Stage, status.Failure.Reason)
+	}
+	return failure + fmt.Sprintf("projection_workflow_consumer_active %d\nprojection_workflow_fetched_total %d\nprojection_workflow_applied_total %d\nprojection_workflow_duplicates_total %d\nprojection_workflow_committed_total %d\nprojection_workflow_fetch_failures_total %d\nprojection_workflow_process_failures_total %d\nprojection_workflow_commit_failures_total %d\n", c.active.Load(), c.fetched.Load(), c.applied.Load(), c.duplicates.Load(), c.committed.Load(), c.fetchFailures.Load(), c.processFailures.Load(), c.commitFailures.Load())
 }
 
 func (c *Consumer) Running() bool { return c.active.Load() == 1 }

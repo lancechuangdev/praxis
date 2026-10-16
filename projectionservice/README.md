@@ -221,7 +221,8 @@ partitions, the projection is caught up, or MongoDB remains healthy during an
 idle period. The loop becomes unready before reader cleanup. A consumer failure
 leaves HTTP running, returns 503 readiness, sets
 `projection_workflow_consumer_failed 1`, and retains counters for inspection.
-Health stays 200. The process does not restart consumption. Resolve the error
+Health stays 200. `/status` retains sanitized process-local diagnostics as
+described below. The process does not restart consumption. Resolve the error
 and restart with the same target/namespace; do not reset offsets to bypass it.
 
 On SIGINT/SIGTERM, the service cancels consumption, shuts HTTP down with a
@@ -274,3 +275,47 @@ denial outside the exact topic/group, credential renewal, broker reconnect and
 shutdown in non-production. Live evidence remains pending. Roll back by stopping
 consumption and restoring the prior reviewed authentication configuration while
 retaining target collections and group offsets.
+
+### Consumer failure diagnostics
+
+`GET /status` returns JSON with `enabled`, `failed`, and, when enabled, a bounded
+consumer snapshot. Responses use `Cache-Control: no-store`. This is an internal
+operations endpoint protected by the same private-listener/network policy as
+metrics; it is not a customer projection API.
+
+The consumer reports a stage (`not_started`, `fetch`, `process`, `commit`,
+`stopped` or `closed`), the current source coordinates when known, the last
+commit acknowledgement observed by this process, and a fixed failure stage and
+reason. Coordinates contain only the fixed source topic, partition and offset.
+No business key, event ID, payload, headers, credentials, broker response or raw
+error is included. Returned snapshots do not expose mutable internal state.
+
+For example, a version gap can leave this diagnostic fragment:
+
+```json
+{
+  "stage": "stopped",
+  "current": {"topic": "order.events.v1", "partition": 0, "offset": 11},
+  "last_committed": {"topic": "order.events.v1", "partition": 0, "offset": 10},
+  "failure": {"stage": "process", "reason": "gap"}
+}
+```
+
+`projection_workflow_failure{stage="process",reason="gap"} 1` exposes the same
+failure as a gauge. Labels come from bounded internal codes; offsets and business
+identifiers never become metric labels. Reasons are `gap`, `stale`, `conflict`,
+`invalid`, `deadline`, `cancelled`, `authentication`, `authorization`, `closed`
+or generic `error`. Normal parent-context cancellation does not set failure.
+The gauge is absent before failure and resets with a new process/consumer.
+
+Use a failed process/commit coordinate to identify the retained source record
+through authorized broker tooling. A fetch failure has no current coordinate;
+the preceding successful record is not marked as faulty. A failed commit may
+have succeeded at Kafka despite a lost acknowledgement, so it is not added to
+`last_committed`. These fields are neither a durable checkpoint nor a complete
+partition/group inventory. They do not measure consumer lag and must never be
+used to reset offsets, skip a gap or select read cutover. Preserve the original
+group and let inbox deduplication resolve uncertain redelivery. Snapshot memory
+is bounded independently of event count and partition cardinality. Tests cover
+blocked-head coordinates, prior acknowledgements, commit ambiguity, sanitized
+reason codes, caller mutation and graceful cancellation.

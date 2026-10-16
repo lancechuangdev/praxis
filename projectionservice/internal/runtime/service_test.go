@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"praxis/projectionservice/internal/kafkaconsumer"
 )
 
 type fakeConsumer struct {
@@ -31,6 +33,9 @@ func (f *fakeConsumer) Run(ctx context.Context) error {
 }
 func (f *fakeConsumer) Running() bool      { return f.active.Load() }
 func (f *fakeConsumer) Prometheus() string { return "projection_workflow_fetched_total 3\n" }
+func (f *fakeConsumer) Status() kafkaconsumer.Status {
+	return kafkaconsumer.Status{Stage: "stopped", Failure: &kafkaconsumer.Failure{Stage: "process", Reason: "gap"}}
+}
 
 func TestDisabledEndpoints(t *testing.T) {
 	s := &Service{}
@@ -40,6 +45,7 @@ func TestDisabledEndpoints(t *testing.T) {
 		contains string
 	}{
 		{"/healthz", 200, "ok"}, {"/readyz", 503, "unavailable"}, {"/metrics", 200, "projection_workflow_enabled 0\n"},
+		{"/status", 200, `"enabled":false`},
 	} {
 		response := httptest.NewRecorder()
 		s.Handler().ServeHTTP(response, httptest.NewRequest("GET", tc.path, nil))
@@ -89,6 +95,7 @@ func TestFailureRetainsMetricsAndStopsReadinessUntilShutdown(t *testing.T) {
 		contains string
 	}{
 		{"/healthz", 200, "ok"}, {"/readyz", 503, "unavailable"}, {"/metrics", 200, "projection_workflow_consumer_failed 1\n"},
+		{"/status", 200, `"reason":"gap"`},
 	} {
 		response := httptest.NewRecorder()
 		s.Handler().ServeHTTP(response, httptest.NewRequest("GET", tc.path, nil))
