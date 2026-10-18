@@ -26,6 +26,24 @@ func TestDatabaseStatementDefaults(t *testing.T) {
 	}
 }
 
+func TestLifecycleCaptureIsExplicit(t *testing.T) {
+	t.Setenv("LEDGER_DATABASE_WRITER_URL", "postgres://test")
+	t.Setenv("LEDGER_LIFECYCLE_CAPTURE", "")
+	cfg, err := Load()
+	if err != nil || cfg.LifecycleCapture {
+		t.Fatal("capture not disabled by default")
+	}
+	t.Setenv("LEDGER_LIFECYCLE_CAPTURE", "true")
+	cfg, err = Load()
+	if err != nil || !cfg.LifecycleCapture {
+		t.Fatal("capture flag ignored")
+	}
+	t.Setenv("LEDGER_LIFECYCLE_CAPTURE", "invalid")
+	if _, err := Load(); err == nil {
+		t.Fatal("invalid capture flag accepted")
+	}
+}
+
 func TestDatabaseConnectionFromSeparateEnvironment(t *testing.T) {
 	t.Setenv("LEDGER_DATABASE_WRITER_URL", "")
 	t.Setenv("LEDGER_DB_WRITER_HOST", "ledger.example.internal")

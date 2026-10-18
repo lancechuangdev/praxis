@@ -128,6 +128,29 @@ expected checksum and fails startup if any is missing or changed. ECS sets this
 to `false`. The AWS runtime uses a restricted database role and a separate
 secret from the one-off migration task.
 
+## Lifecycle source capture
+
+`LEDGER_LIFECYCLE_CAPTURE=false` preserves the default financial commit path.
+After applying migration 005, enabling it captures validated Protobuf journal
+facts in `ledger_journal_outbox` atomically with financial writes. Invalid facts
+abort the transaction. Replays retain the original fact; source rows are
+append-only. Migration 006 adds separate delivery bookkeeping and enqueues both
+existing and newly captured facts. A bounded dispatcher and synchronous Kafka
+adapter for `ledger.journals.v1` are implemented but are not wired into the
+executable yet. Consumers must deduplicate journals and check account versions;
+this journal-keyed stream does not guarantee account ordering.
+
+Enrollment requires a reviewed account baseline and consistent writer settings.
+Capture does not backfill history, and disabling it introduces projection gaps.
+See [ADR 0009](../docs/adr/0009-ledger-journal-source-capture.md) for the contract
+and remaining deployment gates.
+
+Run database integration tests against a disposable migrated database:
+
+```bash
+LEDGER_TEST_DATABASE_URL='postgres://...' go test -race ./internal/store
+```
+
 ## Reserve funds
 
 Alice must first have available funds, normally from a posted deposit:

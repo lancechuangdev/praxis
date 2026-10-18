@@ -423,8 +423,17 @@ Opt-in broker group-lag observation now compares committed offsets with retained
 log bounds across a bounded partition inventory. Missing/out-of-range offsets
 are explicit and incomplete/failed samples omit aggregate lag. Live query-cost,
 IAM authorization and lag accuracy evidence remain environment gates.
-Existing Ledger and Matching producers still emit JSON. Ledger producer
-adoption, remaining lifecycle facts, the remaining consumer foundation, Atlas deployment,
+Ledger now has opt-in atomic Protobuf journal source capture, including complete
+entries, exact balance snapshots and transaction-local previous versions.
+Local PostgreSQL tests cover rollback, replay, competing account updates,
+trade settlement, self-trades and cancellation. Separate delivery bookkeeping,
+a bounded one-fact dispatcher and a TLS-only synchronous Kafka adapter now
+preserve immutable journal bytes and retain acknowledgements. Tests cover
+competing dispatchers, backoff, malformed facts, timeout recovery and immutable
+retries. Executable wiring and live broker verification remain pending. See
+[ADR 0009](adr/0009-ledger-journal-source-capture.md).
+Existing Ledger and Matching Kafka producers still emit JSON. Ledger lifecycle
+runtime publication, remaining lifecycle facts, the remaining consumer foundation, Atlas deployment,
 APIs and rebuild/cutover remain pending. See
 [ADR 0007](adr/0007-projection-lifecycle-contracts.md).
 
@@ -452,8 +461,8 @@ Work:
    adapter tests cover strict coordinates, immutable payloads, synchronous
    acknowledgement, TLS policy and deadline/error propagation. Kafka activation
    and live database verification remain pending. Failure-safe ordered Order
-   Kafka activation, atomic Ledger
-   adoption, reservation lifecycle and Matching
+   Kafka activation, Ledger lifecycle runtime publication,
+   reservation lifecycle and Matching
    fill/terminal facts remain pending; this item is not yet complete.
 2. Build a reusable consumer foundation with inbox deduplication, schema
    validation, sequence checks, lag metrics, DLQ handoff, shadow mode, and
