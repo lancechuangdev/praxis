@@ -19,6 +19,7 @@ type Config struct {
 	DBQueryExecMode                                pgx.QueryExecMode
 	MigrateOnStartup                               bool
 	LifecycleCapture                               bool
+	JournalDispatch                                bool
 	HTTPAddress, GRPCAddress                       string
 	KafkaBrokers                                   []string
 	KafkaAuth                                      kafkaauth.Config
@@ -26,6 +27,10 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	dispatch, err := strconv.ParseBool(value("LEDGER_JOURNAL_DISPATCH", "false"))
+	if err != nil {
+		return Config{}, fmt.Errorf("LEDGER_JOURNAL_DISPATCH must be true or false")
+	}
 	capture, err := strconv.ParseBool(value("LEDGER_LIFECYCLE_CAPTURE", "false"))
 	if err != nil {
 		return Config{}, fmt.Errorf("LEDGER_LIFECYCLE_CAPTURE must be true or false")
@@ -50,6 +55,9 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	if dispatch && kafkaAuth.Mode != "msk_iam" {
+		return Config{}, fmt.Errorf("LEDGER_JOURNAL_DISPATCH requires KAFKA_AUTH_MODE=msk_iam for verified TLS")
+	}
 	writerDatabaseURL, err := databaseURL("LEDGER_DATABASE_WRITER_URL", "LEDGER_DB_WRITER_HOST", "")
 	if err != nil {
 		return Config{}, err
@@ -64,6 +72,14 @@ func Load() (Config, error) {
 	}
 	c := Config{DatabaseURL: writerDatabaseURL, ReaderDatabaseURL: readerDatabaseURL, DBWriterMaxConns: writerMaxConns, DBReaderMaxConns: readerMaxConns, DBStatementCacheCapacity: statementCacheCapacity, DBQueryExecMode: queryExecMode, MigrateOnStartup: migrateOnStartup, HTTPAddress: value("LEDGER_HTTP_ADDRESS", ":8081"), GRPCAddress: value("LEDGER_GRPC_ADDRESS", ":9091"), KafkaBrokers: strings.Split(value("LEDGER_KAFKA_BROKERS", "localhost:9092"), ","), KafkaAuth: kafkaAuth, CommandsTopic: value("LEDGER_COMMANDS_TOPIC", "ledger-commands"), CommandsDLQTopic: value("LEDGER_COMMANDS_DLQ_TOPIC", "ledger.commands.dlq.v1"), ConsumerGroup: value("LEDGER_CONSUMER_GROUP", "cex-ledger-service")}
 	c.LifecycleCapture = capture
+	c.JournalDispatch = dispatch
+	if dispatch {
+		for _, broker := range c.KafkaBrokers {
+			if strings.TrimSpace(broker) == "" {
+				return Config{}, fmt.Errorf("LEDGER_KAFKA_BROKERS must contain nonempty brokers")
+			}
+		}
+	}
 	return c, nil
 }
 

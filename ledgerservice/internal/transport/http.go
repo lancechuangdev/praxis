@@ -12,13 +12,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"praxis/ledgerservice/internal/ledger"
 	"praxis/ledgerservice/internal/observability"
+	"praxis/ledgerservice/internal/store"
 )
 
 type HTTP struct {
-	Store    ledger.Store
-	WriterDB *pgxpool.Pool
-	ReaderDB *pgxpool.Pool
-	Metrics  *observability.Metrics
+	Store         ledger.Store
+	WriterDB      *pgxpool.Pool
+	ReaderDB      *pgxpool.Pool
+	Metrics       *observability.Metrics
+	JournalWorker *store.JournalWorker
 }
 
 func (h HTTP) Handler() http.Handler {
@@ -59,6 +61,9 @@ ledger_db_reader_pool_total_connections %d
 ledger_db_reader_pool_max_connections %d
 `, h.Metrics.ReserveRequests.Load(), h.Metrics.ReserveFailures.Load(), h.Metrics.DLQInvalidEnvelopes.Load(), h.Metrics.DLQInvalidEventPayloads.Load(), h.Metrics.DLQUnsupportedEventTypes.Load(), h.Metrics.DLQUnknownDeterministicFailure.Load(), h.Metrics.DLQHandoffFailures.Load(), writerPool.AcquiredConns(), writerPool.IdleConns(), writerPool.TotalConns(), writerPool.MaxConns(), writerPool.AcquireCount(), writerPool.EmptyAcquireCount(), writerPool.CanceledAcquireCount(), writerPool.AcquireDuration().Seconds(), readerPool.AcquiredConns(), readerPool.IdleConns(), readerPool.TotalConns(), readerPool.MaxConns())
 	_, _ = fmt.Fprint(w, h.Metrics.ReserveDuration.Prometheus("ledger_reserve_duration_seconds"))
+	if h.JournalWorker != nil {
+		_, _ = fmt.Fprint(w, h.JournalWorker.Prometheus())
+	}
 }
 
 func decode(r *http.Request, v any) error {

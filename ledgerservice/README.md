@@ -136,9 +136,19 @@ facts in `ledger_journal_outbox` atomically with financial writes. Invalid facts
 abort the transaction. Replays retain the original fact; source rows are
 append-only. Migration 006 adds separate delivery bookkeeping and enqueues both
 existing and newly captured facts. A bounded dispatcher and synchronous Kafka
-adapter for `ledger.journals.v1` are implemented but are not wired into the
-executable yet. Consumers must deduplicate journals and check account versions;
+adapter for `ledger.journals.v1` are enabled with
+`LEDGER_JOURNAL_DISPATCH=true` (default false). This requires
+`KAFKA_AUTH_MODE=msk_iam`, `AWS_REGION`, and the configured
+`LEDGER_KAFKA_BROKERS`; provision the topic and IAM permissions first.
+Consumers must deduplicate journals and check account versions;
 this journal-keyed stream does not guarantee account ordering.
+
+Dispatch adds one database connection beyond the financial pool budget. One
+worker has a five-second transaction deadline and a three-second send deadline,
+with jittered idle/error pacing. Shutdown joins it before closing resources.
+`ledger_journal_dispatch_*` metrics report attempts, acknowledgements, failures,
+empty polls and active calls. Publication failure does not block financial
+readiness. Capture and dispatch can be enabled independently.
 
 Enrollment requires a reviewed account baseline and consistent writer settings.
 Capture does not backfill history, and disabling it introduces projection gaps.

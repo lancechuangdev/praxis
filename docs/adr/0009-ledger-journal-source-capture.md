@@ -57,9 +57,22 @@ per dispatch. Authentication is supplied through a caller-owned transport. It
 does not promise account ordering or producer fencing; a timed-out send may
 still finish. Existing JSON event publication continues independently.
 
-The dispatcher and Kafka adapter are foundations and are not wired into the
-executable. Runtime enrollment, Ledger consumers, account gap handling,
-bootstrap/rebuild tooling and live AWS/Atlas acceptance remain pending.
+The executable enables publication only with `LEDGER_JOURNAL_DISPATCH=true`
+(default false) and `KAFKA_AUTH_MODE=msk_iam`. It uses the configured Ledger
+brokers and an additional writer pool with one connection, separate from the
+financial write pool. One worker uses a five-second dispatch budget, a
+three-second send budget, jittered 250ms idle polling and one-second error
+pacing. Shutdown cancels and joins the worker before closing its publisher,
+transport and pool. Fixed-label dispatch counters are exposed through metrics;
+publication failures are retried and do not change financial readiness.
+Capture and dispatch are independent flags, allowing retained facts to drain
+while capture is disabled; this does not repair capture gaps.
+
+Runtime enrollment in a deployed environment, Ledger consumers, account gap
+handling, bootstrap/rebuild tooling and live AWS/Atlas acceptance remain
+pending. Provision the journal topic and review its retention, partition count
+and IAM permissions before enabling publication. Consumer gap handling remains
+a prerequisite for activating projections from this stream.
 
 Repository verification uses `LEDGER_TEST_DATABASE_URL` with disposable
 PostgreSQL databases. Integration tests cover exact amounts, replay, financial

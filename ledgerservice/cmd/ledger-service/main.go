@@ -108,6 +108,12 @@ func main() {
 	}
 	repo := store.New(writerDB, readerDB)
 	repo.LifecycleCapture = cfg.LifecycleCapture
+	journalWorker, stopJournalDispatch, err := startJournalDispatch(ctx, cfg, writerPoolConfig)
+	if err != nil {
+		log.Error("journal dispatch setup", "error", err)
+		os.Exit(1)
+	}
+	defer stopJournalDispatch()
 	metrics := &observability.Metrics{}
 	listener, err := net.Listen("tcp", cfg.GRPCAddress)
 	if err != nil {
@@ -119,7 +125,7 @@ func main() {
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
 	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Store: repo, WriterDB: writerDB, ReaderDB: readerDB, Metrics: metrics}.Handler(), "ledger.http"), ReadHeaderTimeout: 5 * time.Second}
+	httpServer := &http.Server{Addr: cfg.HTTPAddress, Handler: otelhttp.NewHandler(transport.HTTP{Store: repo, WriterDB: writerDB, ReaderDB: readerDB, Metrics: metrics, JournalWorker: journalWorker}.Handler(), "ledger.http"), ReadHeaderTimeout: 5 * time.Second}
 	consumer := messaging.NewConsumer(cfg.KafkaBrokers, cfg.CommandsTopic, cfg.CommandsDLQTopic, cfg.ConsumerGroup, cfg.KafkaAuth, writerDB, repo, log, metrics)
 	errCh := make(chan error, 3)
 	go func() { errCh <- grpcServer.Serve(listener) }()

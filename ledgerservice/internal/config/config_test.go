@@ -166,3 +166,32 @@ func TestInvalidDatabaseStatementConfiguration(t *testing.T) {
 		})
 	}
 }
+
+func TestJournalDispatchEnrollment(t *testing.T) {
+	t.Setenv("LEDGER_DATABASE_WRITER_URL", "postgres://test")
+	t.Setenv("KAFKA_AUTH_MODE", "plaintext")
+	t.Setenv("LEDGER_JOURNAL_DISPATCH", "false")
+	cfg, err := Load()
+	if err != nil || cfg.JournalDispatch {
+		t.Fatalf("default dispatch=%v err=%v", cfg.JournalDispatch, err)
+	}
+	t.Setenv("LEDGER_JOURNAL_DISPATCH", "invalid")
+	if _, err := Load(); err == nil {
+		t.Fatal("invalid dispatch flag accepted")
+	}
+	t.Setenv("LEDGER_JOURNAL_DISPATCH", "true")
+	if _, err := Load(); err == nil {
+		t.Fatal("plaintext publication accepted")
+	}
+	t.Setenv("KAFKA_AUTH_MODE", "msk_iam")
+	t.Setenv("AWS_REGION", "us-east-1")
+	t.Setenv("LEDGER_KAFKA_BROKERS", "broker:9098")
+	cfg, err = Load()
+	if err != nil || !cfg.JournalDispatch {
+		t.Fatalf("dispatch=%v err=%v", cfg.JournalDispatch, err)
+	}
+	t.Setenv("LEDGER_KAFKA_BROKERS", "broker:9098,")
+	if _, err := Load(); err == nil {
+		t.Fatal("empty broker accepted")
+	}
+}

@@ -430,10 +430,13 @@ trade settlement, self-trades and cancellation. Separate delivery bookkeeping,
 a bounded one-fact dispatcher and a TLS-only synchronous Kafka adapter now
 preserve immutable journal bytes and retain acknowledgements. Tests cover
 competing dispatchers, backoff, malformed facts, timeout recovery and immutable
-retries. Executable wiring and live broker verification remain pending. See
+retries. Opt-in executable wiring now adds a separately budgeted one-connection
+pool, one paced worker, bounded dispatch/send deadlines, joined shutdown and
+fixed-label dispatch metrics. Enrollment requires MSK IAM and defaults off;
+live broker verification and consumer account-gap handling remain pending. See
 [ADR 0009](adr/0009-ledger-journal-source-capture.md).
 Existing Ledger and Matching Kafka producers still emit JSON. Ledger lifecycle
-runtime publication, remaining lifecycle facts, the remaining consumer foundation, Atlas deployment,
+deployment publication acceptance, remaining lifecycle facts, the remaining consumer foundation, Atlas deployment,
 APIs and rebuild/cutover remain pending. See
 [ADR 0007](adr/0007-projection-lifecycle-contracts.md).
 
@@ -461,7 +464,7 @@ Work:
    adapter tests cover strict coordinates, immutable payloads, synchronous
    acknowledgement, TLS policy and deadline/error propagation. Kafka activation
    and live database verification remain pending. Failure-safe ordered Order
-   Kafka activation, Ledger lifecycle runtime publication,
+   Kafka activation, Ledger lifecycle deployment acceptance,
    reservation lifecycle and Matching
    fill/terminal facts remain pending; this item is not yet complete.
 2. Build a reusable consumer foundation with inbox deduplication, schema
