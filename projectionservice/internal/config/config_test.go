@@ -16,7 +16,8 @@ func enabledEnvironment(t *testing.T) {
 		"PROJECTION_MODE": "shadow", "PROJECTION_GROUP_NAMESPACE": "dev-db",
 		"PROJECTION_KAFKA_BROKERS": "broker:9096", "PROJECTION_KAFKA_USERNAME": "user", "PROJECTION_KAFKA_PASSWORD": "secret",
 		"PROJECTION_KAFKA_AUTH_MODE": "scram_sha512", "AWS_REGION": "",
-		"PROJECTION_LAG_OBSERVE":         "false",
+		"PROJECTION_LAG_OBSERVE": "false",
+		"PROJECTION_GAP_RETRIES": "0", "PROJECTION_GAP_RETRY_DELAY": "100ms", "PROJECTION_GAP_RETRY_BUDGET": "5s",
 		"PROJECTION_TRANSACTION_TIMEOUT": "10s", "PROJECTION_COMMIT_TIMEOUT": "5s",
 	} {
 		t.Setenv(key, value)
@@ -84,6 +85,7 @@ func TestInvalidRuntimeConfigurationAndRedaction(t *testing.T) {
 		{"PROJECTION_TRANSACTION_TIMEOUT", "0s"}, {"PROJECTION_COMMIT_TIMEOUT", "31s"},
 		{"PROJECTION_COMMIT_TIMEOUT", "invalid"},
 		{"PROJECTION_LAG_OBSERVE", "invalid"},
+		{"PROJECTION_GAP_RETRIES", "invalid"}, {"PROJECTION_GAP_RETRIES", "4"}, {"PROJECTION_GAP_RETRIES", "-1"},
 	} {
 		t.Run(tc.key+tc.value, func(t *testing.T) {
 			enabledEnvironment(t)
@@ -96,6 +98,23 @@ func TestInvalidRuntimeConfigurationAndRedaction(t *testing.T) {
 				t.Fatal("configuration error leaked credentials")
 			}
 		})
+	}
+}
+
+func TestGapRetryRuntimeIsExplicitAndBounded(t *testing.T) {
+	enabledEnvironment(t)
+	cfg, err := Load()
+	if err != nil || cfg.Kafka.GapRetry.Retries != 0 {
+		t.Fatal("gap retry not opt-in")
+	}
+	t.Setenv("PROJECTION_GAP_RETRIES", "2")
+	cfg, err = Load()
+	if err != nil || cfg.Kafka.GapRetry.Retries != 2 || cfg.Kafka.GapRetry.Budget != 5*time.Second {
+		t.Fatal("gap runtime policy not loaded")
+	}
+	t.Setenv("PROJECTION_GAP_RETRY_DELAY", "2s")
+	if _, err := Load(); err == nil {
+		t.Fatal("unbounded gap retry delay accepted")
 	}
 }
 

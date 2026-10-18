@@ -66,6 +66,10 @@ func main() {
 		os.Exit(1)
 	}
 	writerPoolConfig.MaxConns = cfg.DBWriterMaxConns
+	writerPoolConfig.ConnConfig.RuntimeParams["praxis.ledger_lifecycle_capture"] = "off"
+	if cfg.LifecycleCapture {
+		writerPoolConfig.ConnConfig.RuntimeParams["praxis.ledger_lifecycle_capture"] = "on"
+	}
 	writerPoolConfig.ConnConfig.StatementCacheCapacity = cfg.DBStatementCacheCapacity
 	writerPoolConfig.ConnConfig.DefaultQueryExecMode = cfg.DBQueryExecMode
 	writerDB, err := pgxpool.NewWithConfig(ctx, writerPoolConfig)
@@ -103,6 +107,7 @@ func main() {
 		return
 	}
 	repo := store.New(writerDB, readerDB)
+	repo.LifecycleCapture = cfg.LifecycleCapture
 	metrics := &observability.Metrics{}
 	listener, err := net.Listen("tcp", cfg.GRPCAddress)
 	if err != nil {

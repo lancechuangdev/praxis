@@ -477,7 +477,12 @@ Work:
    acknowledged coordinates without business keys, payloads or raw errors;
    tests cover gap/fetch/commit ambiguity, redaction and snapshot isolation.
    Deployed Atlas/Kafka and IAM authorization/renewal verification,
-   bounded gap recovery and atomic DLQ handoff remain pending. Opt-in broker
+   general historical gap repair and atomic DLQ handoff remain pending. Opt-in
+   same-head gap rechecks now allow up to three jittered retries within one
+   processing budget, without fetching successors or advancing offsets on
+   failure. Tests cover applied/duplicate recovery, exhaustion, unchanged
+   records, failure classes and cancellation. Retries default off and live
+   concurrent-worker evidence remains pending. Opt-in broker
    group-lag metrics now provide collection health, partition coverage and
    offset-distance aggregates only for complete valid samples. Unit tests cover
    missing commits, retention bounds, partial failures, concurrency and overflow;

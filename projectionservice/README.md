@@ -139,8 +139,9 @@ explicit future bootstrap; starting at the earliest retained offset does not
 prove complete history.
 
 `Run(ctx)` processes and commits one fetched record before fetching another.
-Only `applied` and `duplicate` outcomes allow commit. Every fetch, processing or
-commit error stops the loop and closes the reader. This conservatively blocks
+Only `applied` and `duplicate` outcomes allow commit. Every fetch, unrecovered
+processing or commit error stops the loop and closes the reader. An optional
+same-head gap recheck is described below. This conservatively blocks
 all partitions assigned to that reader rather than committing past a failed
 head. No malformed event, gap or stale/conflicting fact is automatically skipped
 or DLQed. Operators must resolve the cause before restarting; do not add an
@@ -191,6 +192,9 @@ verifying a dedicated destination generation and retained source history:
 | --- | --- |
 | `PROJECTION_WORKFLOW_ENABLED` | Defaults to `false`; explicit `true` enables connections and consumption. |
 | `PROJECTION_LAG_OBSERVE` | Defaults to `false`; opt-in group-offset observation while workflow runtime is enabled. |
+| `PROJECTION_GAP_RETRIES` | Defaults to `0`; at most `3` additional same-head checks after a version gap. |
+| `PROJECTION_GAP_RETRY_DELAY` | When retries are enabled: defaults to `100ms`, positive and at most `1s`. |
+| `PROJECTION_GAP_RETRY_BUDGET` | When retries are enabled: defaults to `5s`, greater than delay and at most `30s`. |
 | `PROJECTION_MODE` | Required: `shadow` or `rebuild`. |
 | `PROJECTION_GENERATION` | Required isolated generation name. |
 | `PROJECTION_GROUP_NAMESPACE` | Required unique environment/destination identity. |
@@ -233,7 +237,7 @@ cleanup context. Kafka reader cleanup is joined but has no context argument;
 measure its timing before choosing a deployment termination grace period.
 Startup verification remains point-in-time; control collection/index DDL and
 recheck configuration before restarts. No live deployment, broker/Atlas outage
-acceptance, DLQ skip policy, gap recovery, reconciliation or read cutover is
+acceptance, DLQ skip policy, historical gap repair, reconciliation or read cutover is
 implied by this executable. Roll back consumption by disabling the flag and
 restarting while retaining destination generations, inboxes and group offsets.
 
@@ -285,7 +289,7 @@ consumer snapshot. Responses use `Cache-Control: no-store`. This is an internal
 operations endpoint protected by the same private-listener/network policy as
 metrics; it is not a customer projection API.
 
-The consumer reports a stage (`not_started`, `fetch`, `process`, `commit`,
+The consumer reports a stage (`not_started`, `fetch`, `process`, `gap_wait`, `commit`,
 `stopped` or `closed`), the current source coordinates when known, the last
 commit acknowledgement observed by this process, and a fixed failure stage and
 reason. Coordinates contain only the fixed source topic, partition and offset.
@@ -376,3 +380,43 @@ partial failures, cardinality limits, overflow, cancellation and concurrent
 scrapes. Live Kafka/IAM lag validation remains pending. Roll back by disabling
 the observation flag and restarting; consumption state and source offsets are
 unchanged by monitoring.
+
+### Bounded same-head gap recheck (opt-in)
+
+Set `PROJECTION_GAP_RETRIES` to 1–3 only after measuring transactional latency
+and agreeing on a processing budget. The default `0` preserves immediate stop
+on a version gap. Enabled mode applies one `PROJECTION_GAP_RETRY_BUDGET` to the
+entire record's processing, including its initial attempt, subsequent attempts
+and waits. It can therefore shorten the configured MongoDB transaction timeout;
+choose it deliberately. Offset commit retains its separate timeout.
+
+Only `workflow.ErrGap` triggers another check. The consumer retains the original
+topic, key and bytes, waits with jitter between one and two times the configured
+delay, then re-runs the atomic processor transaction. At most three additional
+attempts occur. There is no extra worker, later-record buffer, source fetch or
+source commit during recovery. `/status` reports `gap_wait` while waiting and
+retains the same current source coordinate. Readiness continues to mean an
+active loop, not that the projection is caught up.
+
+This can recover when a previously in-flight transaction on another worker
+applies the missing predecessor during the window. The next check may apply the
+head or discover an exact duplicate; either durable outcome permits its normal
+offset commit. It cannot recover a predecessor that appears later on the same
+partition, missing retained history, or capture-disabled version gaps. It never
+fetches ahead to search for history, skips versions or creates bootstrap state.
+
+Exhausted attempts or budget leave the head unacknowledged and close the reader.
+Diagnostics retain the `gap` reason even when a retry-window deadline expired.
+Invalid records, stale versions, owner/ID conflicts and ordinary dependency
+errors stop immediately. Parent cancellation interrupts waits and processing
+without recording an exhausted gap. No automatic consumer restart is added.
+
+`projection_workflow_gap_retries_total` counts additional processor invocations;
+`projection_workflow_gap_exhausted_total` counts enabled-policy windows that
+ended unresolved. Outcome and commit counters still count successful source
+records rather than individual checks. Tests cover recovery as applied or
+duplicate, unchanged source coordinates/bytes, retry bounds, deadline exhaustion,
+failure classes and cancellation during wait. Live concurrent-worker and
+database-failure evidence remains pending. Roll back by setting retries to `0`
+and restarting with the same target and group offsets; no data migration is
+involved. General historical gap repair and atomic DLQ handoff remain pending.

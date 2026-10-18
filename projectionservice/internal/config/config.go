@@ -106,6 +106,24 @@ func Load() (Config, error) {
 		}
 	}
 	cfg.Kafka = kafkaconsumer.Config{Brokers: brokers, Target: cfg.Target, GroupNamespace: os.Getenv("PROJECTION_GROUP_NAMESPACE"), CommitTimeout: commitTimeout, Dialer: dialer}
+	retries := os.Getenv("PROJECTION_GAP_RETRIES")
+	if retries == "" {
+		retries = "0"
+	}
+	cfg.Kafka.GapRetry.Retries, err = strconv.Atoi(retries)
+	if err != nil {
+		return cfg, errors.New("PROJECTION_GAP_RETRIES must be an integer between 0 and 3")
+	}
+	if cfg.Kafka.GapRetry.Retries != 0 {
+		cfg.Kafka.GapRetry.Delay, err = boundedDuration("PROJECTION_GAP_RETRY_DELAY", 100*time.Millisecond)
+		if err != nil {
+			return cfg, err
+		}
+		cfg.Kafka.GapRetry.Budget, err = boundedDuration("PROJECTION_GAP_RETRY_BUDGET", 5*time.Second)
+		if err != nil {
+			return cfg, err
+		}
+	}
 	if cfg.Kafka.GroupNamespace == "" {
 		return cfg, errors.New("PROJECTION_GROUP_NAMESPACE is required")
 	}

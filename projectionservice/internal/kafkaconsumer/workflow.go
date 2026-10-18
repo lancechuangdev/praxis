@@ -27,6 +27,7 @@ type Config struct {
 	// credentials are implicitly loaded. Keep it immutable after construction.
 	Dialer        *kafka.Dialer
 	CommitTimeout time.Duration
+	GapRetry      GapRetryPolicy
 }
 
 var groupNamespace = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
@@ -40,6 +41,9 @@ func (cfg Config) Validate() error {
 }
 
 func readerConfig(cfg Config) (kafka.ReaderConfig, error) {
+	if err := cfg.GapRetry.Validate(); err != nil {
+		return kafka.ReaderConfig{}, err
+	}
 	if cfg.Target.Validate() != nil || !groupNamespace.MatchString(cfg.GroupNamespace) || len(cfg.Brokers) == 0 || cfg.CommitTimeout <= 0 || cfg.CommitTimeout > 30*time.Second {
 		return kafka.ReaderConfig{}, errors.New("workflow consumer requires valid target, brokers and commit timeout in (0, 30s]")
 	}
@@ -82,6 +86,8 @@ type Consumer struct {
 	started                                                                                 atomic.Bool
 	active                                                                                  atomic.Int64
 	status                                                                                  atomic.Pointer[Status]
+	gapRetry                                                                                GapRetryPolicy
+	gapRetries, gapExhausted                                                                atomic.Uint64
 	fetched, applied, duplicates, committed, fetchFailures, processFailures, commitFailures atomic.Uint64
 }
 
@@ -100,7 +106,7 @@ func New(cfg Config, store workflow.Store) (*Consumer, error) {
 	if err := rc.Validate(); err != nil {
 		return nil, err
 	}
-	return &Consumer{reader: kafka.NewReader(rc), processor: p, commitTimeout: cfg.CommitTimeout}, nil
+	return &Consumer{reader: kafka.NewReader(rc), processor: p, commitTimeout: cfg.CommitTimeout, gapRetry: cfg.GapRetry}, nil
 }
 
 // Run is single-use. It processes and synchronously commits one fetched record
@@ -157,7 +163,7 @@ func (c *Consumer) Run(ctx context.Context) (result error) {
 			c.processFailures.Add(1)
 			return fmt.Errorf("%w: invalid workflow source coordinates", workflow.ErrInvalid)
 		}
-		outcome, err := c.processor.Process(ctx, message.Topic, message.Key, message.Value)
+		outcome, err := c.process(ctx, message, func(stage string) { state.Stage = stage; c.publishStatus(state) })
 		if err != nil {
 			c.processFailures.Add(1)
 			return fmt.Errorf("process workflow: %w", err)
@@ -204,8 +210,9 @@ func (c *Consumer) Close() error {
 func (c *Consumer) Prometheus() string {
 	status := c.Status()
 	failure := ""
+	failure += fmt.Sprintf("projection_workflow_gap_retries_total %d\nprojection_workflow_gap_exhausted_total %d\n", c.gapRetries.Load(), c.gapExhausted.Load())
 	if status.Failure != nil {
-		failure = fmt.Sprintf("projection_workflow_failure{stage=%q,reason=%q} 1\n", status.Failure.Stage, status.Failure.Reason)
+		failure += fmt.Sprintf("projection_workflow_failure{stage=%q,reason=%q} 1\n", status.Failure.Stage, status.Failure.Reason)
 	}
 	return failure + fmt.Sprintf("projection_workflow_consumer_active %d\nprojection_workflow_fetched_total %d\nprojection_workflow_applied_total %d\nprojection_workflow_duplicates_total %d\nprojection_workflow_committed_total %d\nprojection_workflow_fetch_failures_total %d\nprojection_workflow_process_failures_total %d\nprojection_workflow_commit_failures_total %d\n", c.active.Load(), c.fetched.Load(), c.applied.Load(), c.duplicates.Load(), c.committed.Load(), c.fetchFailures.Load(), c.processFailures.Load(), c.commitFailures.Load())
 }

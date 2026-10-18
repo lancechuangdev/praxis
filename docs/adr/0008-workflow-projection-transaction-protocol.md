@@ -149,6 +149,18 @@ checkpoint or reconciliation proof. Observation failures do not change consumer
 readiness. Live lag accuracy, query-cost and authorization evidence remain
 acceptance gates; disabling observation does not modify committed state.
 
+An opt-in same-head gap recheck now permits up to three additional processor
+transactions within one record-processing deadline. Jittered waits and attempts
+preserve the original record and never fetch successors or advance source
+offsets until a durable applied/duplicate result. Only a version gap is retried;
+invalid/stale/conflicting facts and dependency failures remain fail-stop. An
+exhausted gap remains unacknowledged and closes the reader. Parent cancellation
+interrupts waits without recording gap exhaustion. This can observe a predecessor
+committed by another in-flight worker, but cannot repair missing retained/capture
+history or a predecessor positioned later in the same partition. Defaults remain
+off; unit tests establish the local barriers and live evidence remains pending.
+General historical gap recovery and controlled repair remain separate work.
+
 Rollback is a code revert before deployment. Future adapter rollback stops
 consumption while retaining source topics, target generations, inbox receipts
 and recorded offsets. No in-place rebuild or destructive migration is enabled.
