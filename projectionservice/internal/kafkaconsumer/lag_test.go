@@ -12,6 +12,7 @@ import (
 )
 
 type fakeLagClient struct {
+	topic        string
 	metadata     *kafka.MetadataResponse
 	commits      *kafka.OffsetFetchResponse
 	ends         *kafka.ListOffsetsResponse
@@ -38,7 +39,11 @@ func (f *fakeLagClient) OffsetFetch(_ context.Context, req *kafka.OffsetFetchReq
 	return f.commits, nil
 }
 func (f *fakeLagClient) ListOffsets(_ context.Context, req *kafka.ListOffsetsRequest) (*kafka.ListOffsetsResponse, error) {
-	if len(req.Topics) != 1 || len(req.Topics["order.events.v1"]) != 4 {
+	topic := f.topic
+	if topic == "" {
+		topic = "order.events.v1"
+	}
+	if len(req.Topics) != 1 || len(req.Topics[topic]) != 4 {
 		panic("wrong log offset scope")
 	}
 	if f.fail == "ends" {
@@ -146,6 +151,19 @@ func TestCancelledLagScrapeDoesNotQueryBroker(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if sample := o.Prometheus(ctx); sample != "projection_workflow_lag_observation_up 0\n" {
+		t.Fatal(sample)
+	}
+}
+
+func TestJournalLagObservesJournalTopic(t *testing.T) {
+	o, f := lagFixture()
+	o.topic = "ledger.journals.v1"
+	f.topic = o.topic
+	f.metadata.Topics[0].Name = o.topic
+	f.commits.Topics = map[string][]kafka.OffsetFetchPartition{o.topic: f.commits.Topics["order.events.v1"]}
+	f.ends.Topics = map[string][]kafka.PartitionOffsets{o.topic: f.ends.Topics["order.events.v1"]}
+	sample := o.Prometheus(context.Background())
+	if !strings.Contains(sample, "projection_journal_lag_offsets 17\n") || strings.Contains(sample, "projection_workflow_") {
 		t.Fatal(sample)
 	}
 }

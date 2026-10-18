@@ -440,6 +440,17 @@ deployment publication acceptance, remaining lifecycle facts, the remaining cons
 APIs and rebuild/cutover remain pending. See
 [ADR 0007](adr/0007-projection-lifecycle-contracts.md).
 
+Completion boundary: local Ledger journal processing now runs through MongoDB
+and the opt-in Kafka runtime, with replica-set integration evidence. Phase 6
+is still incomplete. Repository gates include Order publication activation,
+reservation and Matching fill/terminal source facts, general journal gap
+recovery, atomic DLQ handoff, authenticated owner-scoped history/snapshot APIs,
+version/ETag reads, private Atlas deployment configuration, and checkpointed
+rebuild/reconciliation/cutover tooling. Notification history requires its source
+contract; a current-balance read projection remains conditional on measured
+need. Live AWS/Atlas authorization, networking, failure injection and cutover
+evidence remain explicitly pending under the accepted environment constraint.
+
 Primary documents:
 
 - [Event replay and projections](event-replay-and-projections.md)
@@ -475,7 +486,14 @@ Work:
    Transaction-model tests cover rollback, duplicates, ambiguous commits,
    account version jumps, conflicts, gaps/recovery and target isolation; see
    [ADR 0010](adr/0010-journal-projection-transaction-protocol.md). Ledger storage
-   and broker adapters, bootstrap and general account gap repair remain pending.
+   now uses three MongoDB collections in one majority/snapshot transaction,
+   conditional account-version writes, target-scoped preflight and bounded
+   transaction retries. Local replica-set tests cover competing account chains,
+   concurrent replay, rollback and retention drift. The Kafka commit barrier,
+   isolated groups, diagnostics and lag observation now support an opt-in
+   journal stream in the executable. An explicit target-preparation command
+   creates and verifies collections without starting consumption. Bootstrap,
+   general account gap repair and live acceptance remain pending.
    The initial Order workflow processor validates source records,
    checks exact-byte inbox receipts and contiguous versions, preserves owner
    identity, and requires atomic snapshot/inbox commits within isolated shadow

@@ -18,3 +18,16 @@ func TestDisabledRuntimeStartsAndStopsWithoutExternalConfiguration(t *testing.T)
 		t.Fatal(err)
 	}
 }
+
+func TestPrepareRequiresExplicitEnrollment(t *testing.T) {
+	t.Setenv("PROJECTION_ENABLED", "false")
+	t.Setenv("PROJECTION_WORKFLOW_ENABLED", "false")
+	t.Setenv("PROJECTION_STREAM", "journal")
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if err := runMode(context.Background(), log, "prepare"); err == nil {
+		t.Fatal("prepare ran without enrollment")
+	}
+	if err := runMode(context.Background(), log, "unknown"); err == nil {
+		t.Fatal("unknown command accepted")
+	}
+}

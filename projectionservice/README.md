@@ -2,7 +2,8 @@
 
 This module begins Phase 6's derived consumer platform. It currently contains
 Order workflow and Ledger journal transaction processors, workflow MongoDB and
-Kafka adapters, and tests.
+Kafka adapters, and tests. Ledger journals now have a MongoDB adapter and an
+isolated Kafka/runtime path as well.
 An opt-in executable now wires the adapters and serves health/metrics. No
 consumer/store is deployed, and there is no read API or delivery provider.
 MongoDB Atlas remains the planned projection store. PostgreSQL remains
@@ -46,9 +47,30 @@ and the inbox receipt. Accounts are locked in sorted order. Each snapshot's
 previous version must match stored state; valid version jumps are accepted.
 Owner/asset changes, reused IDs, stale facts and gaps remain unacknowledged.
 
-This is a storage protocol with transaction-model tests; it is not wired into
-MongoDB, Kafka or the executable. Account gap handling and reviewed bootstrap
-are required before enrollment. See
+`internal/mongostore.NewJournal` implements the contract with three isolated
+collections: `journals_<mode>_<generation>`,
+`journal_accounts_<mode>_<generation>` and `journal_inbox_<mode>_<generation>`.
+It shares majority/snapshot transactions, bounded whole-transaction retries and
+topology/collection/index preflight with workflow storage. Replica-set tests
+cover concurrent replay, competing chains, rollback and retention drift.
+
+Use a separate process with `PROJECTION_ENABLED=true` and
+`PROJECTION_STREAM=journal` for journal consumption. The default stream remains
+`workflow`; the previous `PROJECTION_WORKFLOW_ENABLED` enable flag remains
+supported. Set one enable flag, or identical values for both. All other
+`PROJECTION_*` storage, target, authentication and timeout settings apply to the
+selected stream. Kafka groups and metric prefixes are separate:
+`projection-journal-<namespace>.<mode>.<generation>` and `projection_journal_*`.
+Use the existing group-lag observer against the selected stream.
+
+Run `projection-service prepare` with provisioning credentials to create and
+verify the selected target, then run the service with narrower runtime
+credentials. Preparation starts neither HTTP nor Kafka consumption and does
+not reset offsets, drop collections or repair existing options/indexes.
+
+Account gap handling and reviewed bootstrap are required before deployment. A
+fail-stop journal consumer cannot repair a predecessor later in its own Kafka
+partition. This implementation does not activate customer balance reads. See
 [ADR 0010](../docs/adr/0010-journal-projection-transaction-protocol.md).
 
 ## MongoDB workflow adapter (not activated)

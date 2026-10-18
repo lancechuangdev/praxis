@@ -18,6 +18,8 @@ import (
 )
 
 type Config struct {
+	// Stream defaults to workflow; journal uses a separate topic and group.
+	Stream  string
 	Brokers []string
 	Target  workflow.Target
 	// GroupNamespace must identify the environment and destination database.
@@ -41,6 +43,17 @@ func (cfg Config) Validate() error {
 }
 
 func readerConfig(cfg Config) (kafka.ReaderConfig, error) {
+	stream := cfg.Stream
+	if stream == "" {
+		stream = "workflow"
+	}
+	if stream != "workflow" && stream != "journal" {
+		return kafka.ReaderConfig{}, errors.New("unsupported projection stream")
+	}
+	topic := "order.events.v1"
+	if stream == "journal" {
+		topic = "ledger.journals.v1"
+	}
 	if err := cfg.GapRetry.Validate(); err != nil {
 		return kafka.ReaderConfig{}, err
 	}
@@ -61,8 +74,8 @@ func readerConfig(cfg Config) (kafka.ReaderConfig, error) {
 		dialer.Timeout = 5 * time.Second
 	}
 	return kafka.ReaderConfig{
-		Brokers: append([]string(nil), cfg.Brokers...), Topic: "order.events.v1",
-		GroupID: "projection-workflow-" + cfg.GroupNamespace + "." + string(cfg.Target.Mode) + "." + cfg.Target.Generation,
+		Brokers: append([]string(nil), cfg.Brokers...), Topic: topic,
+		GroupID: "projection-" + stream + "-" + cfg.GroupNamespace + "." + string(cfg.Target.Mode) + "." + cfg.Target.Generation,
 		Dialer:  &dialer, CommitInterval: 0, StartOffset: kafka.FirstOffset,
 		QueueCapacity: 1, MinBytes: 1, MaxBytes: 2 * lifecycle.MaxEventBytes, MaxWait: 500 * time.Millisecond,
 		MaxAttempts: 3, ReadBackoffMin: time.Second, ReadBackoffMax: 5 * time.Second,
@@ -80,6 +93,7 @@ type recordProcessor interface {
 }
 
 type Consumer struct {
+	topic                                                                                   string
 	reader                                                                                  recordReader
 	processor                                                                               recordProcessor
 	commitTimeout                                                                           time.Duration
@@ -95,6 +109,9 @@ type Consumer struct {
 // target. The store remains caller-owned; Run must finish before storage closes.
 // Create a new Consumer after any stop, including cancellation.
 func New(cfg Config, store workflow.Store) (*Consumer, error) {
+	if cfg.Stream != "" && cfg.Stream != "workflow" {
+		return nil, errors.New("workflow store requires workflow stream")
+	}
 	rc, err := readerConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -106,7 +123,7 @@ func New(cfg Config, store workflow.Store) (*Consumer, error) {
 	if err := rc.Validate(); err != nil {
 		return nil, err
 	}
-	return &Consumer{reader: kafka.NewReader(rc), processor: p, commitTimeout: cfg.CommitTimeout, gapRetry: cfg.GapRetry}, nil
+	return &Consumer{reader: kafka.NewReader(rc), processor: p, commitTimeout: cfg.CommitTimeout, gapRetry: cfg.GapRetry, topic: rc.Topic}, nil
 }
 
 // Run is single-use. It processes and synchronously commits one fetched record
@@ -155,8 +172,8 @@ func (c *Consumer) Run(ctx context.Context) (result error) {
 		}
 		c.fetched.Add(1)
 		state.Stage = "process"
-		if message.Topic == "order.events.v1" && message.Partition >= 0 && message.Offset >= 0 {
-			state.Current = &Position{Topic: "order.events.v1", Partition: message.Partition, Offset: message.Offset}
+		if message.Topic == c.topicName() && message.Partition >= 0 && message.Offset >= 0 {
+			state.Current = &Position{Topic: c.topicName(), Partition: message.Partition, Offset: message.Offset}
 		}
 		c.publishStatus(state)
 		if message.Partition < 0 || message.Offset < 0 {
@@ -207,7 +224,7 @@ func (c *Consumer) Close() error {
 	return c.reader.Close()
 }
 
-func (c *Consumer) Prometheus() string {
+func (c *Consumer) prometheus() string {
 	status := c.Status()
 	failure := ""
 	failure += fmt.Sprintf("projection_workflow_gap_retries_total %d\nprojection_workflow_gap_exhausted_total %d\n", c.gapRetries.Load(), c.gapExhausted.Load())

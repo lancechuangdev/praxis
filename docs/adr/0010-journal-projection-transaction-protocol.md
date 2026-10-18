@@ -1,6 +1,7 @@
 # ADR 0010: atomic journal projection transactions
 
-Status: accepted for the processor foundation; adapters and deployment pending.
+Status: implemented for the processor, MongoDB adapter and opt-in Kafka runtime;
+deployment acceptance and general gap repair pending.
 
 Ledger journals can affect multiple customer accounts, and different journals
 can arrive out of account order on `ledger.journals.v1`. A journal must never
@@ -43,7 +44,30 @@ Tests use a serial transaction model to cover multiple-account writes, exact
 amounts, deterministic lock order, version jumps, replay, concurrent duplicate
 delivery, ambiguous commit, rollback at each storage stage, identity conflicts,
 gaps, stale records, cancellation and target isolation. They establish processor
-behavior, not MongoDB durability or live Kafka delivery. MongoDB and Kafka
-adapters, bounded cross-partition gap handling, bootstrap, reconciliation,
-read APIs and deployment acceptance remain pending. No projected balance can
-authorize a financial mutation.
+behavior. A MongoDB adapter now stores `journals_<mode>_<generation>`,
+`journal_accounts_<mode>_<generation>` and `journal_inbox_<mode>_<generation>`
+in one majority-write, snapshot-read transaction. Account snapshots preserve
+exact Protobuf amounts, owner and asset, with conditional version writes.
+Absent accounts use unique inserts; conflicting writes retry the entire
+transaction within the existing shared timeout and retry bounds. All three
+collections require successful read-only topology/options/index preflight.
+Preparation creates ordinary collections with built-in unique `_id` indexes
+and installs no TTL or destructive cleanup. An explicit `prepare` command is
+available; normal runtime only verifies existing collections.
+
+The Kafka consumer reuses the workflow processing/commit barrier with a separate
+`ledger.journals.v1` topic and `projection-journal-<namespace>.<mode>.<generation>`
+group. Journal failures map to the shared diagnostic/retry classes while
+retaining their journal error identities. Stream-specific status and metric
+prefixes distinguish journal consumption. The executable selects one stream per
+process with `PROJECTION_STREAM=journal` and `PROJECTION_ENABLED=true`;
+`PROJECTION_WORKFLOW_ENABLED` remains a backwards-compatible enable alias.
+Conflicting enable flags fail configuration. Both streams default to disabled.
+
+Local replica-set integration tests verify concurrent replay, competing account
+chains, rollback, gap recovery, exact stored coordinates and retention-policy
+rejection. They do not establish live Atlas or Kafka behavior. The optional
+same-head retries can observe an externally committed predecessor but cannot
+repair a predecessor later in the same partition. General gap repair,
+bootstrap, reconciliation, authenticated read APIs and deployment acceptance
+remain pending. No projected balance can authorize a financial mutation.

@@ -171,16 +171,11 @@ func validateJournal(journal *wire.LedgerJournalPosted) error {
 	}
 	accounts := map[string]*wire.AccountBalanceSnapshot{}
 	for _, balance := range journal.Balances {
-		if balance == nil || !text(balance.UserAssetAccountId, balance.UserId, balance.AssetId) || balance.Version == 0 || balance.Version > math.MaxInt64 || balance.PreviousVersion >= math.MaxInt64 || balance.Version <= balance.PreviousVersion {
-			return errors.New("account snapshot requires identity and increasing before/after versions")
+		if err := ValidateBalance(balance); err != nil {
+			return err
 		}
 		if accounts[balance.UserAssetAccountId] != nil {
 			return errors.New("duplicate account snapshot")
-		}
-		for _, amount := range []string{balance.AvailableAtomic, balance.ReservedAtomic, balance.WithdrawalPendingAtomic, balance.DepositPendingAtomic, balance.HoldAtomic} {
-			if _, err := atomic(amount, false); err != nil {
-				return err
-			}
 		}
 		accounts[balance.UserAssetAccountId] = balance
 	}
@@ -234,4 +229,17 @@ func bucket(value string) bool {
 		return true
 	}
 	return false
+}
+
+// ValidateBalance checks a complete standalone customer balance snapshot.
+func ValidateBalance(balance *wire.AccountBalanceSnapshot) error {
+	if balance == nil || !text(balance.UserAssetAccountId, balance.UserId, balance.AssetId) || balance.Version == 0 || balance.Version > math.MaxInt64 || balance.PreviousVersion >= math.MaxInt64 || balance.Version <= balance.PreviousVersion {
+		return errors.New("account snapshot requires identity and increasing before/after versions")
+	}
+	for _, amount := range []string{balance.AvailableAtomic, balance.ReservedAtomic, balance.WithdrawalPendingAtomic, balance.DepositPendingAtomic, balance.HoldAtomic} {
+		if _, err := atomic(amount, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }

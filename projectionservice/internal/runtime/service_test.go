@@ -161,3 +161,17 @@ func TestShutdownJoinsRunningWorker(t *testing.T) {
 		t.Fatal("worker still active after service shutdown")
 	}
 }
+
+func TestJournalRuntimeReportsSeparateStream(t *testing.T) {
+	s := &Service{Stream: "journal"}
+	for _, test := range []struct{ path, want string }{{"/status", `"stream":"journal"`}, {"/metrics", "projection_journal_enabled 0\n"}} {
+		response := httptest.NewRecorder()
+		s.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+		if response.Code != 200 || !strings.Contains(response.Body.String(), test.want) {
+			t.Fatal(response.Code, response.Body.String())
+		}
+		if strings.Contains(response.Body.String(), "projection_workflow_") {
+			t.Fatal("journal runtime emitted workflow metrics")
+		}
+	}
+}

@@ -130,3 +130,25 @@ func TestLagObservationIsOptIn(t *testing.T) {
 		t.Fatal("lag observation flag ignored")
 	}
 }
+
+func TestJournalStreamAndEnableAliases(t *testing.T) {
+	enabledEnvironment(t)
+	t.Setenv("PROJECTION_ENABLED", "true")
+	t.Setenv("PROJECTION_STREAM", "journal")
+	cfg, err := Load()
+	if err != nil || cfg.Stream != "journal" || cfg.Kafka.Stream != "journal" {
+		t.Fatal(cfg.Stream, err)
+	}
+	t.Setenv("PROJECTION_WORKFLOW_ENABLED", "false")
+	if _, err := Load(); err == nil {
+		t.Fatal("conflicting enable flags accepted")
+	}
+	t.Setenv("PROJECTION_WORKFLOW_ENABLED", "")
+	if _, err := Load(); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PROJECTION_STREAM", "unknown")
+	if _, err := Load(); err == nil {
+		t.Fatal("unknown stream accepted")
+	}
+}

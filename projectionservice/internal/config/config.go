@@ -16,6 +16,7 @@ import (
 )
 
 type Config struct {
+	Stream             string
 	Enabled            bool
 	LagObserve         bool
 	HTTPAddress        string
@@ -28,14 +29,28 @@ type Config struct {
 
 func Load() (Config, error) {
 	var cfg Config
-	enabled := os.Getenv("PROJECTION_WORKFLOW_ENABLED")
+	cfg.Stream = os.Getenv("PROJECTION_STREAM")
+	if cfg.Stream == "" {
+		cfg.Stream = "workflow"
+	}
+	if cfg.Stream != "workflow" && cfg.Stream != "journal" {
+		return cfg, errors.New("PROJECTION_STREAM must be workflow or journal")
+	}
+	enabled := os.Getenv("PROJECTION_ENABLED")
+	legacyEnabled := os.Getenv("PROJECTION_WORKFLOW_ENABLED")
+	if enabled != "" && legacyEnabled != "" && enabled != legacyEnabled {
+		return cfg, errors.New("conflicting projection enable flags")
+	}
+	if enabled == "" {
+		enabled = legacyEnabled
+	}
 	if enabled == "" {
 		enabled = "false"
 	}
 	var err error
 	cfg.Enabled, err = strconv.ParseBool(enabled)
 	if err != nil {
-		return cfg, errors.New("PROJECTION_WORKFLOW_ENABLED must be true or false")
+		return cfg, errors.New("projection enable flag must be true or false")
 	}
 	cfg.HTTPAddress = os.Getenv("PROJECTION_HTTP_ADDRESS")
 	if cfg.HTTPAddress == "" {
@@ -105,7 +120,7 @@ func Load() (Config, error) {
 			return cfg, errors.New("PROJECTION_KAFKA_BROKERS must contain host:port endpoints")
 		}
 	}
-	cfg.Kafka = kafkaconsumer.Config{Brokers: brokers, Target: cfg.Target, GroupNamespace: os.Getenv("PROJECTION_GROUP_NAMESPACE"), CommitTimeout: commitTimeout, Dialer: dialer}
+	cfg.Kafka = kafkaconsumer.Config{Stream: cfg.Stream, Brokers: brokers, Target: cfg.Target, GroupNamespace: os.Getenv("PROJECTION_GROUP_NAMESPACE"), CommitTimeout: commitTimeout, Dialer: dialer}
 	retries := os.Getenv("PROJECTION_GAP_RETRIES")
 	if retries == "" {
 		retries = "0"

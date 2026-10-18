@@ -25,6 +25,7 @@ type Consumer interface {
 // Service retains health and metrics after a consumer failure. It never retries
 // or recreates a stopped consumer. Worker=nil is the disabled configuration.
 type Service struct {
+	Stream     string
 	Worker     Consumer
 	LagMetrics func(context.Context) string
 	failed     atomic.Bool
@@ -41,10 +42,11 @@ func (s *Service) Handler() http.Handler {
 			consumer = &status
 		}
 		_ = json.NewEncoder(w).Encode(struct {
+			Stream   string                `json:"stream"`
 			Enabled  bool                  `json:"enabled"`
 			Failed   bool                  `json:"failed"`
 			Consumer *kafkaconsumer.Status `json:"consumer,omitempty"`
-		}{Enabled: s.Worker != nil, Failed: s.failed.Load(), Consumer: consumer})
+		}{Stream: s.streamName(), Enabled: s.Worker != nil, Failed: s.failed.Load(), Consumer: consumer})
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -66,17 +68,28 @@ func (s *Service) Handler() http.Handler {
 		if s.failed.Load() {
 			failed = 1
 		}
-		_, _ = fmt.Fprintf(w, "projection_workflow_enabled %d\nprojection_workflow_consumer_failed %d\n", enabled, failed)
+		prefix := "projection_workflow_"
+		if s.Stream == "journal" {
+			prefix = "projection_journal_"
+		}
+		_, _ = fmt.Fprintf(w, "%senabled %d\n%sconsumer_failed %d\n", prefix, enabled, prefix, failed)
 		if s.Worker != nil {
 			_, _ = fmt.Fprint(w, s.Worker.Prometheus())
 		}
 		if s.LagMetrics != nil {
-			_, _ = fmt.Fprint(w, "projection_workflow_lag_observation_enabled 1\n", s.LagMetrics(r.Context()))
+			_, _ = fmt.Fprint(w, prefix+"lag_observation_enabled 1\n", s.LagMetrics(r.Context()))
 		} else {
-			_, _ = fmt.Fprint(w, "projection_workflow_lag_observation_enabled 0\n")
+			_, _ = fmt.Fprint(w, prefix+"lag_observation_enabled 0\n")
 		}
 	})
 	return mux
+}
+
+func (s *Service) streamName() string {
+	if s.Stream == "" {
+		return "workflow"
+	}
+	return s.Stream
 }
 
 // Serve owns the listener. Cancel and join this method before closing storage.

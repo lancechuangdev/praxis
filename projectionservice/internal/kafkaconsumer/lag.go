@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -21,6 +22,7 @@ type lagClient interface {
 // LagObserver never joins a group, fetches payloads or commits offsets. The
 // independent transport lets it observe a stopped consumer through HTTP.
 type LagObserver struct {
+	topic     string
 	client    lagClient
 	group     string
 	transport *kafka.Transport
@@ -37,7 +39,7 @@ func NewLagObserver(cfg Config) (*LagObserver, error) {
 	}
 	transport := &kafka.Transport{TLS: rc.Dialer.TLS.Clone(), SASL: rc.Dialer.SASLMechanism, DialTimeout: 2 * time.Second, IdleTimeout: 30 * time.Second}
 	client := &kafka.Client{Addr: kafka.TCP(rc.Brokers...), Transport: transport, Timeout: 2 * time.Second}
-	return &LagObserver{client: client, transport: transport, group: rc.GroupID, busy: make(chan struct{}, 1)}, nil
+	return &LagObserver{client: client, transport: transport, group: rc.GroupID, topic: rc.Topic, busy: make(chan struct{}, 1)}, nil
 }
 
 func (o *LagObserver) Close() {
@@ -50,6 +52,13 @@ func (o *LagObserver) Close() {
 // Overlapping scrapes fail collection immediately rather than queueing more
 // broker work. Failed samples never reuse old gauges or expose broker errors.
 func (o *LagObserver) Prometheus(ctx context.Context) string {
+	metrics := o.prometheus(ctx)
+	if o.topic == "ledger.journals.v1" {
+		return strings.ReplaceAll(metrics, "projection_workflow_", "projection_journal_")
+	}
+	return metrics
+}
+func (o *LagObserver) prometheus(ctx context.Context) string {
 	const failed = "projection_workflow_lag_observation_up 0\n"
 	select {
 	case o.busy <- struct{}{}:
@@ -79,7 +88,10 @@ type lagSample struct {
 }
 
 func (o *LagObserver) collect(ctx context.Context) (lagSample, error) {
-	const topic = "order.events.v1"
+	topic := o.topic
+	if topic == "" {
+		topic = "order.events.v1"
+	}
 	var sample lagSample
 	metadata, err := o.client.Metadata(ctx, &kafka.MetadataRequest{Topics: []string{topic}})
 	if err != nil {

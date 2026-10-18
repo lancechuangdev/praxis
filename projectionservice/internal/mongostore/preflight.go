@@ -15,6 +15,10 @@ var ErrUnverified = errors.New("workflow storage requires successful preflight")
 // createCollection privileges. Any failure revokes this instance's readiness;
 // this is a point-in-time configuration check, not protection from later DDL.
 func (s *Store) Verify(ctx context.Context) error {
+	return s.verifyCollections(ctx, s.snapshots, s.inbox)
+}
+
+func (s *Store) verifyCollections(ctx context.Context, collections ...*mongo.Collection) error {
 	s.verified.Store(false)
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
@@ -25,7 +29,7 @@ func (s *Store) Verify(ctx context.Context) error {
 	if err := validateTopology(hello); err != nil {
 		return err
 	}
-	for _, collection := range []*mongo.Collection{s.snapshots, s.inbox} {
+	for _, collection := range collections {
 		cursor, err := s.db.ListCollections(ctx, bson.D{{Key: "name", Value: collection.Name()}})
 		if err != nil {
 			return fmt.Errorf("workflow collection preflight: %w", err)

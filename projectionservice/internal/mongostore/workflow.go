@@ -74,6 +74,13 @@ func (s *Store) Within(ctx context.Context, target workflow.Target, callback fun
 	if !s.verified.Load() {
 		return ErrUnverified
 	}
+	return s.withTransaction(ctx, func(sessionCtx context.Context) error {
+		tx := &transaction{ctx: sessionCtx, store: s, states: make(map[string]workflow.State)}
+		return callback(tx)
+	})
+}
+
+func (s *Store) withTransaction(ctx context.Context, callback func(context.Context) error) error {
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	session, err := s.client.StartSession()
@@ -91,8 +98,7 @@ func (s *Store) Within(ctx context.Context, target workflow.Target, callback fun
 	// an aborted transaction. The shared deadline includes every retry/commit.
 	for attempt := 0; attempt < 4; attempt++ {
 		_, err = session.WithTransaction(ctx, func(sessionCtx context.Context) (any, error) {
-			tx := &transaction{ctx: sessionCtx, store: s, states: make(map[string]workflow.State)}
-			return nil, callback(tx)
+			return nil, callback(sessionCtx)
 		}, txnOptions)
 		if err == nil || (!mongo.IsDuplicateKeyError(err) && !errors.Is(err, errConcurrentChange)) {
 			return err
