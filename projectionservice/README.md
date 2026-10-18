@@ -1,7 +1,8 @@
 # Projection service foundation
 
 This module begins Phase 6's derived consumer platform. It currently contains
-an Order workflow transaction processor, MongoDB and Kafka adapters, and tests.
+Order workflow and Ledger journal transaction processors, workflow MongoDB and
+Kafka adapters, and tests.
 An opt-in executable now wires the adapters and serves health/metrics. No
 consumer/store is deployed, and there is no read API or delivery provider.
 MongoDB Atlas remains the planned projection store. PostgreSQL remains
@@ -35,6 +36,20 @@ go test -race ./projectionservice/...
 
 See [ADR 0008](../docs/adr/0008-workflow-projection-transaction-protocol.md) for
 the protocol, acceptance requirements and rollback boundaries.
+
+## Ledger journal processor foundation
+
+`internal/journal.New` requires a separate shadow/rebuild target and transactional
+store. It validates `ledger.journals.v1` records keyed by journal ID, deduplicates
+exact bytes, and atomically writes the complete journal, all customer balances
+and the inbox receipt. Accounts are locked in sorted order. Each snapshot's
+previous version must match stored state; valid version jumps are accepted.
+Owner/asset changes, reused IDs, stale facts and gaps remain unacknowledged.
+
+This is a storage protocol with transaction-model tests; it is not wired into
+MongoDB, Kafka or the executable. Account gap handling and reviewed bootstrap
+are required before enrollment. See
+[ADR 0010](../docs/adr/0010-journal-projection-transaction-protocol.md).
 
 ## MongoDB workflow adapter (not activated)
 

@@ -469,7 +469,14 @@ Work:
    fill/terminal facts remain pending; this item is not yet complete.
 2. Build a reusable consumer foundation with inbox deduplication, schema
    validation, sequence checks, lag metrics, DLQ handoff, shadow mode, and
-   rebuild mode. The initial Order workflow processor validates source records,
+   rebuild mode. A Ledger journal processor now defines atomic complete-journal,
+   multi-account and inbox storage with sorted account locks, exact-byte
+   deduplication, stable owner/asset identities and previous-version checks.
+   Transaction-model tests cover rollback, duplicates, ambiguous commits,
+   account version jumps, conflicts, gaps/recovery and target isolation; see
+   [ADR 0010](adr/0010-journal-projection-transaction-protocol.md). Ledger storage
+   and broker adapters, bootstrap and general account gap repair remain pending.
+   The initial Order workflow processor validates source records,
    checks exact-byte inbox receipts and contiguous versions, preserves owner
    identity, and requires atomic snapshot/inbox commits within isolated shadow
    or rebuild targets. Transaction-model tests cover rollback, ambiguous commit,
