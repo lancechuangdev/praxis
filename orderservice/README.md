@@ -647,19 +647,19 @@ ORDER_TEST_DATABASE_URL='postgres://user:password@localhost/order_test?sslmode=d
   go test ./orderservice/...
 ```
 
-### Workflow dispatch foundation (not activated)
+### Workflow dispatch foundation (opt-in runtime)
 
 Migration `003_workflow_delivery.sql` adds retained publication acknowledgement,
 attempt count and retry time to the Order-owned source outbox. It is expand-only;
 old binaries can continue capturing facts. `WorkflowDispatcher.DispatchOnce`
 validates and encodes one immutable snapshot and calls a synchronous publisher
 with its stable event ID, order key and version. `WorkflowWorker` supplies an
-unwired runtime loop with 1–64 concurrent dispatches, jittered startup and idle
+runtime loop with 1–64 configurable concurrent dispatches, jittered startup and idle
 polling, and a separate jittered error delay. Both configured delays must be
 positive and at most one minute; actual jittered waits are between one and two
 times the configured delay. The source dispatcher still owns per-record retry
 backoff. Successful dispatches continue immediately to drain backlog. The Kafka
-adapter described below is implemented but runtime activation is not wired;
+adapter is wired behind `ORDER_WORKFLOW_DISPATCH=false`;
 capture remains separately opt-in.
 
 `Run(ctx)` rejects a concurrent start of the same worker, cancels dispatch via
@@ -668,8 +668,8 @@ honor cancellation and the dispatcher timeout. Stop and join the worker before
 closing its database pool or publisher; budget up to one database connection
 per worker independently of request admission. Its `Prometheus()` sample exposes
 active dispatches and attempt, source-acknowledgement, failure and empty-poll
-counters without business labels. It is not yet attached to the service's
-metrics handler. Acknowledgements count source commits, including duplicate
+counters without business labels, attached to the service metrics handler
+when dispatch is enabled. Acknowledgements count source commits, including duplicate
 delivery retries; shutdown cancellation is excluded from failure counts.
 
 The dispatcher holds a PostgreSQL row lock across acknowledgement and excludes
@@ -683,7 +683,7 @@ versions. A database connection failure can also permit an old in-flight sender
 to complete late; row locking is not Kafka producer fencing and does not promise
 strict wire ordering across such failures.
 
-Before wiring a Kafka worker, require a reviewed topic/key/retention and schema
+Before production enrollment, require a reviewed topic/key/retention and schema
 registration, durable synchronous acknowledgements, bounded connection and send
 budgets, producer fencing or consumer stale-version handling, backlog/age and
 failure metrics, and live crash/failover evidence. The source-side acceptance
@@ -692,7 +692,7 @@ acknowledgement and malformed-head blocking. Run them against a disposable
 PostgreSQL database with `ORDER_TEST_DATABASE_URL` set. Do not activate production
 publication on unit-test evidence alone.
 
-### Workflow Kafka adapter (not activated)
+### Workflow Kafka adapter (opt-in runtime)
 
 `adapters.NewWorkflowKafkaPublisher` implements the dispatch publisher for the
 new Protobuf `order.events.v1` stream. It requires explicit brokers, a
@@ -770,3 +770,23 @@ failure evidence remain acceptance gates.
 Rollback this foundation by reverting the dispatcher code while retaining the
 migration and source rows. Once publication is wired, stop the worker to roll
 back; preserve its topic, acknowledged rows and source facts for audit/replay.
+
+## Workflow publication and projection export
+
+`ORDER_WORKFLOW_DISPATCH=true` starts one paced publisher with a separate
+single-connection writer pool, five-second dispatch and three-second send
+budgets, and joined shutdown. Set explicit `ORDER_KAFKA_BROKERS` and verified
+TLS authentication through `ORDER_KAFKA_AUTH_MODE=msk_iam`/`AWS_REGION`, or
+`scram_sha512` with the Order Kafka username/password settings. The flag defaults
+off and is independent of capture/observation. Publication preserves source IDs,
+bytes, versions and occurrence times; late/duplicate delivery is handled by the
+projection's retained inbox and version checks. It does not change legacy
+Matching/Ledger command flows. Include dispatch/observation connections in the
+per-pod budget and inspect enabled/dispatch/backlog metrics during enrollment.
+
+`/workflow-export --output <new-file>` (or
+`go run ./orderservice/cmd/workflow-export`) produces an atomic JSONL snapshot
+using `ORDER_DATABASE_URL` in a read-only repeatable-read transaction. It rejects
+missing capture history and divergence from current saga fields. The artifact
+is for projection-only replay/reconciliation, never command replay. See the
+[Phase 6 runbook](../docs/phase6-operations.md).

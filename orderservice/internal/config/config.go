@@ -3,13 +3,19 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"praxis/orderservice/internal/kafkaauth"
 )
 
 type Config struct {
+	WorkflowDispatch           bool
+	KafkaBrokers               []string
+	KafkaAuth                  kafkaauth.Config
 	LifecycleCapture           bool
 	WorkflowObserve            bool
 	HTTPAddress                string
@@ -46,6 +52,27 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	dispatch, err := strconv.ParseBool(value("ORDER_WORKFLOW_DISPATCH", "false"))
+	if err != nil {
+		return Config{}, errors.New("ORDER_WORKFLOW_DISPATCH must be true or false")
+	}
+	var brokers []string
+	auth := kafkaauth.Config{}
+	if dispatch {
+		brokers = strings.Split(os.Getenv("ORDER_KAFKA_BROKERS"), ",")
+		for i, broker := range brokers {
+			brokers[i] = strings.TrimSpace(broker)
+			host, port, err := net.SplitHostPort(brokers[i])
+			n, e := strconv.Atoi(port)
+			if err != nil || e != nil || host == "" || n < 1 || n > 65535 {
+				return Config{}, errors.New("ORDER_KAFKA_BROKERS requires host:port endpoints")
+			}
+		}
+		auth = kafkaauth.Config{Mode: os.Getenv("ORDER_KAFKA_AUTH_MODE"), Region: os.Getenv("AWS_REGION"), Username: os.Getenv("ORDER_KAFKA_USERNAME"), Password: os.Getenv("ORDER_KAFKA_PASSWORD")}
+		if _, err := kafkaauth.Dialer(auth); err != nil {
+			return Config{}, err
+		}
+	}
 	observe, err := strconv.ParseBool(value("ORDER_WORKFLOW_OBSERVE", "false"))
 	if err != nil {
 		return Config{}, errors.New("ORDER_WORKFLOW_OBSERVE must be true or false")
@@ -55,6 +82,7 @@ func Load() (Config, error) {
 		return Config{}, errors.New("ORDER_LIFECYCLE_CAPTURE must be true or false")
 	}
 	c := Config{
+		WorkflowDispatch: dispatch, KafkaBrokers: brokers, KafkaAuth: auth,
 		LifecycleCapture:           capture,
 		WorkflowObserve:            observe,
 		HTTPAddress:                value("ORDER_HTTP_ADDRESS", ":8083"),

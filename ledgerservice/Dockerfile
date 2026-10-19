@@ -8,7 +8,10 @@ COPY ledgerservice ./ledgerservice
 WORKDIR /src/ledgerservice
 RUN CGO_ENABLED=0 go build -trimpath -o /ledger-service ./cmd/ledger-service
 
+RUN CGO_ENABLED=0 go build -trimpath -o /journal-export ./cmd/journal-export
+
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /ledger-service /ledger-service
+COPY --from=build /journal-export /journal-export
 EXPOSE 8081 9091
 ENTRYPOINT ["/ledger-service"]

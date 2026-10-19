@@ -1,5 +1,10 @@
 # ADR 0008: Order workflow projection transaction protocol
 
+Current executable/recovery/read rollout is defined by
+[ADR 0011](0011-projection-recovery-reads-and-cutover.md). Historical rollout
+notes below describe earlier slices; direct processor/adapter contracts remain
+applicable, while the executable now acknowledges through a durable queue.
+
 - Status: Accepted; processor, MongoDB and Kafka adapters implemented; runtime acceptance pending
 - Date: 2026-10-15
 

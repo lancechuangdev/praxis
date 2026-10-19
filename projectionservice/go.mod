@@ -4,6 +4,10 @@ go 1.25.6
 
 require (
 	github.com/aws/aws-msk-iam-sasl-signer-go v1.0.4
+	github.com/aws/aws-sdk-go-v2 v1.32.4
+	github.com/aws/aws-sdk-go-v2/config v1.28.2
+	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.33.4
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/segmentio/kafka-go v0.4.49
 	go.mongodb.org/mongo-driver/v2 v2.6.0
 	google.golang.org/protobuf v1.36.11
@@ -11,8 +15,6 @@ require (
 )
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.32.4 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.28.2 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.43 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.19 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.23 // indirect

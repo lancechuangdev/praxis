@@ -152,3 +152,20 @@ func TestJournalStreamAndEnableAliases(t *testing.T) {
 		t.Fatal("unknown stream accepted")
 	}
 }
+
+func TestAdminConfigurationDoesNotRequireKafkaCredentials(t *testing.T) {
+	enabledEnvironment(t)
+	t.Setenv("PROJECTION_KAFKA_AUTH_MODE", "invalid")
+	t.Setenv("PROJECTION_KAFKA_BROKERS", "")
+	cfg, err := LoadAdmin()
+	if err != nil || !cfg.Enabled {
+		t.Fatal(err)
+	}
+	if _, err := Load(); err == nil {
+		t.Fatal("live consumer accepted invalid Kafka configuration")
+	}
+	t.Setenv("PROJECTION_MONGODB_URI_SECRET_ARN", "arn:aws:secretsmanager:us-east-1:123456789012:secret:test")
+	if _, err := LoadAdmin(); err == nil {
+		t.Fatal("conflicting URI sources accepted")
+	}
+}

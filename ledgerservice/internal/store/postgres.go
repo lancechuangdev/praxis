@@ -63,7 +63,10 @@ func begin(ctx context.Context, db *pgxpool.Pool) (pgx.Tx, error) {
 
 func ensureUser(ctx context.Context, tx pgx.Tx, userID, assetID string) (string, error) {
 	id := stableID("uaa_", userID, assetID)
-	_, err := tx.Exec(ctx, `INSERT INTO user_asset_accounts(id,user_id,asset_id) VALUES($1,$2,$3) ON CONFLICT(user_id,asset_id) DO NOTHING`, id, userID, assetID)
+	// Concurrent creators collide on both the deterministic primary key and
+	// (user_id,asset_id). Handle either constraint, then resolve by ownership;
+	// restricting the arbiter to the pair can still raise a primary-key race.
+	_, err := tx.Exec(ctx, `INSERT INTO user_asset_accounts(id,user_id,asset_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING`, id, userID, assetID)
 	if err != nil {
 		return "", fmt.Errorf("ensure user asset account: %w", err)
 	}
@@ -80,7 +83,9 @@ func createJournal(ctx context.Context, tx pgx.Tx, id, refType, refID, kind, sys
 	}
 	b, _ := json.Marshal(metadata)
 	var inserted string
-	err := tx.QueryRow(ctx, `INSERT INTO ledger_journals(id,reference_type,reference_id,journal_type,source_system,source_event_id,correlation_id,causation_id,description,metadata,occurred_at) VALUES($1,$2,$3,$4,$5,$6,NULLIF($7,''),NULLIF($8,''),$9,$10,$11) ON CONFLICT(source_system,source_event_id) DO NOTHING RETURNING id`, id, refType, refID, kind, system, eventID, correlation, causation, description, b, at).Scan(&inserted)
+	// The deterministic primary key can race with the source-event unique key.
+	// Resolve both through the existing source-coordinate replay checks below.
+	err := tx.QueryRow(ctx, `INSERT INTO ledger_journals(id,reference_type,reference_id,journal_type,source_system,source_event_id,correlation_id,causation_id,description,metadata,occurred_at) VALUES($1,$2,$3,$4,$5,$6,NULLIF($7,''),NULLIF($8,''),$9,$10,$11) ON CONFLICT DO NOTHING RETURNING id`, id, refType, refID, kind, system, eventID, correlation, causation, description, b, at).Scan(&inserted)
 	if errors.Is(err, pgx.ErrNoRows) {
 		var existingRef, existingKind string
 		if e := tx.QueryRow(ctx, `SELECT id,reference_id,journal_type FROM ledger_journals WHERE source_system=$1 AND source_event_id=$2`, system, eventID).Scan(&id, &existingRef, &existingKind); e != nil {

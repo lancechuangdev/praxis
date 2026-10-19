@@ -1,5 +1,10 @@
 # ADR 0010: atomic journal projection transactions
 
+Current executable/recovery/read rollout is defined by
+[ADR 0011](0011-projection-recovery-reads-and-cutover.md). Historical rollout
+notes below describe earlier slices; direct processor/adapter contracts remain
+applicable, while the executable now acknowledges through a durable queue.
+
 Status: implemented for the processor, MongoDB adapter and opt-in Kafka runtime;
 deployment acceptance and general gap repair pending.
 

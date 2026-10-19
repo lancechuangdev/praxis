@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
 	"praxis/orderservice/internal/adapters"
 	"praxis/orderservice/internal/config"
 	"praxis/orderservice/internal/observability"
@@ -48,6 +49,12 @@ func main() {
 		os.Exit(1)
 	}
 	var workflowMetrics func(context.Context) string
+	workflowWorker, stopWorkflow, err := startWorkflowDispatch(ctx, cfg)
+	if err != nil {
+		log.Error("workflow dispatch setup", "error", err)
+		os.Exit(1)
+	}
+	defer stopWorkflow()
 	if cfg.WorkflowObserve {
 		observationDB, observationErr := order.OpenWorkflowObservationDB(ctx, cfg.DatabaseURL)
 		if observationErr != nil {
@@ -56,6 +63,21 @@ func main() {
 		}
 		defer observationDB.Close()
 		workflowMetrics = (order.WorkflowOutboxObserver{DB: observationDB}).Prometheus
+	}
+	observation := workflowMetrics
+	workflowMetrics = func(ctx context.Context) string {
+		enabled := 0
+		if workflowWorker != nil {
+			enabled = 1
+		}
+		metrics := fmt.Sprintf("order_workflow_dispatch_enabled %d\n", enabled)
+		if workflowWorker != nil {
+			metrics += workflowWorker.Prometheus()
+		}
+		if observation != nil {
+			metrics += observation(ctx)
+		}
+		return metrics
 	}
 	tracingShutdown, err := observability.SetupTracing(ctx, "order-service")
 	if err != nil {
@@ -186,6 +208,7 @@ func main() {
 			log.Error("server stopped", "error", err)
 		}
 	}
+	stop()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = server.Shutdown(shutdownCtx)

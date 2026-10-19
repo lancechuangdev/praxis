@@ -196,3 +196,19 @@ make protobuf-generate
 
 Ledger and Matching protobuf contracts are owned by the repository's shared
 `praxis/api` module. Both servers and clients import its generated packages.
+
+## Authoritative projection export
+
+`/journal-export --output <new-file>` (or
+`go run ./ledgerservice/cmd/journal-export`) reads
+`LEDGER_DATABASE_READER_URL` in a read-only repeatable-read transaction. It checks
+complete captured account chains and every latest exact bucket/version/owner
+against authoritative balances, then emits journals in account-dependency order.
+This ordering avoids unbounded buffering for a hot account during replay.
+Export refuses capture gaps, unsupported baselines and existing output files;
+failed exports cannot publish a partial artifact. The source stream's raw
+Protobuf bytes/IDs are preserved.
+
+The export/rebuild scope is captured journals and their accounts, not invented
+history for uncaptured legacy state. Use the artifact only with the isolated
+projection workflow in the [Phase 6 runbook](../docs/phase6-operations.md).

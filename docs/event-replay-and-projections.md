@@ -1,19 +1,13 @@
 # Event replay and projections
 
-Status: design guidance; Praxis does not yet provide general replay or
-projection-rebuild tooling. The initial Phase 6
-[typed lifecycle contracts](adr/0007-projection-lifecycle-contracts.md) are
-implemented in `api/proto/events/lifecycle/v1` with Go validation and codecs;
-Order has opt-in atomic workflow source capture, but Kafka publication, Ledger
-producer adoption and projection consumer activation remain pending. An initial
-Order workflow transaction protocol in `projectionservice` now supplies strict
-validation, exact-byte deduplication, contiguous sequence checks and isolated
-shadow/rebuild targets. A MongoDB snapshot/inbox transaction adapter is now
-implemented with opt-in replica-set tests. A fail-stop Kafka adapter commits
-only after successful sequential processing. An opt-in executable now wires
-the adapters and health/metrics; deployed runtime activation and live
-storage/broker acceptance remain pending. See
-[ADR 0008](adr/0008-workflow-projection-transaction-protocol.md).
+Status: repository implementation now supports the existing Order workflow
+and Ledger journal streams, including atomic source capture/publication,
+durable projection recovery, private owner-scoped reads, authoritative exports,
+rebuild checkpoints and reconciled route cutover. Full execution/notification
+history remains gated on missing source contracts. AWS/Atlas live acceptance
+is pending. See [ADR 0011](adr/0011-projection-recovery-reads-and-cutover.md)
+and the [Phase 6 runbook](phase6-operations.md) for exact scope, limits and
+commands. The broader examples below remain design guidance for future sources.
 
 Event replay means processing previously stored events again. It lets a
 developer repair or create derived data without repeating the original

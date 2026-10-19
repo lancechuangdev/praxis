@@ -230,11 +230,10 @@ Work:
    partition/offset bounds, metadata-only inspection, allowlisted identity,
    durable PostgreSQL audit records, explicit replay approval, and paced
    publication that preserves original record bytes and headers.
-9. Add projection rebuild tooling that uses new consumer groups and new tables.
-   Implementation begins with the first Phase 6 projection so its event,
-   storage-generation, validation, and cutover contracts are concrete; Praxis
-   does not add a storage-agnostic replay command that could accidentally run
-   side-effecting consumers.
+9. [x] Add projection-only rebuild tooling with isolated groups/generations,
+   durable checkpoints, authoritative reconciliation and compare-and-swap read
+   routes. Phase 6 replay invokes only projection stores, never side-effecting
+   financial or notification consumers.
 10. [x] Prohibit casual in-place partition-count changes for order-sensitive
     topics. Terraform freezes the accepted counts unless an explicit migration
     override is enabled; versioned-topic migration remains the default.
@@ -381,161 +380,75 @@ an ejection spiral.
 
 ## Phase 6: build the shared projection platform
 
-Status: started with an initial typed lifecycle-contract slice. Protobuf
-contracts, generated Go types and strict codecs cover Order workflow snapshots
-and complete Ledger journal/account-balance facts. Order now has opt-in
-transactional workflow source capture with database-allocated versions and
-strict Protobuf encoding. A source-side dispatcher now adds locked per-order
-head selection, retained acknowledgement and bounded retry backoff. An unwired
-runtime worker adds bounded concurrency, jittered polling/error pacing, joined
-shutdown and dispatch counters. A TLS-only synchronous Kafka adapter validates
-workflow coordinates, preserves source bytes and occurrence time, keys by order
-and requires all in-sync replica acknowledgements with one send attempt per
-dispatch. Runtime activation and failure-fenced publication remain pending.
-Opt-in source-outbox observation exposes pending/retried counts and oldest
-pending age through Order metrics using a separate bounded read-only pool;
-observation failure is explicit and does not affect readiness. Deployed query
-cost and telemetry evidence remain acceptance gates.
-An initial Order workflow consumer transaction protocol now lives in
-`projectionservice`, with strict record validation, target-scoped inbox receipts,
-contiguous versions and atomic storage contracts. A MongoDB adapter now provides
-target-scoped snapshot/inbox transactions, unique IDs, conditional version writes
-and bounded race retries. A read-only storage preflight now gates transactions
-on compatible replica-set, collection and index metadata, rejecting TTL and
-identity/retention policy drift when checked. Replica-set tests are opt-in and live Atlas acceptance
-remains pending. A TLS-only Kafka adapter adds isolated consumer groups,
-sequential processing and synchronous commits, bounded reader settings and
-fail-stop handling for every unacknowledged record. Controlled-reader tests
-cover failed-head barriers, ambiguous commits, deadlines and cancellation.
-An opt-in executable now wires read-only storage verification, the consumer,
-health/readiness and metrics with joined shutdown. It defaults to disabled,
-supports Kafka TLS/SCRAM and opt-in MSK IAM OAuth, and retains diagnostics without
-automatic restart after consumption failure. IAM signing is deadline-bounded,
-credentials are retrieved only during handshakes, and tokens/errors are validated
-without disclosure. Live identity/authorization/renewal evidence, runtime
-activation and broker acceptance remain pending; see
-[ADR 0008](adr/0008-workflow-projection-transaction-protocol.md).
-The runtime now retains bounded sanitized consumer stage/failure diagnostics
-through `/status` and a fixed-label failure gauge, including current source and
-last observed commit coordinates without exposing business data. These are
-process-local diagnostics, not broker lag or durable checkpoints.
-Opt-in broker group-lag observation now compares committed offsets with retained
-log bounds across a bounded partition inventory. Missing/out-of-range offsets
-are explicit and incomplete/failed samples omit aggregate lag. Live query-cost,
-IAM authorization and lag accuracy evidence remain environment gates.
-Ledger now has opt-in atomic Protobuf journal source capture, including complete
-entries, exact balance snapshots and transaction-local previous versions.
-Local PostgreSQL tests cover rollback, replay, competing account updates,
-trade settlement, self-trades and cancellation. Separate delivery bookkeeping,
-a bounded one-fact dispatcher and a TLS-only synchronous Kafka adapter now
-preserve immutable journal bytes and retain acknowledgements. Tests cover
-competing dispatchers, backoff, malformed facts, timeout recovery and immutable
-retries. Opt-in executable wiring now adds a separately budgeted one-connection
-pool, one paced worker, bounded dispatch/send deadlines, joined shutdown and
-fixed-label dispatch metrics. Enrollment requires MSK IAM and defaults off;
-live broker verification and consumer account-gap handling remain pending. See
-[ADR 0009](adr/0009-ledger-journal-source-capture.md).
-Existing Ledger and Matching Kafka producers still emit JSON. Ledger lifecycle
-deployment publication acceptance, remaining lifecycle facts, the remaining consumer foundation, Atlas deployment,
-APIs and rebuild/cutover remain pending. See
-[ADR 0007](adr/0007-projection-lifecycle-contracts.md).
-
-Completion boundary: local Ledger journal processing now runs through MongoDB
-and the opt-in Kafka runtime, with replica-set integration evidence. Phase 6
-is still incomplete. Repository gates include Order publication activation,
-reservation and Matching fill/terminal source facts, general journal gap
-recovery, atomic DLQ handoff, authenticated owner-scoped history/snapshot APIs,
-version/ETag reads, private Atlas deployment configuration, and checkpointed
-rebuild/reconciliation/cutover tooling. Notification history requires its source
-contract; a current-balance read projection remains conditional on measured
-need. Live AWS/Atlas authorization, networking, failure injection and cutover
-evidence remain explicitly pending under the accepted environment constraint.
+Status: repository implementation is complete for the agreed existing-stream
+scope: Order workflow and Ledger journals. Live AWS/Atlas deployment acceptance
+is pending. Full execution and notification histories remain explicitly gated
+on missing Matching fill/terminal and notification source contracts, as agreed;
+workflow acceptance is never presented as a fill or terminal execution status.
 
 Primary documents:
 
+- [Phase 6 operations and acceptance](phase6-operations.md)
+- [ADR 0011: recovery, reads and cutover](adr/0011-projection-recovery-reads-and-cutover.md)
 - [Event replay and projections](event-replay-and-projections.md)
 - [Order client notifications](order-client-notifications.md)
 - [Order and Ledger caching](order-ledger-caching.md)
 - [Ledger reconciliation and analytics](ledger-reconciliation-and-analytics.md)
 
-Work:
+Implemented work:
 
-1. Define complete, versioned Order and Ledger lifecycle events. Initial
-   `events.lifecycle.v1` contracts now distinguish Order workflow progress
-   from execution status and carry balanced Ledger entries plus exact
-   before/after-versioned customer balance snapshots. Record-size bounds,
-   schema/type/producer validation and compatibility tests are implemented.
-   Order can now capture immutable workflow snapshots atomically with saga
-   changes behind `ORDER_LIFECYCLE_CAPTURE=false`, with concurrent replay,
-   stale-owner, failure rollback and disabled-capture gap tests. Source-side
-   Order dispatch and expand-only delivery bookkeeping are implemented, with
-   integration tests for competing workers, retry ordering,
-   malformed heads and acknowledgement loss. Runtime-loop tests cover concurrency
-   bounds, duplicate starts, outage/idle pacing and joined cancellation. Kafka
-   adapter tests cover strict coordinates, immutable payloads, synchronous
-   acknowledgement, TLS policy and deadline/error propagation. Kafka activation
-   and live database verification remain pending. Failure-safe ordered Order
-   Kafka activation, Ledger lifecycle deployment acceptance,
-   reservation lifecycle and Matching
-   fill/terminal facts remain pending; this item is not yet complete.
-2. Build a reusable consumer foundation with inbox deduplication, schema
-   validation, sequence checks, lag metrics, DLQ handoff, shadow mode, and
-   rebuild mode. A Ledger journal processor now defines atomic complete-journal,
-   multi-account and inbox storage with sorted account locks, exact-byte
-   deduplication, stable owner/asset identities and previous-version checks.
-   Transaction-model tests cover rollback, duplicates, ambiguous commits,
-   account version jumps, conflicts, gaps/recovery and target isolation; see
-   [ADR 0010](adr/0010-journal-projection-transaction-protocol.md). Ledger storage
-   now uses three MongoDB collections in one majority/snapshot transaction,
-   conditional account-version writes, target-scoped preflight and bounded
-   transaction retries. Local replica-set tests cover competing account chains,
-   concurrent replay, rollback and retention drift. The Kafka commit barrier,
-   isolated groups, diagnostics and lag observation now support an opt-in
-   journal stream in the executable. An explicit target-preparation command
-   creates and verifies collections without starting consumption. Bootstrap,
-   general account gap repair and live acceptance remain pending.
-   The initial Order workflow processor validates source records,
-   checks exact-byte inbox receipts and contiguous versions, preserves owner
-   identity, and requires atomic snapshot/inbox commits within isolated shadow
-   or rebuild targets. Transaction-model tests cover rollback, ambiguous commit,
-   concurrent duplication, gaps/stale conflicts and target isolation. A MongoDB
-   transaction adapter and opt-in replica-set concurrency/rollback tests are
-   implemented. MongoDB processing now requires successful metadata preflight;
-   failed checks revoke verification without altering data or indexes. Unit
-   tests cover topology/options/index rejection and an opt-in replica-set test
-   covers TTL rejection and recovery. The Kafka adapter enforces a one-record processing/commit barrier
-   and closes on failure; controlled-reader tests cover offset safety and restart
-   rules. An opt-in runtime now verifies storage before consumption and serves
-   health/readiness/outcome metrics; failures remain stopped with diagnostics
-   available. Tests cover configuration, disabled operation, shutdown and
-   failure readiness. MSK IAM OAuth now uses the AWS signer with bounded signing,
-   expiry/cancellation checks and redacted errors; unit tests require no AWS
-   identity. Bounded status/failure diagnostics now retain failed-head and last
-   acknowledged coordinates without business keys, payloads or raw errors;
-   tests cover gap/fetch/commit ambiguity, redaction and snapshot isolation.
-   Deployed Atlas/Kafka and IAM authorization/renewal verification,
-   general historical gap repair and atomic DLQ handoff remain pending. Opt-in
-   same-head gap rechecks now allow up to three jittered retries within one
-   processing budget, without fetching successors or advancing offsets on
-   failure. Tests cover applied/duplicate recovery, exhaustion, unchanged
-   records, failure classes and cancellation. Retries default off and live
-   concurrent-worker evidence remains pending. Opt-in broker
-   group-lag metrics now provide collection health, partition coverage and
-   offset-distance aggregates only for complete valid samples. Unit tests cover
-   missing commits, retention bounds, partial failures, concurrency and overflow;
-   deployed lag/query-cost evidence remains pending. This item is not complete.
-3. Build MongoDB Atlas on AWS projections for customer order history,
-   denormalized portfolio and activity views, and notification history, with
-   private EKS connectivity plus authenticated snapshot and history APIs.
-4. Prove that the projection can rebuild into new storage and cut over safely.
-5. Build a current-balance projection only when measured reads justify it;
-   MongoDB Atlas portfolio views never authorize financial mutations.
-6. Add version fields, ETags, and conditional requests for private financial
-   reads.
-7. Keep financial decisions on authoritative Ledger storage.
+1. [x] Versioned, strict Protobuf contracts and atomic source capture for the
+   existing Order workflow and complete Ledger journal/account facts. Stable
+   source bytes, versions and IDs are retained. Opt-in bounded Order/Ledger
+   dispatchers are wired with separate pools, verified TLS/MSK IAM, synchronous
+   acknowledgements, paced retries, joined shutdown and metrics. PostgreSQL
+   tests cover rollback, replay, competing dispatchers and account chains.
+2. [x] Reusable projection ingestion with strict domain codecs, target-scoped
+   inboxes, version/owner checks, group lag and durable recovery. MongoDB
+   atomically retains original Kafka coordinates/bytes before source commit.
+   Pending gaps can recover from later predecessors; deterministic failures
+   have a retained quarantine/DLQ handoff. Quotas, backoff, selective digest-
+   checked retry, source commit barriers and sanitized diagnostics are bounded.
+   Whole workflow/history/inbox and multi-account journal transactions prevent
+   partial effects. Replica-set tests cover failures and concurrency.
+3. [x] Existing-stream views and private read/configuration foundation:
+   customer workflow snapshots/timelines and customer-only journal activity,
+   with owner-scoped JWT authentication, indexes, pagination and exact strings.
+   An opt-in Terraform module supplies private Atlas endpoints, scoped
+   identities/secrets/topics, non-root digest-pinned EKS manifests and network
+   policy. Full execution/notification views are gated on their source owners.
+4. [x] Projection-only rebuild/reconciliation/cutover tooling. Authoritative
+   read-only exports validate complete capture and current state. Separate
+   rebuild targets retain replay/checkpoint progress; imports cannot collide
+   with live Kafka offsets. Reconciliation checks domain state, history and
+   inbox receipts. Activation rechecks data/queue state and uses an expected
+   route revision with atomic route history. Old generations support rollback.
+   Local tests exercise replay, route switching, mismatch refusal and rollback.
+5. [ ] Conditional: expose a current-balance read projection only after measured
+   need. Historical activity snapshots do not authorize any mutation.
+6. [x] Private financial-view responses have version fields, representation
+   ETags and owner-checked conditional requests. Inactive/unverified generations,
+   pending/quarantined records and stopped consumers make reads unavailable.
+7. [x] Financial decisions stay in authoritative services. Projection replay,
+   reads and administrative commands have no financial mutation or notification
+   delivery clients.
 
-Exit gate: projections are disposable, rebuildable, and reconciled against
-authoritative state, and they cannot authorize mutations.
+Repository verification is `make phase6-verify` with all disposable database
+settings required, plus `make phase6-infra-verify`. Local PostgreSQL 16 and
+MongoDB replica-set evidence covers the implemented paths; no cloud resources
+or production read route have been applied here.
+
+Live acceptance remains open: private connectivity/DNS/TLS, MSK identity and
+renewal, Atlas/database privileges, schema/retention compatibility, secret/key
+rotation, backup/restore, deployed query cost, failure injection, and staged
+cutover/rollback. Uncaptured historical baselines are never fabricated; exports
+fail when complete retained facts cannot establish the selected view.
+
+Scoped exit gate: existing-stream projections are disposable, rebuildable and
+reconciled against authoritative snapshots, and cannot authorize mutations.
+Full execution/notification history and measured current-balance APIs remain
+gated separately. Live deployment approval requires the environment evidence
+above; repository completion alone is not production acceptance.
 
 ## Phase 7: implement client notifications
 

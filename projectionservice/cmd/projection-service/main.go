@@ -11,10 +11,11 @@ import (
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/mongo"
+
 	"praxis/projectionservice/internal/config"
-	"praxis/projectionservice/internal/journal"
 	"praxis/projectionservice/internal/kafkaconsumer"
 	"praxis/projectionservice/internal/mongostore"
+	"praxis/projectionservice/internal/readapi"
 	"praxis/projectionservice/internal/runtime"
 )
 
@@ -22,15 +23,12 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	mode := "serve"
-	if len(os.Args) > 1 {
-		if len(os.Args) != 2 || os.Args[1] != "prepare" {
-			fmt.Fprintln(os.Stderr, "usage: projection-service [prepare]")
-			os.Exit(2)
-		}
-		mode = "prepare"
+	cmd, err := parseCommand(os.Args[1:])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
 	}
-	if err := runMode(ctx, log, mode); err != nil {
+	if err := runCommand(ctx, log, cmd); err != nil {
 		log.Error("projection service stopped", "error", err)
 		os.Exit(1)
 	}
@@ -40,15 +38,25 @@ func run(ctx context.Context, log *slog.Logger) error {
 	return runMode(ctx, log, "serve")
 }
 func runMode(ctx context.Context, log *slog.Logger, mode string) error {
-	cfg, err := config.Load()
+	return runCommand(ctx, log, command{Mode: mode})
+}
+func runCommand(ctx context.Context, log *slog.Logger, cmd command) error {
+	mode := cmd.Mode
+	var cfg config.Config
+	var err error
+	if mode == "serve" {
+		cfg, err = config.Load()
+	} else {
+		cfg, err = config.LoadAdmin()
+	}
 	if err != nil {
 		return err
 	}
-	if mode != "serve" && mode != "prepare" {
+	if mode != "serve" && mode != "prepare" && mode != "drain" && mode != "retry" && mode != "replay" && mode != "reconcile" && mode != "activate" && mode != "inspect" {
 		return fmt.Errorf("unsupported projection command")
 	}
-	if mode == "prepare" && !cfg.Enabled {
-		return fmt.Errorf("prepare requires an enabled, explicitly configured target")
+	if mode != "serve" && !cfg.Enabled {
+		return fmt.Errorf("admin command requires an enabled, explicitly configured target")
 	}
 	service := &runtime.Service{}
 	service.Stream = cfg.Stream
@@ -62,45 +70,33 @@ func runMode(ctx context.Context, log *slog.Logger, mode string) error {
 			defer stop()
 			_ = client.Disconnect(cleanup)
 		}()
-		var consumer *kafkaconsumer.Consumer
-		if cfg.Stream == "journal" {
-			store, setupErr := mongostore.NewJournal(client, cfg.Database, journal.Target{Generation: cfg.Target.Generation, Mode: journal.Mode(cfg.Target.Mode)}, cfg.TransactionTimeout)
-			if setupErr != nil {
-				return setupErr
-			}
-			if mode == "prepare" {
-				if err := store.Prepare(ctx); err != nil {
-					return fmt.Errorf("MongoDB journal target preparation failed")
-				}
-				log.Info("projection target prepared", "stream", cfg.Stream, "generation", cfg.Target.Generation, "mode", cfg.Target.Mode)
-				return nil
-			}
-			if err := store.Verify(ctx); err != nil {
-				return fmt.Errorf("MongoDB journal storage preflight failed; check topology, permissions, collections and indexes")
-			}
-			consumer, err = kafkaconsumer.NewJournal(cfg.Kafka, store)
-		} else {
-			store, setupErr := mongostore.New(client, cfg.Database, cfg.Target, cfg.TransactionTimeout)
-			if setupErr != nil {
-				return setupErr
-			}
-			if mode == "prepare" {
-				if err := store.Prepare(ctx); err != nil {
-					return fmt.Errorf("MongoDB workflow target preparation failed")
-				}
-				log.Info("projection target prepared", "stream", cfg.Stream, "generation", cfg.Target.Generation, "mode", cfg.Target.Mode)
-				return nil
-			}
-			if err := store.Verify(ctx); err != nil {
-				return fmt.Errorf("MongoDB storage preflight failed; check endpoint, privileges, collection and index configuration")
-			}
-			consumer, err = kafkaconsumer.New(cfg.Kafka, store)
-		}
+		worker, closeWorker, err := configure(ctx, cfg, client, mode == "prepare", mode == "serve")
 		if err != nil {
 			return err
 		}
-		defer func() { _ = consumer.Close() }() // Releases an unused reader if listener setup fails.
-		service.Worker = consumer
+		defer closeWorker()
+		if mode == "prepare" {
+			log.Info("projection target prepared", "stream", cfg.Stream, "generation", cfg.Target.Generation, "mode", cfg.Target.Mode)
+			return nil
+		}
+		if mode != "serve" {
+			return runAdmin(ctx, cmd, cfg, client, worker.(*runtime.Queued))
+		}
+		service.Worker = worker
+		service.QueueMetrics = worker.(*runtime.Queued).Queue.Prometheus
+		if cfg.ReadEnabled {
+			reads, err := mongostore.NewReads(client, cfg.Database, cfg.Target, cfg.Stream, cfg.TransactionTimeout)
+			if err != nil {
+				return err
+			}
+			if err := reads.Verify(ctx); err != nil {
+				return fmt.Errorf("projection read index preflight failed")
+			}
+			service.Reads, err = readapi.New(cfg.ReadAuth, reads)
+			if err != nil {
+				return err
+			}
+		}
 		if cfg.LagObserve {
 			observer, err := kafkaconsumer.NewLagObserver(cfg.Kafka)
 			if err != nil {

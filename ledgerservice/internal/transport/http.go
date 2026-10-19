@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	"praxis/ledgerservice/internal/ledger"
 	"praxis/ledgerservice/internal/observability"
 	"praxis/ledgerservice/internal/store"
@@ -62,7 +63,9 @@ ledger_db_reader_pool_max_connections %d
 `, h.Metrics.ReserveRequests.Load(), h.Metrics.ReserveFailures.Load(), h.Metrics.DLQInvalidEnvelopes.Load(), h.Metrics.DLQInvalidEventPayloads.Load(), h.Metrics.DLQUnsupportedEventTypes.Load(), h.Metrics.DLQUnknownDeterministicFailure.Load(), h.Metrics.DLQHandoffFailures.Load(), writerPool.AcquiredConns(), writerPool.IdleConns(), writerPool.TotalConns(), writerPool.MaxConns(), writerPool.AcquireCount(), writerPool.EmptyAcquireCount(), writerPool.CanceledAcquireCount(), writerPool.AcquireDuration().Seconds(), readerPool.AcquiredConns(), readerPool.IdleConns(), readerPool.TotalConns(), readerPool.MaxConns())
 	_, _ = fmt.Fprint(w, h.Metrics.ReserveDuration.Prometheus("ledger_reserve_duration_seconds"))
 	if h.JournalWorker != nil {
-		_, _ = fmt.Fprint(w, h.JournalWorker.Prometheus())
+		_, _ = fmt.Fprint(w, "ledger_journal_dispatch_enabled 1\n", h.JournalWorker.Prometheus())
+	} else {
+		_, _ = fmt.Fprint(w, "ledger_journal_dispatch_enabled 0\n")
 	}
 }
 

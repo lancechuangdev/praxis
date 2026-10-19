@@ -3,19 +3,25 @@ package config
 import (
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
 	"praxis/projectionservice/internal/kafkaauth"
 	"praxis/projectionservice/internal/kafkaconsumer"
+	"praxis/projectionservice/internal/readapi"
 	"praxis/projectionservice/internal/workflow"
 )
 
 type Config struct {
+	ReadEnabled        bool
+	ReadAuth           readapi.Config
 	Stream             string
 	Enabled            bool
 	LagObserve         bool
@@ -27,7 +33,9 @@ type Config struct {
 	Kafka              kafkaconsumer.Config
 }
 
-func Load() (Config, error) {
+func Load() (Config, error)      { return load(true) }
+func LoadAdmin() (Config, error) { return load(false) }
+func load(consumer bool) (Config, error) {
 	var cfg Config
 	cfg.Stream = os.Getenv("PROJECTION_STREAM")
 	if cfg.Stream == "" {
@@ -78,7 +86,10 @@ func Load() (Config, error) {
 	if cfg.Database == "" || strings.ContainsAny(cfg.Database, " /\\.\"$\x00") || len(cfg.Database) > 63 {
 		return cfg, errors.New("PROJECTION_MONGODB_DATABASE must be an explicit valid database name")
 	}
-	uri := os.Getenv("PROJECTION_MONGODB_URI")
+	uri, err := mongoURI()
+	if err != nil {
+		return cfg, err
+	}
 	if uri == "" {
 		return cfg, errors.New("PROJECTION_MONGODB_URI is required")
 	}
@@ -102,6 +113,9 @@ func Load() (Config, error) {
 	cfg.TransactionTimeout, err = boundedDuration("PROJECTION_TRANSACTION_TIMEOUT", 10*time.Second)
 	if err != nil {
 		return cfg, err
+	}
+	if !consumer {
+		return cfg, nil
 	}
 	commitTimeout, err := boundedDuration("PROJECTION_COMMIT_TIMEOUT", 5*time.Second)
 	if err != nil {
@@ -145,7 +159,34 @@ func Load() (Config, error) {
 	if err := cfg.Kafka.Validate(); err != nil {
 		return cfg, err
 	}
+	cfg.ReadEnabled, err = strconv.ParseBool(envDefault("PROJECTION_READS_ENABLED", "false"))
+	if err != nil {
+		return cfg, errors.New("PROJECTION_READS_ENABLED must be true or false")
+	}
+	if cfg.ReadEnabled {
+		cfg.ReadAuth = readapi.Config{Issuer: os.Getenv("PROJECTION_JWT_ISSUER"), Audience: os.Getenv("PROJECTION_JWT_AUDIENCE"), KeyID: os.Getenv("PROJECTION_JWT_KEY_ID")}
+		file, err := os.Open(os.Getenv("PROJECTION_JWT_PUBLIC_KEY_FILE"))
+		if err != nil {
+			return cfg, errors.New("JWT public key file is required")
+		}
+		raw, err := io.ReadAll(io.LimitReader(file, 65537))
+		_ = file.Close()
+		if err != nil || len(raw) > 65536 {
+			return cfg, errors.New("invalid JWT public key file")
+		}
+		key, err := jwt.ParseRSAPublicKeyFromPEM(raw)
+		if err != nil || (key.N.BitLen() < 2048 || key.N.BitLen() > 8192) || cfg.ReadAuth.Issuer == "" || cfg.ReadAuth.Audience == "" || cfg.ReadAuth.KeyID == "" {
+			return cfg, errors.New("projection reads require issuer, audience, key ID and RSA public key >=2048 bits")
+		}
+		cfg.ReadAuth.PublicKey = key
+	}
 	return cfg, nil
+}
+func envDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func boundedDuration(key string, fallback time.Duration) (time.Duration, error) {

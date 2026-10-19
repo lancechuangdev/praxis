@@ -9,6 +9,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"google.golang.org/protobuf/proto"
+
 	lifecycle "praxis/api/events/lifecycle/v1"
 	wire "praxis/api/gen/events/lifecycle/v1"
 	"praxis/projectionservice/internal/journal"
@@ -50,6 +51,9 @@ func (s *JournalStore) Prepare(ctx context.Context) error {
 			return err
 		}
 	}
+	if _, err := s.journals.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "user_ids", Value: 1}, {Key: "occurred_at", Value: 1}, {Key: "_id", Value: 1}}}); err != nil {
+		return err
+	}
 	return s.Verify(ctx)
 }
 func (s *JournalStore) Within(ctx context.Context, target journal.Target, callback func(journal.Transaction) error) error {
@@ -65,6 +69,7 @@ func (s *JournalStore) Within(ctx context.Context, target journal.Target, callba
 }
 
 type journalDocument struct {
+	UserIDs    []string  `bson:"user_ids"`
 	ID         string    `bson:"_id"`
 	EventID    string    `bson:"event_id"`
 	OccurredAt time.Time `bson:"occurred_at"`
@@ -198,7 +203,7 @@ func (t *journalTransaction) PutJournal(_ context.Context, event *wire.Lifecycle
 	if j == nil {
 		return errors.New("expected journal fact")
 	}
-	_, err = t.store.journals.InsertOne(t.ctx, journalDocument{ID: j.JournalId, EventID: event.EventId, OccurredAt: event.OccurredAt.AsTime(), Payload: payload})
+	_, err = t.store.journals.InsertOne(t.ctx, journalDocument{ID: j.JournalId, UserIDs: journalOwners(j), EventID: event.EventId, OccurredAt: event.OccurredAt.AsTime(), Payload: payload})
 	return err
 }
 func (t *journalTransaction) PutInbox(_ context.Context, id string, r journal.Receipt) error {
@@ -207,4 +212,16 @@ func (t *journalTransaction) PutInbox(_ context.Context, id string, r journal.Re
 	}
 	_, err := t.store.inbox.InsertOne(t.ctx, journalInboxDocument{ID: id, JournalID: r.JournalID, Digest: r.Digest[:]})
 	return err
+}
+
+func journalOwners(j *wire.LedgerJournalPosted) []string {
+	owners := []string{}
+	seen := map[string]bool{}
+	for _, b := range j.Balances {
+		if !seen[b.UserId] {
+			seen[b.UserId] = true
+			owners = append(owners, b.UserId)
+		}
+	}
+	return owners
 }

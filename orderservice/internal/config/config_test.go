@@ -79,3 +79,26 @@ func TestWorkflowObservationIsIndependentAndOptIn(t *testing.T) {
 		t.Fatal("invalid observation flag accepted")
 	}
 }
+
+func TestWorkflowDispatchEnrollment(t *testing.T) {
+	t.Setenv("ORDER_WORKFLOW_DISPATCH", "invalid")
+	if _, err := Load(); err == nil {
+		t.Fatal("invalid flag accepted")
+	}
+	t.Setenv("ORDER_WORKFLOW_DISPATCH", "true")
+	t.Setenv("ORDER_KAFKA_BROKERS", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("missing broker accepted")
+	}
+	t.Setenv("ORDER_KAFKA_BROKERS", "broker:9098")
+	t.Setenv("ORDER_KAFKA_AUTH_MODE", "msk_iam")
+	t.Setenv("AWS_REGION", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("IAM region missing")
+	}
+	t.Setenv("AWS_REGION", "us-east-1")
+	c, err := Load()
+	if err != nil || !c.WorkflowDispatch {
+		t.Fatal(c.WorkflowDispatch, err)
+	}
+}

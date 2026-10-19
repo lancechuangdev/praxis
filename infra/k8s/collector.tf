@@ -53,6 +53,21 @@ locals {
               regex = "__name__|le|namespace|service|pod|environment|reporter|source_workload|source_workload_namespace|destination_workload|destination_workload_namespace|response_code|grpc_response_status|connection_security_policy"
             }
           ]
+          }] : [], var.enable_projection_metrics ? [{
+          job_name              = "praxis-projections"
+          metrics_path          = "/metrics"
+          sample_limit          = 1000
+          kubernetes_sd_configs = [{ role = "pod", namespaces = { names = ["praxis"] } }]
+          relabel_configs = [
+            { action = "keep", source_labels = ["__meta_kubernetes_pod_label_praxis_io_projection"], regex = "true" },
+            { action = "keep", source_labels = ["__meta_kubernetes_pod_container_port_name"], regex = "http" },
+            { action = "keep", source_labels = ["__meta_kubernetes_pod_node_name"], regex = "$${env:K8S_NODE_NAME}" },
+            { action = "replace", source_labels = ["__meta_kubernetes_namespace"], target_label = "namespace" },
+            { action = "replace", source_labels = ["__meta_kubernetes_pod_label_app"], target_label = "service" },
+            { action = "replace", source_labels = ["__meta_kubernetes_pod_name"], target_label = "pod" },
+            { action = "replace", target_label = "environment", replacement = local.runtime.environment }
+          ]
+          metric_relabel_configs = [{ action = "keep", source_labels = ["__name__"], regex = "projection_.*" }]
         }] : [])
       } }
     }
@@ -243,4 +258,10 @@ resource "kubernetes_manifest" "collector_daemonset" {
       error_message = "Set eks_collector_image in infra/aws and apply that stack before deploying Kubernetes workloads."
     }
   }
+}
+
+variable "enable_projection_metrics" {
+  description = "Opt in to scraping labelled Phase 6 projection pods on collector-covered hot-path nodes."
+  type        = bool
+  default     = false
 }

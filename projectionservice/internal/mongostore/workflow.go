@@ -19,6 +19,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 	"go.mongodb.org/mongo-driver/v2/mongo/writeconcern"
 	"google.golang.org/protobuf/proto"
+
 	lifecycle "praxis/api/events/lifecycle/v1"
 	wire "praxis/api/gen/events/lifecycle/v1"
 	"praxis/projectionservice/internal/workflow"
@@ -27,12 +28,12 @@ import (
 var errConcurrentChange = errors.New("workflow changed concurrently")
 
 type Store struct {
-	client           *mongo.Client
-	db               *mongo.Database
-	target           workflow.Target
-	snapshots, inbox *mongo.Collection
-	timeout          time.Duration
-	verified         atomic.Bool
+	client                    *mongo.Client
+	db                        *mongo.Database
+	target                    workflow.Target
+	snapshots, inbox, history *mongo.Collection
+	timeout                   time.Duration
+	verified                  atomic.Bool
 }
 
 var _ workflow.Store = (*Store)(nil)
@@ -44,10 +45,10 @@ func New(client *mongo.Client, database string, target workflow.Target, timeout 
 	if client == nil || database == "" || target.Validate() != nil || timeout <= 0 || timeout > 30*time.Second {
 		return nil, errors.New("Mongo workflow store requires client, database, valid target and timeout in (0, 30s]")
 	}
-	db := client.Database(database, options.Database().SetWriteConcern(writeconcern.Majority()).SetReadPreference(readpref.Primary()))
+	db := client.Database(database, options.Database().SetWriteConcern(writeconcern.Majority()).SetReadConcern(readconcern.Majority()).SetReadPreference(readpref.Primary()))
 	suffix := string(target.Mode) + "_" + target.Generation
 	return &Store{client: client, db: db, target: target, timeout: timeout,
-		snapshots: db.Collection("workflow_" + suffix), inbox: db.Collection("workflow_inbox_" + suffix)}, nil
+		snapshots: db.Collection("workflow_" + suffix), inbox: db.Collection("workflow_inbox_" + suffix), history: db.Collection("workflow_history_" + suffix)}, nil
 }
 
 // Prepare creates ordinary, unsharded collections. Their built-in unique _id
@@ -57,12 +58,18 @@ func (s *Store) Prepare(ctx context.Context) error {
 	s.verified.Store(false)
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
-	for _, name := range []string{s.snapshots.Name(), s.inbox.Name()} {
+	for _, name := range []string{s.snapshots.Name(), s.inbox.Name(), s.history.Name()} {
 		err := s.db.CreateCollection(ctx, name)
 		var command mongo.CommandError
 		if err != nil && !(errors.As(err, &command) && command.Code == 48) {
 			return err
 		}
+	}
+	if _, err := s.snapshots.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "occurred_at", Value: 1}, {Key: "_id", Value: 1}}}); err != nil {
+		return err
+	}
+	if _, err := s.history.Indexes().CreateOne(ctx, mongo.IndexModel{Keys: bson.D{{Key: "user_id", Value: 1}, {Key: "order_id", Value: 1}, {Key: "workflow_version", Value: 1}}}); err != nil {
+		return err
 	}
 	return s.Verify(ctx)
 }
@@ -186,6 +193,9 @@ func (t *transaction) PutWorkflow(_ context.Context, event *wire.LifecycleEvent)
 	if !ok || uint64(doc.Version) <= state.Version || uint64(doc.Version)-state.Version != 1 || (state.Version > 0 && state.UserID != doc.UserID) {
 		return errors.New("workflow write requires a locked contiguous version and stable owner")
 	}
+	if _, err := t.store.history.InsertOne(t.ctx, workflowHistoryDocument{ID: event.EventId, OrderID: doc.ID, Version: doc.Version, UserID: doc.UserID, OccurredAt: doc.OccurredAt, Payload: doc.Payload}); err != nil {
+		return err
+	}
 	if state.Version == 0 {
 		_, err = t.store.snapshots.InsertOne(t.ctx, doc)
 		return err
@@ -221,4 +231,13 @@ func (t *transaction) PutInbox(_ context.Context, id string, receipt workflow.Re
 	}
 	_, err := t.store.inbox.InsertOne(t.ctx, inboxDocument{ID: id, OrderID: receipt.OrderID, Version: int64(receipt.Version), Digest: receipt.Digest[:]})
 	return err
+}
+
+type workflowHistoryDocument struct {
+	ID         string    `bson:"_id"`
+	OrderID    string    `bson:"order_id"`
+	Version    int64     `bson:"workflow_version"`
+	UserID     string    `bson:"user_id"`
+	OccurredAt time.Time `bson:"occurred_at"`
+	Payload    []byte    `bson:"payload"`
 }

@@ -188,3 +188,12 @@ Live trace, metric, log, authentication, alert-delivery, scaling, restore, and
 failure verification remain operator gates. Network policies and durable
 Matching also remain separate work. No live AWS deployment or failure drill is
 implied by this repository configuration.
+
+Phase 6 projection metrics are separately opt-in through
+`enable_projection_metrics=true`. The collector then scrapes HTTP ports on
+pods labelled `praxis.io/projection=true` and retains only `projection_*`
+metrics. It still scrapes only its own node, avoiding duplicate samples. The
+projection manifest selects the collector-covered hot-path node pool; budget
+its CPU/memory independently, or move both the projections and collector
+coverage to an appropriate pool during deployment review. Projection enrollment
+does not change earlier Order/Ledger/Matching mesh membership.

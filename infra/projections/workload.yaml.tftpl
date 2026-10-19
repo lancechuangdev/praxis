@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ${SERVICE_ACCOUNT}
+  namespace: praxis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${NAME}
+  namespace: praxis
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: ${jsonencode(NAME)}}
+  template:
+    metadata:
+      labels: {app: ${jsonencode(NAME)}, praxis.io/projection: "true"}
+      annotations: {sidecar.istio.io/inject: "false"}
+    spec:
+      nodeSelector: {praxis.io/workload: hot-path}
+      serviceAccountName: ${SERVICE_ACCOUNT}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext: {runAsNonRoot: true, runAsUser: 65532, fsGroup: 65532, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: projection
+          image: ${jsonencode(IMAGE)}
+          ports: [{name: http, containerPort: 8086}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: "1", memory: 512Mi}
+          env:
+            - {name: PROJECTION_ENABLED, value: "true"}
+            - {name: PROJECTION_STREAM, value: ${jsonencode(STREAM)}}
+            - {name: PROJECTION_MODE, value: ${jsonencode(MODE)}}
+            - {name: PROJECTION_GENERATION, value: ${jsonencode(GENERATION)}}
+            - {name: PROJECTION_GROUP_NAMESPACE, value: ${jsonencode(GROUP_NAMESPACE)}}
+            - {name: PROJECTION_MONGODB_DATABASE, value: ${jsonencode(DATABASE)}}
+            - {name: PROJECTION_MONGODB_URI_SECRET_ARN, value: ${jsonencode(SECRET_ARN)}}
+            - {name: PROJECTION_SECRETS_MANAGER_ENDPOINT, value: ${jsonencode(SECRETS_ENDPOINT)}}
+            - {name: PROJECTION_KAFKA_BROKERS, value: ${jsonencode(BROKERS)}}
+            - {name: PROJECTION_KAFKA_AUTH_MODE, value: msk_iam}
+            - {name: PROJECTION_LAG_OBSERVE, value: "true"}
+            - {name: PROJECTION_READS_ENABLED, value: ${jsonencode(READS_ENABLED)}}
+            - {name: PROJECTION_JWT_ISSUER, value: ${jsonencode(JWT_ISSUER)}}
+            - {name: PROJECTION_JWT_AUDIENCE, value: ${jsonencode(JWT_AUDIENCE)}}
+            - {name: PROJECTION_JWT_KEY_ID, value: ${jsonencode(JWT_KEY_ID)}}
+            - {name: PROJECTION_JWT_PUBLIC_KEY_FILE, value: /jwt/public.pem}
+            - {name: AWS_REGION, value: ${jsonencode(AWS_REGION)}}
+            - {name: AWS_EC2_METADATA_DISABLED, value: "true"}
+            - {name: GOMEMLIMIT, value: 384MiB}
+          volumeMounts: [{name: jwt, mountPath: /jwt, readOnly: true}]
+          startupProbe: {httpGet: {path: /healthz, port: http}, failureThreshold: 30, periodSeconds: 2}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5, timeoutSeconds: 2}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10, timeoutSeconds: 2}
+      volumes:
+        - name: jwt
+          configMap: {name: projection-jwt-public-key, optional: true}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ${NAME}
+  namespace: praxis
+spec:
+  selector: {app: ${jsonencode(NAME)}}
+  ports: [{name: http, port: 8086, targetPort: http}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ${NAME}
+  namespace: praxis
+spec:
+  minAvailable: 1
+  selector: {matchLabels: {app: ${jsonencode(NAME)}}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ${NAME}
+  namespace: praxis
+spec:
+  podSelector: {matchLabels: {app: ${jsonencode(NAME)}}}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: observability}}
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ${jsonencode(READ_CLIENT_NAMESPACE)}}}
+      ports: [{protocol: TCP, port: 8086}]
+  egress:
+    - to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}}]
+      ports: [{protocol: UDP, port: 53}, {protocol: TCP, port: 53}]
+    - to: [{ipBlock: {cidr: 169.254.170.23/32}}]
+      ports: [{protocol: TCP, port: 80}]
+    - to:
+%{ for cidr in DEPENDENCY_CIDRS ~}
+        - ipBlock: {cidr: "${cidr}"}
+%{ endfor ~}
+      ports:
+        - {protocol: TCP, port: 443}
+        - {protocol: TCP, port: 9098}
+        - {protocol: TCP, port: 1024, endPort: 65535}

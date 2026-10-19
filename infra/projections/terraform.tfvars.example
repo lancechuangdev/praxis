@@ -1,0 +1,21 @@
+aws_region = "us-east-1"
+atlas_region = "US_EAST_1"
+atlas_project_id = "replace-with-existing-atlas-project-id"
+name = "praxis-dev-projections"
+database = "praxis_projection"
+vpc_id = "vpc-replace"
+private_subnet_ids = ["subnet-private-a", "subnet-private-b", "subnet-private-c"]
+client_security_group_ids = ["sg-application-nodes-or-pods"]
+dependency_cidrs = ["10.0.10.0/24", "10.0.11.0/24", "10.0.12.0/24"]
+eks_cluster_name = "replace-with-existing-eks-cluster"
+msk_cluster_arn = "arn:aws:kafka:us-east-1:123456789012:cluster/replace/00000000-0000-0000-0000-000000000000-1"
+kafka_brokers = ["replace-with-private-iam-broker:9098"]
+publisher_role_names = { ledger = "replace-with-existing-ledger-pod-role" }
+operator_role_name = "replace-with-existing-projection-operator-role"
+image = "123456789012.dkr.ecr.us-east-1.amazonaws.com/projection@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+targets = {
+  workflow = { stream = "workflow", mode = "shadow", generation = "orders-v1", group_namespace = "dev", service_account = "projection-workflow" }
+  journal = { stream = "journal", mode = "shadow", generation = "journals-v1", group_namespace = "dev", service_account = "projection-journal" }
+}
+# Reads stay disabled until reconciliation, route selection and live acceptance.
+reads_enabled = false

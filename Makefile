@@ -63,3 +63,14 @@ partition-migration-check:
 
 terraform-fmt:
 	terraform -chdir=infra/aws fmt -recursive
+
+.PHONY: phase6-verify phase6-infra-verify
+phase6-verify:
+	./scripts/verify-phase6.sh
+
+TERRAFORM ?= terraform
+phase6-infra-verify:
+	$(TERRAFORM) -chdir=infra/projections init -backend=false -input=false -lockfile=readonly
+	$(TERRAFORM) -chdir=infra/projections fmt -check
+	$(TERRAFORM) -chdir=infra/projections validate
+	$(TERRAFORM) -chdir=infra/projections test

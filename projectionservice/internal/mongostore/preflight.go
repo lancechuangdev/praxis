@@ -15,7 +15,7 @@ var ErrUnverified = errors.New("workflow storage requires successful preflight")
 // createCollection privileges. Any failure revokes this instance's readiness;
 // this is a point-in-time configuration check, not protection from later DDL.
 func (s *Store) Verify(ctx context.Context) error {
-	return s.verifyCollections(ctx, s.snapshots, s.inbox)
+	return s.verifyCollections(ctx, s.snapshots, s.inbox, s.history)
 }
 
 func (s *Store) verifyCollections(ctx context.Context, collections ...*mongo.Collection) error {

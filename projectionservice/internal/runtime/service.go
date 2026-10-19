@@ -25,14 +25,25 @@ type Consumer interface {
 // Service retains health and metrics after a consumer failure. It never retries
 // or recreates a stopped consumer. Worker=nil is the disabled configuration.
 type Service struct {
-	Stream     string
-	Worker     Consumer
-	LagMetrics func(context.Context) string
-	failed     atomic.Bool
+	Reads        http.Handler
+	Stream       string
+	Worker       Consumer
+	LagMetrics   func(context.Context) string
+	QueueMetrics func(context.Context) string
+	failed       atomic.Bool
 }
 
 func (s *Service) Handler() http.Handler {
 	mux := http.NewServeMux()
+	if s.Reads != nil {
+		mux.Handle("/v1/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if s.failed.Load() || s.Worker == nil || !s.Worker.Running() {
+				http.Error(w, "projection reads unavailable", 503)
+				return
+			}
+			s.Reads.ServeHTTP(w, r)
+		}))
+	}
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
@@ -75,6 +86,9 @@ func (s *Service) Handler() http.Handler {
 		_, _ = fmt.Fprintf(w, "%senabled %d\n%sconsumer_failed %d\n", prefix, enabled, prefix, failed)
 		if s.Worker != nil {
 			_, _ = fmt.Fprint(w, s.Worker.Prometheus())
+		}
+		if s.QueueMetrics != nil {
+			_, _ = fmt.Fprint(w, s.QueueMetrics(r.Context()))
 		}
 		if s.LagMetrics != nil {
 			_, _ = fmt.Fprint(w, prefix+"lag_observation_enabled 1\n", s.LagMetrics(r.Context()))

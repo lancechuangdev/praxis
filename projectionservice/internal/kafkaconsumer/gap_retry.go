@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/segmentio/kafka-go"
+
 	"praxis/projectionservice/internal/workflow"
 )
 
@@ -31,7 +32,7 @@ func (p GapRetryPolicy) Validate() error {
 func (c *Consumer) process(ctx context.Context, message kafka.Message, stage func(string)) (workflow.Outcome, error) {
 	policy := c.gapRetry
 	if policy.Retries == 0 {
-		return c.processor.Process(ctx, message.Topic, message.Key, message.Value)
+		return c.processRecord(ctx, message)
 	}
 	processing, stop := context.WithTimeout(ctx, policy.Budget)
 	defer stop()
@@ -51,7 +52,7 @@ func (c *Consumer) process(ctx context.Context, message kafka.Message, stage fun
 			c.gapRetries.Add(1)
 		}
 		stage("process")
-		outcome, err := c.processor.Process(processing, message.Topic, message.Key, message.Value)
+		outcome, err := c.processRecord(processing, message)
 		if err == nil {
 			return outcome, nil
 		}
